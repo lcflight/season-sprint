@@ -1,17 +1,22 @@
 <template>
-  <img alt="Vue logo" src="./assets/logo.png">
-  <HelloWorld msg="Welcome to Your Vue.js App"/>
+  <HeaderBar />
+  <main class="container">
+    <img alt="Vue logo" src="./assets/logo.png" />
+    <LineGraph />
+  </main>
 </template>
 
 <script>
-import HelloWorld from './components/HelloWorld.vue'
+import HeaderBar from "./components/HeaderBar.vue";
+import LineGraph from "./components/LineGraph.vue";
 
 export default {
-  name: 'App',
+  name: "App",
   components: {
-    HelloWorld
-  }
-}
+    HeaderBar,
+    LineGraph,
+  },
+};
 </script>
 
 <style>
@@ -22,5 +27,12 @@ export default {
   text-align: center;
   color: #2c3e50;
   margin-top: 60px;
+}
+
+.container {
+  display: grid;
+  gap: 24px;
+  justify-items: center;
+  padding: 16px;
 }
 </style>
