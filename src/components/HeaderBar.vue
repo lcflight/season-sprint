@@ -4,8 +4,8 @@
       <span class="brand-accent">THE</span> FINALS | Season Sprint
     </div>
     <div class="actions">
-      <button class="btn btn-primary world-tour">World Tour</button>
-      <button class="btn btn-ghost ranked">Ranked</button>
+      <router-link to="/world-tour" class="btn btn-primary" exact-active-class="is-active">World Tour</router-link>
+      <router-link to="/ranked" class="btn btn-ghost" exact-active-class="is-active">Ranked</router-link>
     </div>
   </div>
 </template>
@@ -44,5 +44,10 @@ export default {};
 .actions {
   display: flex;
   gap: 10px;
+}
+
+.actions :deep(.is-active) {
+  box-shadow: 0 0 0 3px var(--ring);
+  border-color: var(--ring-strong);
 }
 </style>

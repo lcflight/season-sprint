@@ -10,13 +10,14 @@ export function calcXDomain(seasonStart, seasonEnd, today = new Date()) {
 }
 
 export function calcYDomain(points, goalWinPoints) {
-  const ys = points.length ? points.map(p => p.y) : [0]
-  ys.push(0)
-  ys.push(Number.isFinite(goalWinPoints) ? goalWinPoints : 0)
-  let min = Math.min(...ys)
-  let max = Math.max(...ys)
-  if (min === max) { min -= 1; max += 1 }
-  return [roundTidy(min), roundTidy(max)]
+  // Lower bound fixed at 0, upper bound is the maximum across data points and goal
+  const ys = points.length ? points.map(p => p.y) : []
+  if (Number.isFinite(goalWinPoints)) ys.push(goalWinPoints)
+  const max = ys.length ? Math.max(0, ...ys) : 1
+  const min = 0
+  // Ensure non-zero height
+  const upper = max === min ? 1 : max
+  return [min, upper]
 }
 
 export function roundTidy(n) {

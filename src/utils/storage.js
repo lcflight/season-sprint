@@ -20,3 +20,21 @@ export function loadState() {
   }
 }
 
+// Per-key helpers for multiple independent graphs
+export function saveStateWithKey(key, state) {
+  try {
+    localStorage.setItem(key, JSON.stringify(state))
+  } catch (e) {
+    // ignore
+  }
+}
+
+export function loadStateWithKey(key) {
+  try {
+    const raw = localStorage.getItem(key)
+    if (!raw) return null
+    return JSON.parse(raw)
+  } catch (e) {
+    return null
+  }
+}

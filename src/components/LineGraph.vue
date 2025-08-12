@@ -19,7 +19,7 @@
           <input v-model="newDate" type="date" required />
         </label>
         <label>
-          y
+          points
           <input v-model.number="newY" type="number" step="any" required />
         </label>
         <button type="submit" :disabled="!isSeasonValid">Add point</button>
@@ -29,8 +29,8 @@
           Goal win points
           <input v-model.number="goalWinPoints" type="number" step="any" />
         </label>
-        <button @click="addRandomPoint" :disabled="!isSeasonValid">Add random</button>
         <button @click="clearPoints" :disabled="points.length === 0">Clear</button>
+        <button @click="openPointsModal" :disabled="points.length === 0">View points ({{ points.length }})</button>
         <span class="spacer"></span>
         <button @click="exportCSV" :disabled="points.length === 0">Export CSV</button>
         <button @click="openImportModal">Import CSV</button>
@@ -58,7 +58,7 @@
           <h3>Import CSV</h3>
         </header>
         <section class="modal-body">
-          <p>Provide a CSV with columns: <strong>date,y</strong>. Supported date formats include YYYY-MM-DD, YYYY/MM/DD, MM/DD/YYYY, DD/MM/YYYY, and names like 5 Jan 2025. Header row is optional. Delimiters supported: comma, semicolon, colon, or tab.</p>
+          <p>Provide a CSV with columns: <strong>date,y</strong> (y = points). Supported date formats include YYYY-MM-DD, YYYY/MM/DD, MM/DD/YYYY, DD/MM/YYYY, and names like 5 Jan 2025. Header row is optional. Delimiters supported: comma, semicolon, colon, or tab.</p>
           <pre class="example">date,y
 2025-03-01,2
 2025-03-07,5.5
@@ -82,6 +82,48 @@
         </section>
         <footer class="modal-footer">
           <button @click="closeImportModal">Cancel</button>
+        </footer>
+      </div>
+    </div>
+
+    <!-- Points Modal -->
+    <div v-if="showPointsModal" class="modal-backdrop" @click.self="closePointsModal">
+      <div class="modal">
+        <header class="modal-header">
+          <h3>Points</h3>
+        </header>
+        <section class="modal-body">
+          <p v-if="!points.length" class="muted">No points yet.</p>
+          <ul class="points-ul" v-else>
+            <li v-for="(pt, i) in points" :key="i">
+              <template v-if="editIndex === i">
+                <div class="edit-row">
+                  <label>
+                    date
+                    <input v-model="editDate" type="date" required />
+                  </label>
+                  <label>
+                    points
+                    <input v-model.number="editY" type="number" step="any" required />
+                  </label>
+                </div>
+                <div class="row-actions">
+                  <button class="btn-primary" @click="saveEdit(i)" :disabled="!canSaveEdit">save</button>
+                  <button class="btn-ghost" @click="cancelEdit">cancel</button>
+                </div>
+              </template>
+              <template v-else>
+                <span>({{ pt.date }} , {{ pt.y }} pts)</span>
+                <div class="row-actions">
+                  <button class="btn-primary" @click="openEdit(i)">edit</button>
+                  <button class="btn-ghost" @click="removePoint(i)">remove</button>
+                </div>
+              </template>
+            </li>
+          </ul>
+        </section>
+        <footer class="modal-footer">
+          <button @click="closePointsModal">Close</button>
         </footer>
       </div>
     </div>
@@ -130,23 +172,21 @@
           <text :x="width - padding" :y="height - padding + 16" text-anchor="end">
             {{ msToDateInput(xDomain[0]) }} → {{ msToDateInput(xDomain[1]) }}
           </text>
-          <text :x="padding - 6" :y="padding - 6" text-anchor="start">y: {{ yDomain[0] }} → {{ yDomain[1] }}</text>
+          <text :x="padding - 6" :y="padding - 6" text-anchor="start">points: {{ yDomain[0] }} → {{ yDomain[1] }}</text>
           <template v-for="(tick, i) in xTicks" :key="`lbl-${i}`">
-            <text :x="tick.x" :y="height - padding + 16" text-anchor="middle">{{ tick.label }}</text>
+            <text
+              :x="tick.x"
+              :y="height - padding + 28"
+              text-anchor="end"
+              :transform="`rotate(-35 ${tick.x} ${height - padding + 28})`"
+            >
+              {{ tick.label }}
+            </text>
           </template>
         </g>
       </svg>
     </div>
 
-    <div class="points-list" v-if="points.length">
-      <h3>Points</h3>
-      <ul>
-        <li v-for="(pt, i) in points" :key="i">
-          ({{ pt.date }} , {{ pt.y }})
-          <button @click="removePoint(i)">remove</button>
-        </li>
-      </ul>
-    </div>
   </div>
 </template>
 
@@ -154,12 +194,17 @@
 import { computed, reactive, ref, watch, onMounted } from 'vue'
 import { isValidDateStr, dateToMs, msToDateInput, addDays, clamp, formatDate } from '@/utils/date'
 import { parseCSVText, buildCSV } from '@/utils/csv'
-import { saveState as saveLocalState, loadState as loadLocalState } from '@/utils/storage'
+import { saveState as saveLocalState, loadState as loadLocalState, saveStateWithKey, loadStateWithKey } from '@/utils/storage'
 import { MS_PER_DAY, calcXDomain, calcYDomain, scaleXFactory, scaleYFactory, buildPathD, buildXTicks } from '@/utils/chart'
+
+// eslint-disable-next-line no-undef
+const props = defineProps({
+  storageKey: { type: String, default: '' }
+})
 
 // Config
 const width = 600
-const height = 360
+const height = 400
 const padding = 40
 const plotHeight = height - padding * 2
 
@@ -184,9 +229,16 @@ const goalWinPoints = ref(10)
 
 // Import/Export state
 const showImportModal = ref(false)
+const showPointsModal = ref(false)
 const importError = ref('')
 const autoSetSeasonFromImport = ref(true)
 const fileInput = ref(null)
+
+// Editing state for points
+const editIndex = ref(-1)
+const editDate = ref('')
+const editY = ref(0)
+const canSaveEdit = computed(() => isValidDateStr(editDate.value) && isFinite(editY.value))
 
 // Persistence
 function saveState() {
@@ -197,11 +249,17 @@ function saveState() {
     autoSetSeasonFromImport: autoSetSeasonFromImport.value,
     points: [...points],
   }
-  saveLocalState(state)
+  if (props.storageKey) {
+    saveStateWithKey(`season-sprint:${props.storageKey}:v1`, state)
+  } else {
+    saveLocalState(state)
+  }
 }
 
 function loadState() {
-  const parsed = loadLocalState()
+  const parsed = props.storageKey
+    ? loadStateWithKey(`season-sprint:${props.storageKey}:v1`)
+    : loadLocalState()
   if (!parsed || typeof parsed !== 'object') return
   if (typeof parsed.seasonStart === 'string' && isValidDateStr(parsed.seasonStart)) seasonStart.value = parsed.seasonStart
   if (typeof parsed.seasonEnd === 'string' && isValidDateStr(parsed.seasonEnd)) seasonEnd.value = parsed.seasonEnd
@@ -291,22 +349,30 @@ function addPointFromForm() {
   newDate.value = next
 }
 
-function addRandomPoint() {
-  if (!isSeasonValid.value) return
-  // add at next day from latest point within season, or at seasonStart
-  const latestMsInSeason = Math.max(
-    ...[...points]
-      .map(p => dateToMs(p.date))
-      .filter(ms => ms >= xDomain.value[0] && ms <= xDomain.value[1]),
-    xDomain.value[0] - 86400000 // ensure at least season start - 1 day
-  )
-  const nextDate = new Date(latestMsInSeason + 86400000)
-  const y = +(Math.random() * 10 - 5).toFixed(2)
-  points.push({ date: formatDate(nextDate), y })
-}
-
 function removePoint(index) {
   points.splice(index, 1)
+  if (editIndex.value === index) {
+    editIndex.value = -1
+  }
+}
+
+function openEdit(index) {
+  const p = points[index]
+  editIndex.value = index
+  editDate.value = p.date
+  editY.value = p.y
+}
+
+function saveEdit(index) {
+  if (!canSaveEdit.value) return
+  const yNum = Number(editY.value)
+  if (!isFinite(yNum)) return
+  points[index] = { date: editDate.value, y: yNum }
+  editIndex.value = -1
+}
+
+function cancelEdit() {
+  editIndex.value = -1
 }
 
 function clearPoints() {
@@ -337,6 +403,14 @@ function closeImportModal() {
   importError.value = ''
   // reset input element so same file can be re-picked
   if (fileInput.value) fileInput.value.value = ''
+}
+
+function openPointsModal() {
+  showPointsModal.value = true
+}
+
+function closePointsModal() {
+  showPointsModal.value = false
 }
 
 function onFilePick(e) {
@@ -475,10 +549,13 @@ onMounted(() => {
 .modal {
   background: var(--surface);
   width: min(720px, 95vw);
+  max-height: 85vh;
   border-radius: 12px;
   border: 1px solid color-mix(in oklab, var(--primary) 20%, var(--surface));
   box-shadow: 0 10px 30px rgba(0,0,0,0.45);
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .modal-header, .modal-footer {
@@ -488,7 +565,12 @@ onMounted(() => {
 
 .modal-footer { border-bottom: 0; border-top: 1px solid color-mix(in oklab, var(--primary) 20%, var(--surface)); }
 
-.modal-body { padding: 12px 16px; }
+.modal-body {
+  padding: 12px 16px;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  flex: 1 1 auto;
+}
 
 .dropzone {
   border: 2px dashed color-mix(in oklab, var(--primary) 35%, var(--surface));
@@ -568,18 +650,34 @@ svg {
   fill: var(--muted);
 }
 
-.points-list ul {
+.points-ul {
   list-style: none;
   padding: 0;
+  margin: 0;
 }
 
-.points-list li {
+.points-ul li {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid color-mix(in oklab, var(--primary) 10%, var(--surface));
+  flex-wrap: wrap;
+}
+
+.edit-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.row-actions {
+  display: inline-flex;
   gap: 8px;
 }
 
-.points-list button {
-  margin-left: 8px;
+.points-ul li:last-child {
+  border-bottom: 0;
 }
 </style>
