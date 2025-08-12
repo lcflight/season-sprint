@@ -90,11 +90,29 @@
         <header class="modal-header">
           <h3>Settings</h3>
         </header>
-        <section class="modal-body">
-          <div class="setting-row">
-            <label for="navSensitivity">Navigation sensitivity</label>
-            <input id="navSensitivity" type="range" min="0.25" max="3" step="0.05" v-model.number="navSensitivity" />
-            <div class="muted">Current: {{ navSensitivity.toFixed(2) }}×</div>
+        <section class="modal-body settings">
+          <div class="setting-group">
+            <div class="setting-info">
+              <div class="setting-title">Navigation sensitivity</div>
+              <div class="setting-desc">Controls how fast panning feels and how strong wheel zoom is.</div>
+            </div>
+            <div class="setting-control">
+              <input id="navSensitivity" type="range" min="0.25" max="3" step="0.05" v-model.number="navSensitivity" />
+              <div class="setting-hint">Current: {{ navSensitivity.toFixed(2) }}×</div>
+            </div>
+          </div>
+
+          <div class="setting-group">
+            <div class="setting-info">
+              <div class="setting-title">Graph navigation</div>
+              <div class="setting-desc">Enable or disable drag-to-pan and pinch/wheel zoom on the chart.</div>
+            </div>
+            <div class="setting-control">
+              <label class="toggle-row" for="enableNav">
+                <input id="enableNav" class="toggle" type="checkbox" v-model="enableNavigation" />
+                <span class="toggle-text">Enable pan/zoom</span>
+              </label>
+            </div>
           </div>
         </section>
         <footer class="modal-footer">
@@ -151,7 +169,8 @@
       <button class="settings-btn" @click="openSettingsModal" title="Settings" aria-label="Open settings">⚙️</button>
       <button v-if="isOutOfDefault" class="recenter-btn" @click="resetView" title="Recenter view" aria-label="Recenter view">Recenter</button>
       <svg ref="svgRef" :viewBox="`0 0 ${width} ${height}`" :width="width" :height="height" role="img" aria-label="Line chart"
-           @wheel.prevent="onWheel"
+           :class="{ 'nav-disabled': !enableNavigation }"
+           @wheel="onWheel"
            @pointerdown="onPointerDown"
            @pointermove="onPointerMove"
            @pointerup="onPointerUp"
@@ -289,6 +308,7 @@ const fileInput = ref(null)
 // Settings
 const showSettingsModal = ref(false)
 const navSensitivity = ref(1)
+const enableNavigation = ref(true)
 
 // Editing state for points
 const editIndex = ref(-1)
@@ -305,6 +325,7 @@ function saveState() {
     autoSetSeasonFromImport: autoSetSeasonFromImport.value,
     points: [...points],
     navSensitivity: navSensitivity.value,
+    enableNavigation: enableNavigation.value,
   }
   if (props.storageKey) {
     saveStateWithKey(`season-sprint:${props.storageKey}:v1`, state)
@@ -323,6 +344,7 @@ function loadState() {
   if (typeof parsed.goalWinPoints === 'number' && isFinite(parsed.goalWinPoints)) goalWinPoints.value = parsed.goalWinPoints
   if (typeof parsed.autoSetSeasonFromImport === 'boolean') autoSetSeasonFromImport.value = parsed.autoSetSeasonFromImport
   if (typeof parsed.navSensitivity === 'number' && isFinite(parsed.navSensitivity)) navSensitivity.value = parsed.navSensitivity
+  if (typeof parsed.enableNavigation === 'boolean') enableNavigation.value = parsed.enableNavigation
   if (Array.isArray(parsed.points)) {
     const sanitized = parsed.points
       .map(p => ({ date: typeof p.date === 'string' ? p.date : '', y: Number(p.y) }))
@@ -398,6 +420,12 @@ function svgPointFromEvent(evt) {
 }
 
 function onWheel(evt) {
+  if (!enableNavigation.value) {
+    // Allow page to scroll normally when navigation is disabled
+    return
+  }
+  // When handling zoom, prevent page scroll
+  evt.preventDefault()
   const { x, y } = svgPointFromEvent(evt)
   // constrain zoom center to plot area for better UX
   const mx = clamp(x, padding, width - padding)
@@ -431,6 +459,7 @@ function distance(a, b) {
 }
 
 function onPointerDown(evt) {
+  if (!enableNavigation.value) return
   // Only start interactions inside plot area
   const { x, y } = svgPointFromEvent(evt)
   if (x < padding || x > width - padding || y < padding || y > height - padding) return
@@ -443,6 +472,7 @@ function onPointerDown(evt) {
 }
 
 function onPointerMove(evt) {
+  if (!enableNavigation.value) return
   if (!pointers.has(evt.pointerId)) return
   updatePointer(evt)
   if (pointers.size === 1 && isDragging) {
@@ -667,6 +697,7 @@ watch([seasonStart, seasonEnd], () => {
 
 // Persist on changes
 watch([seasonStart, seasonEnd, goalWinPoints, autoSetSeasonFromImport], saveState)
+watch([navSensitivity, enableNavigation], saveState)
 watch(points, () => {
   saveState()
   // also notify listeners of current win points
@@ -790,6 +821,57 @@ onMounted(() => {
   flex: 1 1 auto;
 }
 
+/* Settings layout */
+.settings .setting-group {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px 16px;
+  padding: 12px 0;
+  border-top: 1px solid color-mix(in oklab, var(--primary) 14%, var(--surface));
+}
+.settings .setting-group:first-child {
+  border-top: 0;
+}
+.settings .setting-info {
+  min-width: 0;
+}
+.settings .setting-title {
+  font-weight: 800;
+  color: var(--text-strong);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  font-size: 12px;
+}
+.settings .setting-desc {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 4px;
+}
+.settings .setting-control {
+  display: grid;
+  justify-items: end;
+  align-content: center;
+  gap: 6px;
+}
+.settings .setting-hint {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* Align toggle nicely */
+.toggle-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.toggle-text {
+  color: var(--text);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  font-size: 12px;
+}
+
 .dropzone {
   border: 2px dashed color-mix(in oklab, var(--primary) 35%, var(--surface));
   border-radius: 10px;
@@ -833,6 +915,10 @@ svg {
   cursor: default;
 }
 
+svg.nav-disabled {
+  touch-action: auto;
+}
+
 .settings-btn {
   position: absolute;
   top: 8px;
@@ -861,6 +947,46 @@ svg {
   grid-template-columns: 220px 1fr;
   align-items: center;
   gap: 12px;
+}
+
+/* Pretty toggle switch */
+.toggle {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 44px;
+  height: 24px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in oklab, var(--primary) 22%, var(--surface));
+  background: color-mix(in oklab, var(--surface) 85%, #000);
+  position: relative;
+  cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+}
+.toggle::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+  transition: transform 140ms ease;
+}
+.toggle:checked {
+  background: linear-gradient(180deg, color-mix(in oklab, var(--primary) 35%, #333) 0%, color-mix(in oklab, var(--primary) 15%, #111) 100%);
+  border-color: var(--ring-strong);
+}
+.toggle:checked::after {
+  transform: translateX(20px);
+}
+.toggle:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--ring);
+}
+.toggle-label {
+  color: var(--text-strong);
 }
 
 .interaction-overlay {

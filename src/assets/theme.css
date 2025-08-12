@@ -19,7 +19,7 @@
 }
 
 html, body, #app {
-  height: 100%;
+  min-height: 100%;
 }
 
 /* Global base */
@@ -29,6 +29,8 @@ body {
     radial-gradient(1200px 600px at 10% -10%, rgba(255, 212, 0, 0.07), transparent 60%),
     radial-gradient(900px 500px at 100% 0%, rgba(79, 209, 255, 0.06), transparent 60%),
     var(--bg);
+  background-repeat: no-repeat;
+  background-attachment: scroll;
   color: var(--text);
 }
 
