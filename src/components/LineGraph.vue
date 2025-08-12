@@ -152,90 +152,16 @@
 
 <script setup>
 import { computed, reactive, ref, watch, onMounted } from 'vue'
+import { isValidDateStr, dateToMs, msToDateInput, addDays, clamp, formatDate } from '@/utils/date'
+import { parseCSVText, buildCSV } from '@/utils/csv'
+import { saveState as saveLocalState, loadState as loadLocalState } from '@/utils/storage'
+import { MS_PER_DAY, calcXDomain, calcYDomain, scaleXFactory, scaleYFactory, buildPathD, buildXTicks } from '@/utils/chart'
 
 // Config
 const width = 600
 const height = 360
 const padding = 40
-const plotWidth = width - padding * 2
 const plotHeight = height - padding * 2
-
-// Helpers
-function monthNameToNum(name) {
-  const map = {
-    jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
-    jul: 6, aug: 7, sep: 8, sept: 8, oct: 9, nov: 10, dec: 11,
-  }
-  return map[name?.toLowerCase?.()] ?? -1
-}
-
-function parseFlexibleDate(str) {
-  if (str instanceof Date) return new Date(str.getFullYear(), str.getMonth(), str.getDate())
-  if (typeof str !== 'string') return new Date(NaN)
-  const s = str.trim()
-  // 1) YYYY-MM-DD or YYYY/MM/DD or YYYY.MM.DD
-  let m = s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/)
-  if (m) {
-    const y = +m[1], mo = +m[2], da = +m[3]
-    return new Date(y, mo - 1, da)
-  }
-  // 2) DD-MM-YYYY or MM-DD-YYYY (disambiguate by values)
-  m = s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})$/)
-  if (m) {
-    let a = +m[1], b = +m[2], y = +m[3]
-    if (y < 100) y += 2000
-    // if a > 12, it's definitely day-first
-    // else if b > 12, it's month-first
-    // else ambiguous: default to month-first
-    let mo, da
-    if (a > 12 && b <= 12) { da = a; mo = b }
-    else { mo = a; da = b }
-    return new Date(y, mo - 1, da)
-  }
-  // 3) 'DD Mon YYYY' or 'Mon DD YYYY' (comma optional)
-  m = s.match(/^(\d{1,2})\s+([A-Za-z]{3,})\s*,?\s*(\d{4})$/)
-  if (m) {
-    const da = +m[1], mo = monthNameToNum(m[2]), y = +m[3]
-    return new Date(y, mo, da)
-  }
-  m = s.match(/^([A-Za-z]{3,})\s+(\d{1,2}),?\s*(\d{4})$/)
-  if (m) {
-    const mo = monthNameToNum(m[1]), da = +m[2], y = +m[3]
-    return new Date(y, mo, da)
-  }
-  return new Date(NaN)
-}
-
-function parseDateLocal(str) {
-  const d = parseFlexibleDate(str)
-  if (isNaN(d.getTime())) return d
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate())
-}
-
-function isValidDateStr(str) {
-  const d = parseFlexibleDate(str)
-  return !isNaN(d.getTime())
-}
-
-const dateToMs = (d) => {
-  if (typeof d === 'string') return parseDateLocal(d).getTime()
-  if (d instanceof Date) return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
-  return NaN
-}
-const msToDateInput = (ms) => formatDate(new Date(ms))
-const addDays = (d, n) => {
-  const dt = typeof d === 'string' ? parseDateLocal(d) : new Date(d.getFullYear(), d.getMonth(), d.getDate())
-  dt.setDate(dt.getDate() + n)
-  return dt
-}
-const clamp = (n, min, max) => Math.min(Math.max(n, min), max)
-
-function formatDate(d) {
-  const y = d.getFullYear()
-  const m = (d.getMonth() + 1).toString().padStart(2, '0')
-  const da = d.getDate().toString().padStart(2, '0')
-  return `${y}-${m}-${da}`
-}
 
 // Season range state (defaults: today .. +30 days)
 const today = new Date()
@@ -263,98 +189,50 @@ const autoSetSeasonFromImport = ref(true)
 const fileInput = ref(null)
 
 // Persistence
-const STORAGE_KEY = 'season-sprint:line-graph:v1'
 function saveState() {
-  try {
-    const state = {
-      seasonStart: seasonStart.value,
-      seasonEnd: seasonEnd.value,
-      goalWinPoints: goalWinPoints.value,
-      autoSetSeasonFromImport: autoSetSeasonFromImport.value,
-      points: [...points],
-    }
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
-  } catch (e) {
-    // ignore storage errors
+  const state = {
+    seasonStart: seasonStart.value,
+    seasonEnd: seasonEnd.value,
+    goalWinPoints: goalWinPoints.value,
+    autoSetSeasonFromImport: autoSetSeasonFromImport.value,
+    points: [...points],
   }
+  saveLocalState(state)
 }
 
 function loadState() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return
-    const parsed = JSON.parse(raw)
-    // basic validation
-    if (parsed && typeof parsed === 'object') {
-      if (typeof parsed.seasonStart === 'string' && isValidDateStr(parsed.seasonStart)) seasonStart.value = parsed.seasonStart
-      if (typeof parsed.seasonEnd === 'string' && isValidDateStr(parsed.seasonEnd)) seasonEnd.value = parsed.seasonEnd
-      if (typeof parsed.goalWinPoints === 'number' && isFinite(parsed.goalWinPoints)) goalWinPoints.value = parsed.goalWinPoints
-      if (typeof parsed.autoSetSeasonFromImport === 'boolean') autoSetSeasonFromImport.value = parsed.autoSetSeasonFromImport
-      if (Array.isArray(parsed.points)) {
-        const sanitized = parsed.points
-          .map(p => ({ date: typeof p.date === 'string' ? p.date : '', y: Number(p.y) }))
-          .filter(p => isValidDateStr(p.date) && isFinite(p.y))
-        if (sanitized.length) {
-          points.splice(0, points.length, ...sanitized)
-        }
-      }
+  const parsed = loadLocalState()
+  if (!parsed || typeof parsed !== 'object') return
+  if (typeof parsed.seasonStart === 'string' && isValidDateStr(parsed.seasonStart)) seasonStart.value = parsed.seasonStart
+  if (typeof parsed.seasonEnd === 'string' && isValidDateStr(parsed.seasonEnd)) seasonEnd.value = parsed.seasonEnd
+  if (typeof parsed.goalWinPoints === 'number' && isFinite(parsed.goalWinPoints)) goalWinPoints.value = parsed.goalWinPoints
+  if (typeof parsed.autoSetSeasonFromImport === 'boolean') autoSetSeasonFromImport.value = parsed.autoSetSeasonFromImport
+  if (Array.isArray(parsed.points)) {
+    const sanitized = parsed.points
+      .map(p => ({ date: typeof p.date === 'string' ? p.date : '', y: Number(p.y) }))
+      .filter(p => isValidDateStr(p.date) && isFinite(p.y))
+    if (sanitized.length) {
+      points.splice(0, points.length, ...sanitized)
     }
-  } catch (e) {
-    // ignore parse errors
   }
 }
 
 // Domains
 const isSeasonValid = computed(() => seasonStart.value && seasonEnd.value && dateToMs(seasonStart.value) < dateToMs(seasonEnd.value))
 
-const xDomain = computed(() => {
-  // Always use the season range for x-domain
-  const startMs = dateToMs(seasonStart.value || today)
-  const endMs = dateToMs(seasonEnd.value || addDays(today, 1))
-  return startMs === endMs ? [startMs - 86400000, endMs + 86400000] : [startMs, endMs]
-})
-
-const yDomain = computed(() => {
-  // Include points, zero baseline, and goal so projections are always visible
-  const ys = points.length ? points.map(p => p.y) : [0]
-  ys.push(0)
-  ys.push(Number.isFinite(goalWinPoints.value) ? goalWinPoints.value : 0)
-  let min = Math.min(...ys)
-  let max = Math.max(...ys)
-  if (min === max) { min -= 1; max += 1 }
-  return [roundTidy(min), roundTidy(max)]
-})
-
-function roundTidy(n) {
-  if (!isFinite(n)) return 0
-  const absn = Math.abs(n)
-  if (absn === 0) return 0
-  const pow = Math.pow(10, Math.floor(Math.log10(absn)))
-  return Math.round(n / pow) * pow
-}
+const xDomain = computed(() => calcXDomain(seasonStart.value, seasonEnd.value, today))
+const yDomain = computed(() => calcYDomain(points, goalWinPoints.value))
 
 // Scales
-const scaleX = (dateStr) => {
-  const [min, max] = xDomain.value
-  const x = dateToMs(dateStr)
-  const t = (x - min) / (max - min)
-  return padding + clamp(t, 0, 1) * plotWidth
-}
-
-const scaleY = (y) => {
-  const [min, max] = yDomain.value
-  return padding + (1 - (y - min) / (max - min)) * plotHeight
-}
+const scaleX = (dateStr) => scaleXFactory(xDomain.value, width, padding)(dateStr)
+const scaleY = (y) => scaleYFactory(yDomain.value, height, padding)(y)
 
 // Derived
 const sortedPoints = computed(() => [...points].sort((a, b) => dateToMs(a.date) - dateToMs(b.date)))
 
 const scaledPoints = computed(() => sortedPoints.value.map(p => ({ x: scaleX(p.date), y: scaleY(p.y) })))
 
-const pathD = computed(() => {
-  if (scaledPoints.value.length < 2) return ''
-  return scaledPoints.value.reduce((d, p, i) => d + `${i === 0 ? 'M' : ' L'}${p.x},${p.y}`, '')
-})
+const pathD = computed(() => buildPathD(scaledPoints.value))
 
 // Projection paths
 const pathGoalFromZero = computed(() => {
@@ -378,21 +256,9 @@ const pathGoalFromLast = computed(() => {
   return `M${x1},${y1} L${x2},${y2}`
 })
 
-const xTicks = computed(() => {
-  // 5 ticks including start and end
-  const [min, max] = xDomain.value
-  const n = 4
-  const out = []
-  for (let i = 0; i <= n; i++) {
-    const ms = min + (i / n) * (max - min)
-    const x = padding + (i / n) * plotWidth
-    out.push({ x, label: msToDateInput(ms) })
-  }
-  return out
-})
+const xTicks = computed(() => buildXTicks(xDomain.value, width, padding, 4))
 
 // Pace stats
-const MS_PER_DAY = 86400000
 const daysInSeason = computed(() => {
   if (!isSeasonValid.value) return 1
   const [min, max] = xDomain.value
@@ -449,10 +315,7 @@ function clearPoints() {
 
 // Export CSV
 function exportCSV() {
-  // Build CSV string
-  const header = 'date,y\n'
-  const rows = points.map(p => `${p.date},${p.y}`).join('\n')
-  const csv = header + rows + '\n'
+  const csv = buildCSV(points)
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -492,9 +355,7 @@ function readCSVFile(file) {
   reader.onload = () => {
     try {
       let text = reader.result?.toString() || ''
-      // Strip BOM if present
-      if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1)
-      const imported = parseCSV(text)
+      const imported = parseCSVText(text)
       if (imported.length === 0) {
         throw new Error('No valid rows found. Expected columns: date,y (YYYY-MM-DD, numeric y).')
       }
@@ -520,67 +381,6 @@ function readCSVFile(file) {
   reader.readAsText(file)
 }
 
-function parseCSV(text) {
-  // Robust CSV reader for date,y with auto delimiter detection, quotes, and optional header
-  const rawLines = text.split(/\r?\n/)
-  const lines = rawLines.map(l => l.trim()).filter(l => l.length > 0 && !l.startsWith('#'))
-  if (lines.length === 0) return []
-
-  // Detect delimiter among comma, semicolon, or tab based on first few lines
-  const sample = lines.slice(0, Math.min(5, lines.length))
-  const delims = [',', ';', '\t', ':']
-  let delim = ','
-  let best = -1
-  for (const d of delims) {
-    const score = sample.reduce((acc, s) => acc + (s.split(d).length - 1), 0)
-    if (score > best) { best = score; delim = d }
-  }
-
-  function splitCSVLine(s) {
-    const out = []
-    let cur = ''
-    let inQuotes = false
-    for (let i = 0; i < s.length; i++) {
-      const ch = s[i]
-      if (ch === '"') {
-        // handle escaped quotes "" inside quoted fields
-        if (inQuotes && s[i + 1] === '"') { cur += '"'; i++; continue }
-        inQuotes = !inQuotes
-        continue
-      }
-      if (!inQuotes && ch === delim) {
-        out.push(cur)
-        cur = ''
-      } else {
-        cur += ch
-      }
-    }
-    out.push(cur)
-    return out.map(x => x.trim())
-  }
-
-  const out = []
-  for (let i = 0; i < lines.length; i++) {
-    const fields = splitCSVLine(lines[i])
-    if (fields.length < 2) continue
-    let [dstr, ystr] = fields
-    // Remove surrounding quotes if any
-    if (dstr.startsWith('"') && dstr.endsWith('"')) dstr = dstr.slice(1, -1)
-    if (ystr.startsWith('"') && ystr.endsWith('"')) ystr = ystr.slice(1, -1)
-
-    // Skip header-like rows
-    const lower = dstr.toLowerCase()
-    if (i === 0 && (lower.includes('date') || ystr.toLowerCase().includes('y'))) continue
-
-    if (!isValidDateStr(dstr)) continue
-    // Normalize number: remove spaces and thousands separators
-    const yClean = ystr.replace(/[\s,]/g, '')
-    const yNum = Number(yClean)
-    if (!isFinite(yNum)) continue
-    out.push({ date: formatDate(parseDateLocal(dstr)), y: yNum })
-  }
-  return out
-}
 
 // Keep newDate in range when season changes
 watch([seasonStart, seasonEnd], () => {
