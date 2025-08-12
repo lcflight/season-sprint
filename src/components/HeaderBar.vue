@@ -4,8 +4,8 @@
       <span class="brand-accent">THE</span> FINALS | Season Sprint
     </div>
     <div class="actions">
-      <router-link to="/world-tour" class="btn btn-primary" exact-active-class="is-active">World Tour</router-link>
-      <router-link to="/ranked" class="btn btn-ghost" exact-active-class="is-active">Ranked</router-link>
+      <router-link to="/world-tour" class="nav-btn" exact-active-class="is-active">World Tour</router-link>
+      <router-link to="/ranked" class="nav-btn" exact-active-class="is-active">Ranked</router-link>
     </div>
   </div>
 </template>
@@ -46,8 +46,35 @@ export default {};
   gap: 10px;
 }
 
-.actions :deep(.is-active) {
-  box-shadow: 0 0 0 3px var(--ring);
+/* Toggle-style nav buttons */
+.actions :deep(.nav-btn) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 130px;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in oklab, var(--primary) 28%, var(--surface));
+  background: transparent;
+  color: var(--text);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  text-decoration: none;
+  transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease, background 120ms ease, color 120ms ease;
+}
+
+.actions :deep(.nav-btn:hover) {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 22px rgba(0,0,0,0.4), 0 0 0 3px var(--ring);
+  border-color: color-mix(in oklab, var(--primary) 45%, var(--surface));
+}
+
+.actions :deep(.nav-btn.is-active) {
+  background: linear-gradient(180deg, color-mix(in oklab, var(--primary) 20%, #222) 0%, color-mix(in oklab, var(--primary) 8%, #111) 100%);
+  color: #111;
   border-color: var(--ring-strong);
+  box-shadow: 0 10px 28px rgba(255, 212, 0, 0.28), 0 0 0 3px var(--ring);
 }
 </style>

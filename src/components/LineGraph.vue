@@ -29,11 +29,6 @@
           Goal win points
           <input v-model.number="goalWinPoints" type="number" step="any" />
         </label>
-        <button @click="clearPoints" :disabled="points.length === 0">Clear</button>
-        <button @click="openPointsModal" :disabled="points.length === 0">View points ({{ points.length }})</button>
-        <span class="spacer"></span>
-        <button @click="exportCSV" :disabled="points.length === 0">Export CSV</button>
-        <button @click="openImportModal">Import CSV</button>
       </div>
     </div>
 
@@ -50,6 +45,9 @@
         </div>
       </div>
     </div>
+
+    <!-- Custom content below stats -->
+    <slot name="below-stats"></slot>
 
     <!-- Import Modal -->
     <div v-if="showImportModal" class="modal-backdrop" @click.self="closeImportModal">
@@ -82,6 +80,25 @@
         </section>
         <footer class="modal-footer">
           <button @click="closeImportModal">Cancel</button>
+        </footer>
+      </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div v-if="showSettingsModal" class="modal-backdrop" @click.self="closeSettingsModal">
+      <div class="modal">
+        <header class="modal-header">
+          <h3>Settings</h3>
+        </header>
+        <section class="modal-body">
+          <div class="setting-row">
+            <label for="navSensitivity">Navigation sensitivity</label>
+            <input id="navSensitivity" type="range" min="0.25" max="3" step="0.05" v-model.number="navSensitivity" />
+            <div class="muted">Current: {{ navSensitivity.toFixed(2) }}×</div>
+          </div>
+        </section>
+        <footer class="modal-footer">
+          <button @click="closeSettingsModal">Close</button>
         </footer>
       </div>
     </div>
@@ -131,7 +148,21 @@
     <p v-if="!isSeasonValid" class="error">Season start must be before end.</p>
 
     <div class="chart-wrapper" v-if="isSeasonValid">
-      <svg :viewBox="`0 0 ${width} ${height}`" :width="width" :height="height" role="img" aria-label="Line chart">
+      <button class="settings-btn" @click="openSettingsModal" title="Settings" aria-label="Open settings">⚙️</button>
+      <button v-if="isOutOfDefault" class="recenter-btn" @click="resetView" title="Recenter view" aria-label="Recenter view">Recenter</button>
+      <svg ref="svgRef" :viewBox="`0 0 ${width} ${height}`" :width="width" :height="height" role="img" aria-label="Line chart"
+           @wheel.prevent="onWheel"
+           @pointerdown="onPointerDown"
+           @pointermove="onPointerMove"
+           @pointerup="onPointerUp"
+           @pointercancel="onPointerUp"
+           @pointerleave="onPointerUp">
+        <defs>
+          <clipPath id="plot-clip">
+            <rect :x="padding" :y="padding" :width="width - padding * 2" :height="height - padding * 2" />
+          </clipPath>
+        </defs>
+
         <!-- Axes -->
         <g class="axes">
           <!-- X axis -->
@@ -140,51 +171,69 @@
           <line :x1="padding" :y1="padding" :x2="padding" :y2="height - padding" />
         </g>
 
-        <!-- Grid lines (optional for readability) -->
-        <g class="grid">
-          <template v-for="t in 4" :key="`h-${t}`">
-            <line
-              :x1="padding"
-              :x2="width - padding"
-              :y1="padding + t * (plotHeight / 5)"
-              :y2="padding + t * (plotHeight / 5)"
-            />
-          </template>
-          <template v-for="(tick, i) in xTicks" :key="`v-${i}`">
-            <line :x1="tick.x" :x2="tick.x" :y1="padding" :y2="height - padding" />
-          </template>
+        <!-- Plot content (pan/zoom) -->
+        <g :transform="plotTransform" clip-path="url(#plot-clip)">
+          <!-- Grid lines (optional for readability) -->
+          <g class="grid">
+            <template v-for="t in 4" :key="`h-${t}`">
+              <line
+                :x1="padding"
+                :x2="width - padding"
+                :y1="padding + t * (plotHeight / 5)"
+                :y2="padding + t * (plotHeight / 5)"
+              />
+            </template>
+            <template v-for="(tick, i) in xTicks" :key="`v-${i}`">
+              <line :x1="tick.x" :x2="tick.x" :y1="padding" :y2="height - padding" />
+            </template>
+          </g>
+
+          <!-- Projection Lines -->
+          <path v-if="pathGoalFromZero" :d="pathGoalFromZero" class="proj proj-total" />
+          <path v-if="pathGoalFromLast" :d="pathGoalFromLast" class="proj proj-from-last" />
+
+          <!-- Path -->
+          <path v-if="pathD" :d="pathD" class="line" />
+
+          <!-- Points -->
+          <g v-for="(p, idx) in scaledPoints" :key="idx" class="point">
+            <circle :cx="p.x" :cy="p.y" r="3" />
+          </g>
+
+          <!-- X tick labels -->
+          <g class="labels-ticks">
+            <template v-for="(tick, i) in xTicks" :key="`lbl-${i}`">
+              <text
+                :x="tick.x"
+                :y="height - padding + 28"
+                text-anchor="end"
+                :transform="`rotate(-35 ${tick.x} ${height - padding + 28})`"
+              >
+                {{ tick.label }}
+              </text>
+            </template>
+          </g>
         </g>
 
-        <!-- Projection Lines -->
-        <path v-if="pathGoalFromZero" :d="pathGoalFromZero" class="proj proj-total" />
-        <path v-if="pathGoalFromLast" :d="pathGoalFromLast" class="proj proj-from-last" />
-
-        <!-- Path -->
-        <path v-if="pathD" :d="pathD" class="line" />
-
-        <!-- Points -->
-        <g v-for="(p, idx) in scaledPoints" :key="idx" class="point">
-          <circle :cx="p.x" :cy="p.y" r="3" />
-        </g>
-
-        <!-- Labels for min/max -->
+        <!-- Static labels -->
         <g class="labels">
           <text :x="width - padding" :y="height - padding + 16" text-anchor="end">
             {{ msToDateInput(xDomain[0]) }} → {{ msToDateInput(xDomain[1]) }}
           </text>
           <text :x="padding - 6" :y="padding - 6" text-anchor="start">points: {{ yDomain[0] }} → {{ yDomain[1] }}</text>
-          <template v-for="(tick, i) in xTicks" :key="`lbl-${i}`">
-            <text
-              :x="tick.x"
-              :y="height - padding + 28"
-              text-anchor="end"
-              :transform="`rotate(-35 ${tick.x} ${height - padding + 28})`"
-            >
-              {{ tick.label }}
-            </text>
-          </template>
         </g>
+
+        <!-- Transparent overlay for better hit area -->
+        <rect class="interaction-overlay" :x="padding" :y="padding" :width="width - padding * 2" :height="height - padding * 2" />
       </svg>
+    </div>
+
+    <div class="chart-actions">
+      <button @click="clearPoints" :disabled="points.length === 0">Clear</button>
+      <button @click="openPointsModal" :disabled="points.length === 0">View points ({{ points.length }})</button>
+      <span class="spacer"></span>
+      <button @click="exportCSV" :disabled="points.length === 0">Export CSV</button>
+      <button @click="openImportModal">Import CSV</button>
     </div>
 
   </div>
@@ -196,6 +245,9 @@ import { isValidDateStr, dateToMs, msToDateInput, addDays, clamp, formatDate } f
 import { parseCSVText, buildCSV } from '@/utils/csv'
 import { saveState as saveLocalState, loadState as loadLocalState, saveStateWithKey, loadStateWithKey } from '@/utils/storage'
 import { MS_PER_DAY, calcXDomain, calcYDomain, scaleXFactory, scaleYFactory, buildPathD, buildXTicks } from '@/utils/chart'
+
+// eslint-disable-next-line no-undef
+const emit = defineEmits(['win-points'])
 
 // eslint-disable-next-line no-undef
 const props = defineProps({
@@ -234,6 +286,10 @@ const importError = ref('')
 const autoSetSeasonFromImport = ref(true)
 const fileInput = ref(null)
 
+// Settings
+const showSettingsModal = ref(false)
+const navSensitivity = ref(1)
+
 // Editing state for points
 const editIndex = ref(-1)
 const editDate = ref('')
@@ -248,6 +304,7 @@ function saveState() {
     goalWinPoints: goalWinPoints.value,
     autoSetSeasonFromImport: autoSetSeasonFromImport.value,
     points: [...points],
+    navSensitivity: navSensitivity.value,
   }
   if (props.storageKey) {
     saveStateWithKey(`season-sprint:${props.storageKey}:v1`, state)
@@ -265,6 +322,7 @@ function loadState() {
   if (typeof parsed.seasonEnd === 'string' && isValidDateStr(parsed.seasonEnd)) seasonEnd.value = parsed.seasonEnd
   if (typeof parsed.goalWinPoints === 'number' && isFinite(parsed.goalWinPoints)) goalWinPoints.value = parsed.goalWinPoints
   if (typeof parsed.autoSetSeasonFromImport === 'boolean') autoSetSeasonFromImport.value = parsed.autoSetSeasonFromImport
+  if (typeof parsed.navSensitivity === 'number' && isFinite(parsed.navSensitivity)) navSensitivity.value = parsed.navSensitivity
   if (Array.isArray(parsed.points)) {
     const sanitized = parsed.points
       .map(p => ({ date: typeof p.date === 'string' ? p.date : '', y: Number(p.y) }))
@@ -291,6 +349,140 @@ const sortedPoints = computed(() => [...points].sort((a, b) => dateToMs(a.date) 
 const scaledPoints = computed(() => sortedPoints.value.map(p => ({ x: scaleX(p.date), y: scaleY(p.y) })))
 
 const pathD = computed(() => buildPathD(scaledPoints.value))
+
+// Current win points (latest y)
+const currentWinPoints = computed(() => {
+  const pts = sortedPoints.value
+  return pts.length ? Number(pts[pts.length - 1].y) : 0
+})
+
+// Pan/Zoom state
+const svgRef = ref(null)
+const zoomScale = ref(1)
+const minScale = 0.5
+const maxScale = 8
+const translate = reactive({ x: 0, y: 0 })
+
+const plotTransform = computed(() => `translate(${translate.x}, ${translate.y}) scale(${zoomScale.value})`)
+const isOutOfDefault = computed(() => zoomScale.value !== 1 || translate.x !== 0 || translate.y !== 0)
+
+function resetView() {
+  zoomScale.value = 1
+  translate.x = 0
+  translate.y = 0
+}
+
+function clampScale(s) {
+  return Math.min(maxScale, Math.max(minScale, s))
+}
+
+function wheelZoom(deltaY, mx, my) {
+  const zoomIntensity = 0.0015 * navSensitivity.value
+  const scaleFactor = Math.exp(-deltaY * zoomIntensity)
+  const oldScale = zoomScale.value
+  const newScale = clampScale(oldScale * scaleFactor)
+  const k = newScale / oldScale
+  // keep cursor position stable
+  translate.x = mx - (mx - translate.x) * k
+  translate.y = my - (my - translate.y) * k
+  zoomScale.value = newScale
+}
+
+function svgPointFromEvent(evt) {
+  const svg = svgRef.value
+  if (!svg) return { x: 0, y: 0 }
+  const rect = svg.getBoundingClientRect()
+  const x = ((evt.clientX - rect.left) / rect.width) * width
+  const y = ((evt.clientY - rect.top) / rect.height) * height
+  return { x, y }
+}
+
+function onWheel(evt) {
+  const { x, y } = svgPointFromEvent(evt)
+  // constrain zoom center to plot area for better UX
+  const mx = clamp(x, padding, width - padding)
+  const my = clamp(y, padding, height - padding)
+  wheelZoom(evt.deltaY, mx, my)
+}
+
+// Pointer interactions (pan + pinch)
+const pointers = reactive(new Map())
+let lastMid = null
+let lastDist = 0
+let isDragging = false
+let lastPos = { x: 0, y: 0 }
+
+function updatePointer(evt) {
+  pointers.set(evt.pointerId, { x: evt.clientX, y: evt.clientY })
+}
+
+function removePointer(evt) {
+  pointers.delete(evt.pointerId)
+}
+
+function midpoint(a, b) {
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
+}
+
+function distance(a, b) {
+  const dx = a.x - b.x
+  const dy = a.y - b.y
+  return Math.hypot(dx, dy)
+}
+
+function onPointerDown(evt) {
+  // Only start interactions inside plot area
+  const { x, y } = svgPointFromEvent(evt)
+  if (x < padding || x > width - padding || y < padding || y > height - padding) return
+  evt.currentTarget.setPointerCapture?.(evt.pointerId)
+  updatePointer(evt)
+  if (pointers.size === 1) {
+    isDragging = true
+    lastPos = { x: evt.clientX, y: evt.clientY }
+  }
+}
+
+function onPointerMove(evt) {
+  if (!pointers.has(evt.pointerId)) return
+  updatePointer(evt)
+  if (pointers.size === 1 && isDragging) {
+    const dx = evt.clientX - lastPos.x
+    const dy = evt.clientY - lastPos.y
+    translate.x += dx * (width / svgRef.value.getBoundingClientRect().width) * navSensitivity.value
+    translate.y += dy * (height / svgRef.value.getBoundingClientRect().height) * navSensitivity.value
+    lastPos = { x: evt.clientX, y: evt.clientY }
+  } else if (pointers.size === 2) {
+    const [p1, p2] = Array.from(pointers.values())
+    const mid = midpoint(p1, p2)
+    const dist = distance(p1, p2)
+    if (lastMid && lastDist) {
+      const rect = svgRef.value.getBoundingClientRect()
+      // Convert midpoint from client to SVG coords
+      const mx = ((mid.x - rect.left) / rect.width) * width
+      const my = ((mid.y - rect.top) / rect.height) * height
+      const scaleChange = dist / lastDist
+      const oldScale = zoomScale.value
+      const newScale = clampScale(oldScale * scaleChange)
+      const k = newScale / oldScale
+      translate.x = mx - (mx - translate.x) * k
+      translate.y = my - (my - translate.y) * k
+      zoomScale.value = newScale
+    }
+    lastMid = mid
+    lastDist = dist
+  }
+}
+
+function onPointerUp(evt) {
+  removePointer(evt)
+  if (pointers.size < 2) {
+    lastMid = null
+    lastDist = 0
+  }
+  if (pointers.size === 0) {
+    isDragging = false
+  }
+}
 
 // Projection paths
 const pathGoalFromZero = computed(() => {
@@ -413,6 +605,14 @@ function closePointsModal() {
   showPointsModal.value = false
 }
 
+function openSettingsModal() {
+  showSettingsModal.value = true
+}
+
+function closeSettingsModal() {
+  showSettingsModal.value = false
+}
+
 function onFilePick(e) {
   const f = e.target.files && e.target.files[0]
   if (f) readCSVFile(f)
@@ -467,10 +667,19 @@ watch([seasonStart, seasonEnd], () => {
 
 // Persist on changes
 watch([seasonStart, seasonEnd, goalWinPoints, autoSetSeasonFromImport], saveState)
-watch(points, saveState, { deep: true })
+watch(points, () => {
+  saveState()
+  // also notify listeners of current win points
+  emit('win-points', currentWinPoints.value)
+}, { deep: true })
+
+// Also emit when loaded and when points potentially change via import or initial state
+watch(currentWinPoints, (v) => emit('win-points', v))
 
 onMounted(() => {
   loadState()
+  // Emit initial after load tick
+  requestAnimationFrame(() => emit('win-points', currentWinPoints.value))
 })
 </script>
 
@@ -506,6 +715,15 @@ onMounted(() => {
 }
 
 .quick-actions .spacer { flex: 1; }
+
+.chart-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.chart-actions .spacer { flex: 1; }
 
 .stats {
   display: grid;
@@ -604,11 +822,53 @@ onMounted(() => {
   border-radius: 10px;
   padding: 8px;
   background: radial-gradient(100% 100% at 0% 0%, rgba(255, 212, 0, 0.05) 0%, rgba(0,0,0,0) 40%), var(--surface);
+  position: relative;
 }
 
 svg {
   width: 100%;
   height: auto;
+  /* Enable custom gestures */
+  touch-action: none;
+  cursor: default;
+}
+
+.settings-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 10;
+  background: color-mix(in oklab, var(--surface) 92%, black);
+  border: 1px solid color-mix(in oklab, var(--primary) 25%, var(--surface));
+  border-radius: 8px;
+  padding: 6px 8px;
+  line-height: 1;
+}
+
+.recenter-btn {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  z-index: 10;
+  background: color-mix(in oklab, var(--surface) 92%, black);
+  border: 1px solid color-mix(in oklab, var(--primary) 25%, var(--surface));
+  border-radius: 8px;
+  padding: 6px 10px;
+}
+
+.setting-row {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  align-items: center;
+  gap: 12px;
+}
+
+.interaction-overlay {
+  fill: transparent;
+  cursor: grab;
+}
+.interaction-overlay:active {
+  cursor: grabbing;
 }
 
 .axes line {
