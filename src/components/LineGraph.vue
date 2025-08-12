@@ -31,6 +31,58 @@
         </label>
         <button @click="addRandomPoint" :disabled="!isSeasonValid">Add random</button>
         <button @click="clearPoints" :disabled="points.length === 0">Clear</button>
+        <span class="spacer"></span>
+        <button @click="exportCSV" :disabled="points.length === 0">Export CSV</button>
+        <button @click="openImportModal">Import CSV</button>
+      </div>
+    </div>
+
+    <div v-if="isSeasonValid" class="stats">
+      <div class="stat">
+        <div class="stat-label">Required/day (zero → goal)</div>
+        <div class="stat-value">{{ requiredPerDayZero.toFixed(2) }}</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Required/day (last → goal)</div>
+        <div class="stat-value">
+          <template v-if="isFromLastDefined">{{ requiredPerDayFromLast.toFixed(2) }}</template>
+          <template v-else>—</template>
+        </div>
+      </div>
+    </div>
+
+    <!-- Import Modal -->
+    <div v-if="showImportModal" class="modal-backdrop" @click.self="closeImportModal">
+      <div class="modal">
+        <header class="modal-header">
+          <h3>Import CSV</h3>
+        </header>
+        <section class="modal-body">
+          <p>Provide a CSV with columns: <strong>date,y</strong>. Supported date formats include YYYY-MM-DD, YYYY/MM/DD, MM/DD/YYYY, DD/MM/YYYY, and names like 5 Jan 2025. Header row is optional. Delimiters supported: comma, semicolon, colon, or tab.</p>
+          <pre class="example">date,y
+2025-03-01,2
+2025-03-07,5.5
+2025-03-15,7
+</pre>
+          <div
+            class="dropzone"
+            @dragover.prevent
+            @dragenter.prevent
+            @drop.prevent="onDropCSV"
+          >
+            <p>Drag and drop a CSV file here</p>
+            <p>or</p>
+            <input ref="fileInput" type="file" accept=".csv,text/csv" @change="onFilePick" />
+          </div>
+          <label class="import-options">
+            <input type="checkbox" v-model="autoSetSeasonFromImport" />
+            Auto-set season range to imported data dates
+          </label>
+          <p v-if="importError" class="error">{{ importError }}</p>
+        </section>
+        <footer class="modal-footer">
+          <button @click="closeImportModal">Cancel</button>
+        </footer>
       </div>
     </div>
 
@@ -76,7 +128,7 @@
         <!-- Labels for min/max -->
         <g class="labels">
           <text :x="width - padding" :y="height - padding + 16" text-anchor="end">
-            {{ formatDate(new Date(xDomain[0])) }} → {{ formatDate(new Date(xDomain[1])) }}
+            {{ msToDateInput(xDomain[0]) }} → {{ msToDateInput(xDomain[1]) }}
           </text>
           <text :x="padding - 6" :y="padding - 6" text-anchor="start">y: {{ yDomain[0] }} → {{ yDomain[1] }}</text>
           <template v-for="(tick, i) in xTicks" :key="`lbl-${i}`">
@@ -99,7 +151,7 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, reactive, ref, watch, onMounted } from 'vue'
 
 // Config
 const width = 600
@@ -109,10 +161,70 @@ const plotWidth = width - padding * 2
 const plotHeight = height - padding * 2
 
 // Helpers
-const dateToMs = (d) => new Date(d).getTime()
-const msToDateInput = (ms) => new Date(ms).toISOString().slice(0, 10)
+function monthNameToNum(name) {
+  const map = {
+    jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
+    jul: 6, aug: 7, sep: 8, sept: 8, oct: 9, nov: 10, dec: 11,
+  }
+  return map[name?.toLowerCase?.()] ?? -1
+}
+
+function parseFlexibleDate(str) {
+  if (str instanceof Date) return new Date(str.getFullYear(), str.getMonth(), str.getDate())
+  if (typeof str !== 'string') return new Date(NaN)
+  const s = str.trim()
+  // 1) YYYY-MM-DD or YYYY/MM/DD or YYYY.MM.DD
+  let m = s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/)
+  if (m) {
+    const y = +m[1], mo = +m[2], da = +m[3]
+    return new Date(y, mo - 1, da)
+  }
+  // 2) DD-MM-YYYY or MM-DD-YYYY (disambiguate by values)
+  m = s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})$/)
+  if (m) {
+    let a = +m[1], b = +m[2], y = +m[3]
+    if (y < 100) y += 2000
+    // if a > 12, it's definitely day-first
+    // else if b > 12, it's month-first
+    // else ambiguous: default to month-first
+    let mo, da
+    if (a > 12 && b <= 12) { da = a; mo = b }
+    else { mo = a; da = b }
+    return new Date(y, mo - 1, da)
+  }
+  // 3) 'DD Mon YYYY' or 'Mon DD YYYY' (comma optional)
+  m = s.match(/^(\d{1,2})\s+([A-Za-z]{3,})\s*,?\s*(\d{4})$/)
+  if (m) {
+    const da = +m[1], mo = monthNameToNum(m[2]), y = +m[3]
+    return new Date(y, mo, da)
+  }
+  m = s.match(/^([A-Za-z]{3,})\s+(\d{1,2}),?\s*(\d{4})$/)
+  if (m) {
+    const mo = monthNameToNum(m[1]), da = +m[2], y = +m[3]
+    return new Date(y, mo, da)
+  }
+  return new Date(NaN)
+}
+
+function parseDateLocal(str) {
+  const d = parseFlexibleDate(str)
+  if (isNaN(d.getTime())) return d
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate())
+}
+
+function isValidDateStr(str) {
+  const d = parseFlexibleDate(str)
+  return !isNaN(d.getTime())
+}
+
+const dateToMs = (d) => {
+  if (typeof d === 'string') return parseDateLocal(d).getTime()
+  if (d instanceof Date) return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
+  return NaN
+}
+const msToDateInput = (ms) => formatDate(new Date(ms))
 const addDays = (d, n) => {
-  const dt = new Date(d)
+  const dt = typeof d === 'string' ? parseDateLocal(d) : new Date(d.getFullYear(), d.getMonth(), d.getDate())
   dt.setDate(dt.getDate() + n)
   return dt
 }
@@ -143,6 +255,54 @@ const newY = ref(0)
 
 // Goal win points
 const goalWinPoints = ref(10)
+
+// Import/Export state
+const showImportModal = ref(false)
+const importError = ref('')
+const autoSetSeasonFromImport = ref(true)
+const fileInput = ref(null)
+
+// Persistence
+const STORAGE_KEY = 'season-sprint:line-graph:v1'
+function saveState() {
+  try {
+    const state = {
+      seasonStart: seasonStart.value,
+      seasonEnd: seasonEnd.value,
+      goalWinPoints: goalWinPoints.value,
+      autoSetSeasonFromImport: autoSetSeasonFromImport.value,
+      points: [...points],
+    }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+  } catch (e) {
+    // ignore storage errors
+  }
+}
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) return
+    const parsed = JSON.parse(raw)
+    // basic validation
+    if (parsed && typeof parsed === 'object') {
+      if (typeof parsed.seasonStart === 'string' && isValidDateStr(parsed.seasonStart)) seasonStart.value = parsed.seasonStart
+      if (typeof parsed.seasonEnd === 'string' && isValidDateStr(parsed.seasonEnd)) seasonEnd.value = parsed.seasonEnd
+      if (typeof parsed.goalWinPoints === 'number' && isFinite(parsed.goalWinPoints)) goalWinPoints.value = parsed.goalWinPoints
+      if (typeof parsed.autoSetSeasonFromImport === 'boolean') autoSetSeasonFromImport.value = parsed.autoSetSeasonFromImport
+      if (Array.isArray(parsed.points)) {
+        const sanitized = parsed.points
+          .map(p => ({ date: typeof p.date === 'string' ? p.date : '', y: Number(p.y) }))
+          .filter(p => isValidDateStr(p.date) && isFinite(p.y))
+        if (sanitized.length) {
+          points.splice(0, points.length, ...sanitized)
+        }
+      }
+    }
+  } catch (e) {
+    // ignore parse errors
+  }
+}
 
 // Domains
 const isSeasonValid = computed(() => seasonStart.value && seasonEnd.value && dateToMs(seasonStart.value) < dateToMs(seasonEnd.value))
@@ -226,9 +386,34 @@ const xTicks = computed(() => {
   for (let i = 0; i <= n; i++) {
     const ms = min + (i / n) * (max - min)
     const x = padding + (i / n) * plotWidth
-    out.push({ x, label: formatDate(new Date(ms)) })
+    out.push({ x, label: msToDateInput(ms) })
   }
   return out
+})
+
+// Pace stats
+const MS_PER_DAY = 86400000
+const daysInSeason = computed(() => {
+  if (!isSeasonValid.value) return 1
+  const [min, max] = xDomain.value
+  const days = (max - min) / MS_PER_DAY
+  return Math.max(1, Math.round(days))
+})
+
+const requiredPerDayZero = computed(() => {
+  // slope of the zero→goal projection per day
+  return goalWinPoints.value / daysInSeason.value
+})
+
+const isFromLastDefined = computed(() => sortedPoints.value.length > 0 && dateToMs(sortedPoints.value[sortedPoints.value.length - 1].date) < xDomain.value[1])
+
+const requiredPerDayFromLast = computed(() => {
+  if (!isFromLastDefined.value) return 0
+  const last = sortedPoints.value[sortedPoints.value.length - 1]
+  const remaining = goalWinPoints.value - last.y
+  const endMs = xDomain.value[1]
+  const left = Math.max(1, Math.round((endMs - dateToMs(last.date)) / MS_PER_DAY))
+  return remaining / left
 })
 
 // Actions
@@ -262,6 +447,141 @@ function clearPoints() {
   points.splice(0, points.length)
 }
 
+// Export CSV
+function exportCSV() {
+  // Build CSV string
+  const header = 'date,y\n'
+  const rows = points.map(p => `${p.date},${p.y}`).join('\n')
+  const csv = header + rows + '\n'
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `line-data-${formatDate(new Date())}.csv`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
+function openImportModal() {
+  importError.value = ''
+  showImportModal.value = true
+}
+
+function closeImportModal() {
+  showImportModal.value = false
+  importError.value = ''
+  // reset input element so same file can be re-picked
+  if (fileInput.value) fileInput.value.value = ''
+}
+
+function onFilePick(e) {
+  const f = e.target.files && e.target.files[0]
+  if (f) readCSVFile(f)
+}
+
+function onDropCSV(e) {
+  const f = e.dataTransfer.files && e.dataTransfer.files[0]
+  if (f) readCSVFile(f)
+}
+
+function readCSVFile(file) {
+  importError.value = ''
+  const reader = new FileReader()
+  reader.onload = () => {
+    try {
+      let text = reader.result?.toString() || ''
+      // Strip BOM if present
+      if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1)
+      const imported = parseCSV(text)
+      if (imported.length === 0) {
+        throw new Error('No valid rows found. Expected columns: date,y (YYYY-MM-DD, numeric y).')
+      }
+      // Replace points
+      points.splice(0, points.length, ...imported)
+      // Optionally adjust season to imported min/max
+      if (autoSetSeasonFromImport.value) {
+        const dates = imported.map(r => dateToMs(r.date))
+        const min = Math.min(...dates)
+        const max = Math.max(...dates)
+        seasonStart.value = msToDateInput(min)
+        seasonEnd.value = msToDateInput(max)
+        newDate.value = seasonStart.value
+      }
+      closeImportModal()
+    } catch (err) {
+      importError.value = err?.message || 'Failed to parse CSV.'
+    }
+  }
+  reader.onerror = () => {
+    importError.value = 'Unable to read file.'
+  }
+  reader.readAsText(file)
+}
+
+function parseCSV(text) {
+  // Robust CSV reader for date,y with auto delimiter detection, quotes, and optional header
+  const rawLines = text.split(/\r?\n/)
+  const lines = rawLines.map(l => l.trim()).filter(l => l.length > 0 && !l.startsWith('#'))
+  if (lines.length === 0) return []
+
+  // Detect delimiter among comma, semicolon, or tab based on first few lines
+  const sample = lines.slice(0, Math.min(5, lines.length))
+  const delims = [',', ';', '\t', ':']
+  let delim = ','
+  let best = -1
+  for (const d of delims) {
+    const score = sample.reduce((acc, s) => acc + (s.split(d).length - 1), 0)
+    if (score > best) { best = score; delim = d }
+  }
+
+  function splitCSVLine(s) {
+    const out = []
+    let cur = ''
+    let inQuotes = false
+    for (let i = 0; i < s.length; i++) {
+      const ch = s[i]
+      if (ch === '"') {
+        // handle escaped quotes "" inside quoted fields
+        if (inQuotes && s[i + 1] === '"') { cur += '"'; i++; continue }
+        inQuotes = !inQuotes
+        continue
+      }
+      if (!inQuotes && ch === delim) {
+        out.push(cur)
+        cur = ''
+      } else {
+        cur += ch
+      }
+    }
+    out.push(cur)
+    return out.map(x => x.trim())
+  }
+
+  const out = []
+  for (let i = 0; i < lines.length; i++) {
+    const fields = splitCSVLine(lines[i])
+    if (fields.length < 2) continue
+    let [dstr, ystr] = fields
+    // Remove surrounding quotes if any
+    if (dstr.startsWith('"') && dstr.endsWith('"')) dstr = dstr.slice(1, -1)
+    if (ystr.startsWith('"') && ystr.endsWith('"')) ystr = ystr.slice(1, -1)
+
+    // Skip header-like rows
+    const lower = dstr.toLowerCase()
+    if (i === 0 && (lower.includes('date') || ystr.toLowerCase().includes('y'))) continue
+
+    if (!isValidDateStr(dstr)) continue
+    // Normalize number: remove spaces and thousands separators
+    const yClean = ystr.replace(/[\s,]/g, '')
+    const yNum = Number(yClean)
+    if (!isFinite(yNum)) continue
+    out.push({ date: formatDate(parseDateLocal(dstr)), y: yNum })
+  }
+  return out
+}
+
 // Keep newDate in range when season changes
 watch([seasonStart, seasonEnd], () => {
   if (!isSeasonValid.value) return
@@ -269,6 +589,14 @@ watch([seasonStart, seasonEnd], () => {
   const cur = dateToMs(newDate.value)
   const clamped = clamp(cur, min, max)
   newDate.value = msToDateInput(clamped)
+})
+
+// Persist on changes
+watch([seasonStart, seasonEnd, goalWinPoints, autoSetSeasonFromImport], saveState)
+watch(points, saveState, { deep: true })
+
+onMounted(() => {
+  loadState()
 })
 </script>
 
@@ -301,6 +629,84 @@ watch([seasonStart, seasonEnd], () => {
 
 .quick-actions button {
   margin-right: 8px;
+}
+
+.quick-actions .spacer { flex: 1; }
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin: 8px 0 12px;
+}
+
+.stat {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 12px;
+  background: #f9fafb;
+}
+
+.stat-label {
+  font-size: 12px;
+  color: #6b7280;
+  margin-bottom: 4px;
+}
+
+.stat-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: #111827;
+}
+
+/* Modal styles */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+
+.modal {
+  background: #fff;
+  width: min(720px, 95vw);
+  border-radius: 8px;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+  overflow: hidden;
+}
+
+.modal-header, .modal-footer {
+  padding: 12px 16px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.modal-footer { border-bottom: 0; border-top: 1px solid #e5e7eb; }
+
+.modal-body { padding: 12px 16px; }
+
+.dropzone {
+  border: 2px dashed #9ca3af;
+  border-radius: 8px;
+  padding: 16px;
+  text-align: center;
+  color: #6b7280;
+  margin: 8px 0 12px;
+}
+
+.example {
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  padding: 8px;
+  overflow: auto;
+}
+
+.import-options {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .error {
