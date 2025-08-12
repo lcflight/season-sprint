@@ -402,7 +402,7 @@ onMounted(() => {
 
 <style scoped>
 .line-graph {
-  max-width: 900px;
+  max-width: 1000px;
   margin: 0 auto;
   text-align: left;
 }
@@ -441,29 +441,31 @@ onMounted(() => {
 }
 
 .stat {
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
+  border: 1px solid color-mix(in oklab, var(--primary) 16%, var(--surface));
+  border-radius: 10px;
   padding: 12px;
-  background: #f9fafb;
+  background: color-mix(in oklab, var(--surface) 85%, black);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02), 0 6px 24px rgba(0,0,0,0.35);
 }
 
 .stat-label {
   font-size: 12px;
-  color: #6b7280;
+  color: var(--muted);
   margin-bottom: 4px;
 }
 
 .stat-value {
   font-size: 24px;
-  font-weight: 700;
-  color: #111827;
+  font-weight: 800;
+  color: var(--text-strong);
+  text-shadow: 0 0 20px color-mix(in oklab, var(--primary) 35%, transparent);
 }
 
 /* Modal styles */
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.5);
+  background: rgba(0,0,0,0.6);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -471,34 +473,35 @@ onMounted(() => {
 }
 
 .modal {
-  background: #fff;
+  background: var(--surface);
   width: min(720px, 95vw);
-  border-radius: 8px;
-  box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+  border-radius: 12px;
+  border: 1px solid color-mix(in oklab, var(--primary) 20%, var(--surface));
+  box-shadow: 0 10px 30px rgba(0,0,0,0.45);
   overflow: hidden;
 }
 
 .modal-header, .modal-footer {
   padding: 12px 16px;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid color-mix(in oklab, var(--primary) 20%, var(--surface));
 }
 
-.modal-footer { border-bottom: 0; border-top: 1px solid #e5e7eb; }
+.modal-footer { border-bottom: 0; border-top: 1px solid color-mix(in oklab, var(--primary) 20%, var(--surface)); }
 
 .modal-body { padding: 12px 16px; }
 
 .dropzone {
-  border: 2px dashed #9ca3af;
-  border-radius: 8px;
+  border: 2px dashed color-mix(in oklab, var(--primary) 35%, var(--surface));
+  border-radius: 10px;
   padding: 16px;
   text-align: center;
-  color: #6b7280;
+  color: var(--muted);
   margin: 8px 0 12px;
 }
 
 .example {
-  background: #f9fafb;
-  border: 1px solid #e5e7eb;
+  background: color-mix(in oklab, var(--surface) 85%, black);
+  border: 1px solid color-mix(in oklab, var(--primary) 16%, var(--surface));
   padding: 8px;
   overflow: auto;
 }
@@ -510,15 +513,15 @@ onMounted(() => {
 }
 
 .error {
-  color: #b91c1c;
+  color: #ff6b6b;
   margin: 4px 0 8px;
 }
 
 .chart-wrapper {
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
+  border: 1px solid color-mix(in oklab, var(--primary) 16%, var(--surface));
+  border-radius: 10px;
   padding: 8px;
-  background: #fff;
+  background: radial-gradient(100% 100% at 0% 0%, rgba(255, 212, 0, 0.05) 0%, rgba(0,0,0,0) 40%), var(--surface);
 }
 
 svg {
@@ -527,39 +530,42 @@ svg {
 }
 
 .axes line {
-  stroke: #374151;
+  stroke: color-mix(in oklab, var(--primary) 35%, #1f2937);
   stroke-width: 1.25;
 }
 
 .grid line {
-  stroke: #e5e7eb;
+  stroke: color-mix(in oklab, var(--primary) 14%, #374151);
+  stroke-opacity: 0.5;
   stroke-width: 1;
 }
 
 .line {
   fill: none;
-  stroke: #3b82f6;
-  stroke-width: 2;
+  stroke: var(--accent);
+  stroke-width: 2.5;
+  filter: drop-shadow(0 0 6px color-mix(in oklab, var(--accent) 60%, transparent));
 }
 
 .proj {
   fill: none;
-  stroke: #9ca3af;
+  stroke: color-mix(in oklab, var(--primary) 45%, #9ca3af);
   stroke-width: 2;
   stroke-dasharray: 6 6;
 }
 
 .proj-from-last {
-  stroke: #10b981; /* teal for clarity */
+  stroke: var(--success);
 }
 
 .point circle {
-  fill: #ef4444;
+  fill: var(--danger);
+  filter: drop-shadow(0 0 4px rgba(255, 61, 127, 0.65));
 }
 
 .labels text {
   font-size: 12px;
-  fill: #6b7280;
+  fill: var(--muted);
 }
 
 .points-list ul {
