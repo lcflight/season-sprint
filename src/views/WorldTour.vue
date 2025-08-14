@@ -2,8 +2,8 @@
 <section>
   <div class="wt-layout">
     <div class="wt-main">
-      <LineGraph ref="graphRef" storageKey="world-tour" @win-points="onWinPoints">
-        <template #below-stats>
+<LineGraph ref="graphRef" storageKey="world-tour" :goalOptions="thresholds" headerDisclaimer="Based on World Tour wiki thresholds." @win-points="onWinPoints"
+>
           <div class="rank-indicator">
             <div class="rank-header">
               <span class="rank-badge">{{ rankInfo.badge }}</span>
@@ -21,51 +21,39 @@
                 <span v-else>Max rank reached</span>
               </div>
             </div>
-            <div class="rank-note">
-              Based on World Tour wiki thresholds.
-            </div>
           </div>
-        </template>
       </LineGraph>
     </div>
     <div class="wt-aside">
       <PointsCheatsheet :values="quickAddValues" @quick-add="onQuickAdd" />
+
+      <div class="custom-point">
+        <div class="cp-header">Add points</div>
+        <div class="cp-row">
+          <label class="toggle-row">
+            <input type="checkbox" v-model="useCustomDate" />
+            <span class="toggle-text">Use custom date</span>
+          </label>
+        </div>
+        <div class="cp-row" v-if="useCustomDate">
+          <input type="date" v-model="customDate" />
+          <input type="number" step="any" v-model.number="customY" placeholder="points" />
+          <button class="btn-primary" @click="addCustom" :disabled="!customDate || !isFinite(customY)">Add</button>
+        </div>
+        <div class="cp-row" v-else>
+          <input type="number" step="any" v-model.number="customY" placeholder="points" />
+          <button class="btn-primary" @click="addToday" :disabled="!isFinite(customY)">Add for today</button>
+        </div>
+      </div>
     </div>
   </div>
+
 </section>
 </template>
-
 <script>
 import LineGraph from '@/components/LineGraph.vue'
 import PointsCheatsheet from '@/components/PointsCheatsheet.vue'
-
-// World Tour thresholds from the wiki (Win Points to reach tier)
-const WT_THRESHOLDS = [
-  { badge: 'Bronze 4', points: 25 },
-  { badge: 'Bronze 3', points: 50 },
-  { badge: 'Bronze 2', points: 75 },
-  { badge: 'Bronze 1', points: 100 },
-  { badge: 'Silver 4', points: 150 },
-  { badge: 'Silver 3', points: 200 },
-  { badge: 'Silver 2', points: 250 },
-  { badge: 'Silver 1', points: 300 },
-  { badge: 'Gold 4', points: 375 },
-  { badge: 'Gold 3', points: 450 },
-  { badge: 'Gold 2', points: 525 },
-  { badge: 'Gold 1', points: 600 },
-  { badge: 'Platinum 4', points: 700 },
-  { badge: 'Platinum 3', points: 800 },
-  { badge: 'Platinum 2', points: 900 },
-  { badge: 'Platinum 1', points: 1000 },
-  { badge: 'Diamond 4', points: 1150 },
-  { badge: 'Diamond 3', points: 1300 },
-  { badge: 'Diamond 2', points: 1450 },
-  { badge: 'Diamond 1', points: 1600 },
-  { badge: 'Emerald 4', points: 1800 },
-  { badge: 'Emerald 3', points: 2000 },
-  { badge: 'Emerald 2', points: 2200 },
-  { badge: 'Emerald 1', points: 2400 },
-]
+import WT_THRESHOLDS from '@/data/worldTourRanks.json'
 
 export default {
   name: 'WorldTourView',
@@ -74,17 +62,23 @@ export default {
     return { 
       winPoints: 0,
       quickAddValues: { round1: 2, round2: 6, finalLose: 14, finalWin: 25 },
+      useCustomDate: false,
+      customDate: new Date().toISOString().slice(0,10),
+      customY: 0,
     }
   },
   computed: {
+    thresholds() {
+      return WT_THRESHOLDS
+    },
     rankInfo() {
       const wp = Math.max(0, Math.floor(this.winPoints))
       let prev = 0
-      for (let i = 0; i < WT_THRESHOLDS.length; i++) {
-        const t = WT_THRESHOLDS[i]
+      for (let i = 0; i < this.thresholds.length; i++) {
+        const t = this.thresholds[i]
         if (wp < t.points) {
           return {
-            badge: i > 0 ? WT_THRESHOLDS[i - 1].badge : 'Unranked',
+            badge: i > 0 ? this.thresholds[i - 1].badge : 'Unranked',
             currentFloor: prev,
             nextTarget: t.points,
             nextBadge: t.badge,
@@ -93,7 +87,7 @@ export default {
         prev = t.points
       }
       // At or beyond the top
-      const top = WT_THRESHOLDS[WT_THRESHOLDS.length - 1]
+      const top = this.thresholds[this.thresholds.length - 1]
       return { badge: top.badge, currentFloor: top.points, nextTarget: null, nextBadge: null }
     },
     toNext() {
@@ -107,7 +101,7 @@ export default {
       return ((clamped - floor) / span) * 100
     }
   },
-  methods: {
+methods: {
     onWinPoints(v) {
       this.winPoints = Number(v) || 0
     },
@@ -115,6 +109,18 @@ export default {
       const graph = this.$refs.graphRef
       if (graph && typeof graph.addWinPoints === 'function') {
         graph.addWinPoints(inc)
+      }
+    },
+    addCustom() {
+      const graph = this.$refs.graphRef
+      if (graph && typeof graph.addPointAtDate === 'function') {
+        graph.addPointAtDate(this.customDate, this.customY)
+      }
+    },
+    addToday() {
+      const graph = this.$refs.graphRef
+      if (graph && typeof graph.addWinPoints === 'function') {
+        graph.addWinPoints(this.customY)
       }
     }
   }
@@ -140,6 +146,38 @@ export default {
 }
 
 .wt-aside {
+}
+
+.custom-point {
+  margin-top: 12px;
+  border: 1px solid color-mix(in oklab, var(--primary) 18%, var(--surface));
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: color-mix(in oklab, var(--surface) 90%, #000);
+}
+.custom-point .cp-header {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.custom-point .cp-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+.custom-point .cp-row input[type="date"],
+.custom-point .cp-row input[type="number"] {
+  flex: 1 1 110px;
+  min-width: 0;
+}
+.custom-point .cp-row .btn-primary {
+  height: 32px;
+  padding: 6px 10px;
+  line-height: 1;
 }
 
 .rank-indicator {
