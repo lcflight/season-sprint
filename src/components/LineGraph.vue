@@ -1,34 +1,29 @@
 <template>
   <div class="line-graph">
-    <h2>Interactive Line Graph</h2>
+    <header class="lg-header">
+      <h2 class="lg-season-title">{{ headerTitle || seasonTitle || 'Interactive Line Graph' }}</h2>
+      <div v-if="headerDisclaimer" class="lg-disclaimer">{{ headerDisclaimer }}</div>
+    </header>
 
-    <div class="controls">
-      <form class="range-form" @submit.prevent>
-        <label>
-          Season start
-          <input v-model="seasonStart" type="date" required />
-        </label>
-        <label>
-          Season end
-          <input v-model="seasonEnd" type="date" required />
-        </label>
-      </form>
-      <form @submit.prevent="addPointFromForm" class="add-form">
-        <label>
-          date
-          <input v-model="newDate" type="date" required />
-        </label>
-        <label>
-          points
-          <input v-model.number="newY" type="number" step="any" required />
-        </label>
-        <button type="submit" :disabled="!isSeasonValid">Add point</button>
-      </form>
+    <div class="controls" v-if="showGoalControl">
       <div class="quick-actions">
-        <label>
-          Goal win points
-          <input v-model.number="goalWinPoints" type="number" step="any" />
-        </label>
+        <template v-if="Array.isArray(goalOptions) && goalOptions.length">
+          <label>
+            Goal rank
+            <select v-model.number="selectedGoalIndex" @change="applySelectedGoal">
+              <option :value="-1">Select rank…</option>
+              <option v-for="(opt, i) in goalOptions" :key="opt.badge || i" :value="i">
+                {{ opt.badge }} ({{ opt.points }} WP)
+              </option>
+            </select>
+          </label>
+        </template>
+        <template v-else>
+          <label>
+            Goal win points
+            <input v-model.number="goalWinPoints" type="number" step="any" />
+          </label>
+        </template>
       </div>
     </div>
 
@@ -240,12 +235,6 @@
         </g>
 
         <!-- Static labels -->
-        <g class="labels">
-          <text :x="width - padding" :y="height - padding + 16" text-anchor="end">
-            {{ msToDateInput(xDomain[0]) }} → {{ msToDateInput(xDomain[1]) }}
-          </text>
-          <text :x="padding - 6" :y="padding - 6" text-anchor="start">points: {{ yDomain[0] }} → {{ yDomain[1] }}</text>
-        </g>
 
         <!-- Transparent overlay for better hit area -->
         <rect class="interaction-overlay" :x="padding" :y="padding" :width="width - padding * 2" :height="height - padding * 2" />
@@ -269,13 +258,20 @@ import { isValidDateStr, dateToMs, msToDateInput, addDays, clamp, formatDate } f
 import { parseCSVText, buildCSV } from '@/utils/csv'
 import { saveState as saveLocalState, loadState as loadLocalState, saveStateWithKey, loadStateWithKey } from '@/utils/storage'
 import { MS_PER_DAY, calcXDomain, calcYDomain, scaleXFactory, scaleYFactory, buildPathD, buildXTicks } from '@/utils/chart'
+import { loadSeasonJson } from '@/utils/season'
 
 // eslint-disable-next-line no-undef
 const emit = defineEmits(['win-points'])
 
 // eslint-disable-next-line no-undef
 const props = defineProps({
-  storageKey: { type: String, default: '' }
+  storageKey: { type: String, default: '' },
+  showGoalControl: { type: Boolean, default: true },
+  // Optional list of rank thresholds to show a dropdown instead of raw numeric input
+  // Expected shape: [{ badge: string, points: number }, ...]
+  goalOptions: { type: Array, default: () => [] },
+  headerDisclaimer: { type: String, default: '' },
+  headerTitle: { type: String, default: '' },
 })
 
 // Config
@@ -288,6 +284,7 @@ const plotHeight = height - padding * 2
 const today = new Date()
 const seasonStart = ref(formatDate(today))
 const seasonEnd = ref(formatDate(addDays(today, 30)))
+const seasonTitle = ref('')
 
 // Points (date-based)
 const points = reactive([
@@ -296,12 +293,12 @@ const points = reactive([
   { date: formatDate(addDays(today, 10)), y: 3 },
 ])
 
-// Inputs for adding a point
-const newDate = ref(formatDate(addDays(today, 1)))
-const newY = ref(0)
+// Inputs for adding a point are managed by parent UI; expose helpers instead
 
 // Goal win points
 const goalWinPoints = ref(10)
+// If goalOptions provided, track selected index
+const selectedGoalIndex = ref(-1)
 
 // Import/Export state
 const showImportModal = ref(false)
@@ -571,20 +568,38 @@ const requiredPerDayFromLast = computed(() => {
 })
 
 // Actions
-function addPointFromForm() {
-  if (!isSeasonValid.value) return
-  const yNum = Number(newY.value)
-  if (!isFinite(yNum)) return
-  // Upsert by date: if a point exists for this date, update it; otherwise add new
-  const idx = points.findIndex(p => dateToMs(p.date) === dateToMs(newDate.value))
-  if (idx !== -1) {
-    points[idx] = { date: newDate.value, y: yNum }
-  } else {
-    points.push({ date: newDate.value, y: yNum })
+function setGoalWinPoints(val) {
+  const num = Number(val)
+  if (Number.isFinite(num)) {
+    goalWinPoints.value = num
   }
-  // Convenience: advance date by one day
-  const next = formatDate(addDays(new Date(newDate.value), 1))
-  newDate.value = next
+}
+
+function getGoalWinPoints() {
+  return goalWinPoints.value
+}
+
+function applySelectedGoal() {
+  const idx = Number(selectedGoalIndex.value)
+  if (Array.isArray(props.goalOptions) && idx >= 0 && idx < props.goalOptions.length) {
+    const pts = Number(props.goalOptions[idx]?.points)
+    if (Number.isFinite(pts)) {
+      goalWinPoints.value = pts
+    }
+  }
+}
+
+function addPointAtDate(dateStr, yVal) {
+  if (!isSeasonValid.value) return
+  if (!isValidDateStr(dateStr)) return
+  const yNum = Number(yVal)
+  if (!isFinite(yNum)) return
+  const idx = points.findIndex(p => dateToMs(p.date) === dateToMs(dateStr))
+  if (idx !== -1) {
+    points[idx] = { date: dateStr, y: yNum }
+  } else {
+    points.push({ date: dateStr, y: yNum })
+  }
 }
 
 function removePoint(index) {
@@ -692,7 +707,6 @@ function readCSVFile(file) {
         const max = Math.max(...dates)
         seasonStart.value = msToDateInput(min)
         seasonEnd.value = msToDateInput(max)
-        newDate.value = seasonStart.value
       }
       closeImportModal()
     } catch (err) {
@@ -702,22 +716,34 @@ function readCSVFile(file) {
   reader.onerror = () => {
     importError.value = 'Unable to read file.'
   }
-  reader.readAsText(file)
+reader.readAsText(file)
 }
 
 
-// Keep newDate in range when season changes
-watch([seasonStart, seasonEnd], () => {
-  if (!isSeasonValid.value) return
-  const [min, max] = xDomain.value
-  const cur = dateToMs(newDate.value)
-  const clamped = clamp(cur, min, max)
-  newDate.value = msToDateInput(clamped)
+// (Removed per design) newDate is managed by parent when adding custom points.
+
+// Expose imperative helpers to parent components
+// eslint-disable-next-line no-undef
+defineExpose({
+  addWinPoints,
+  addPointAtDate,
+  setGoalWinPoints,
+  getGoalWinPoints,
 })
 
 // Persist on changes
 watch([seasonStart, seasonEnd, goalWinPoints, autoSetSeasonFromImport, simplifyImport], saveState)
 watch([navSensitivity, enableNavigation], saveState)
+
+// Keep selectedGoalIndex in sync with goalWinPoints and provided options
+watch([() => props.goalOptions, goalWinPoints], () => {
+  if (Array.isArray(props.goalOptions) && props.goalOptions.length) {
+    const idx = props.goalOptions.findIndex(o => Number(o.points) === Number(goalWinPoints.value))
+    selectedGoalIndex.value = idx
+  } else {
+    selectedGoalIndex.value = -1
+  }
+}, { deep: true })
 watch(points, () => {
   saveState()
   // also notify listeners of current win points
@@ -727,8 +753,25 @@ watch(points, () => {
 // Also emit when loaded and when points potentially change via import or initial state
 watch(currentWinPoints, (v) => emit('win-points', v))
 
-onMounted(() => {
+onMounted(async () => {
   loadState()
+  try {
+    const data = await loadSeasonJson()
+    if (data && data.currentSeason && data.currentSeason.start && data.currentSeason.end) {
+      const startMs = new Date(data.currentSeason.start).getTime()
+      const endMs = new Date(data.currentSeason.end).getTime()
+      if (!isNaN(startMs) && !isNaN(endMs)) {
+        seasonStart.value = msToDateInput(startMs)
+        seasonEnd.value = msToDateInput(endMs)
+      }
+      if (typeof data.currentSeason.name === 'string' && data.currentSeason.name.trim()) {
+        const nm = String(data.currentSeason.name).trim()
+        seasonTitle.value = nm.startsWith('Season') ? nm : `Season ${nm}`
+      }
+    }
+  } catch (e) {
+    // If fetch fails (e.g., CORS), keep existing defaults/state
+  }
   // Emit initial after load tick
   requestAnimationFrame(() => emit('win-points', currentWinPoints.value))
 })
@@ -751,9 +794,6 @@ function addWinPoints(increment) {
   }
 }
 
-// Make available to parent via ref
-// eslint-disable-next-line no-undef
-defineExpose({ addWinPoints })
 </script>
 
 <style scoped>
@@ -761,6 +801,23 @@ defineExpose({ addWinPoints })
   max-width: 1000px;
   margin: 0 auto;
   text-align: left;
+}
+
+.lg-header {
+  margin-bottom: 8px;
+}
+.lg-season-title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-strong);
+}
+.lg-disclaimer {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--muted);
 }
 
 .controls {
@@ -781,6 +838,13 @@ defineExpose({ addWinPoints })
 .add-form input,
 .range-form input {
   width: 160px;
+}
+
+.divider {
+  width: 1px;
+  height: 24px;
+  background: color-mix(in oklab, var(--primary) 16%, var(--surface));
+  margin: 0 8px;
 }
 
 .quick-actions button {
