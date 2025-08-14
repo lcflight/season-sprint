@@ -1,35 +1,43 @@
 <template>
 <section>
-    <LineGraph storageKey="world-tour" @win-points="onWinPoints">
-      <template #below-stats>
-        <div class="rank-indicator">
-          <div class="rank-header">
-            <span class="rank-badge">{{ rankInfo.badge }}</span>
-            <span class="rank-points">{{ winPoints }} WP</span>
-          </div>
-          <div class="rank-progress">
-            <div class="bar">
-              <div class="fill" :style="{ width: progressPct + '%' }"></div>
+  <div class="wt-layout">
+    <div class="wt-main">
+      <LineGraph ref="graphRef" storageKey="world-tour" @win-points="onWinPoints">
+        <template #below-stats>
+          <div class="rank-indicator">
+            <div class="rank-header">
+              <span class="rank-badge">{{ rankInfo.badge }}</span>
+              <span class="rank-points">{{ winPoints }} WP</span>
             </div>
-            <div class="labels">
-              <span>{{ rankInfo.currentFloor }} WP</span>
-              <span v-if="rankInfo.nextTarget !== null">
-                Next rank: {{ rankInfo.nextBadge }} at {{ rankInfo.nextTarget }} WP • {{ toNext }} more WP needed
-              </span>
-              <span v-else>Max rank reached</span>
+            <div class="rank-progress">
+              <div class="bar">
+                <div class="fill" :style="{ width: progressPct + '%' }"></div>
+              </div>
+              <div class="labels">
+                <span>{{ rankInfo.currentFloor }} WP</span>
+                <span v-if="rankInfo.nextTarget !== null">
+                  Next rank: {{ rankInfo.nextBadge }} at {{ rankInfo.nextTarget }} WP • {{ toNext }} more WP needed
+                </span>
+                <span v-else>Max rank reached</span>
+              </div>
+            </div>
+            <div class="rank-note">
+              Based on World Tour wiki thresholds.
             </div>
           </div>
-          <div class="rank-note">
-            Based on World Tour wiki thresholds.
-          </div>
-        </div>
-      </template>
-    </LineGraph>
-  </section>
+        </template>
+      </LineGraph>
+    </div>
+    <div class="wt-aside">
+      <PointsCheatsheet :values="quickAddValues" @quick-add="onQuickAdd" />
+    </div>
+  </div>
+</section>
 </template>
 
 <script>
 import LineGraph from '@/components/LineGraph.vue'
+import PointsCheatsheet from '@/components/PointsCheatsheet.vue'
 
 // World Tour thresholds from the wiki (Win Points to reach tier)
 const WT_THRESHOLDS = [
@@ -61,9 +69,12 @@ const WT_THRESHOLDS = [
 
 export default {
   name: 'WorldTourView',
-  components: { LineGraph },
+  components: { LineGraph, PointsCheatsheet },
   data() {
-    return { winPoints: 0 }
+    return { 
+      winPoints: 0,
+      quickAddValues: { round1: 2, round2: 6, finalLose: 14, finalWin: 25 },
+    }
   },
   computed: {
     rankInfo() {
@@ -99,12 +110,38 @@ export default {
   methods: {
     onWinPoints(v) {
       this.winPoints = Number(v) || 0
+    },
+    onQuickAdd(inc) {
+      const graph = this.$refs.graphRef
+      if (graph && typeof graph.addWinPoints === 'function') {
+        graph.addWinPoints(inc)
+      }
     }
   }
 }
 </script>
 
 <style scoped>
+.wt-layout {
+  display: grid;
+  grid-template-columns: 1fr minmax(220px, 280px);
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 820px) {
+  .wt-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.wt-main {
+  min-width: 0;
+}
+
+.wt-aside {
+}
+
 .rank-indicator {
   margin: 8px 0 6px;
   border: 1px solid color-mix(in oklab, var(--primary) 20%, var(--surface));

@@ -72,11 +72,16 @@
             <p>or</p>
             <input ref="fileInput" type="file" accept=".csv,text/csv" @change="onFilePick" />
           </div>
-          <label class="import-options">
-            <input type="checkbox" v-model="autoSetSeasonFromImport" />
-            Auto-set season range to imported data dates
-          </label>
-          <p v-if="importError" class="error">{{ importError }}</p>
+      <label class="import-options">
+        <input type="checkbox" v-model="autoSetSeasonFromImport" />
+        Auto-set season range to imported data dates
+      </label>
+      <label class="import-options">
+        <input type="checkbox" v-model="simplifyImport" />
+        Simplify consecutive duplicates
+      </label>
+      <div class="import-hint">If enabled, consecutive rows with the same y value are collapsed into a single point (keeps the first, skips the rest).</div>
+      <p v-if="importError" class="error">{{ importError }}</p>
         </section>
         <footer class="modal-footer">
           <button @click="closeImportModal">Cancel</button>
@@ -303,6 +308,7 @@ const showImportModal = ref(false)
 const showPointsModal = ref(false)
 const importError = ref('')
 const autoSetSeasonFromImport = ref(true)
+const simplifyImport = ref(false)
 const fileInput = ref(null)
 
 // Settings
@@ -323,6 +329,7 @@ function saveState() {
     seasonEnd: seasonEnd.value,
     goalWinPoints: goalWinPoints.value,
     autoSetSeasonFromImport: autoSetSeasonFromImport.value,
+    simplifyImport: simplifyImport.value,
     points: [...points],
     navSensitivity: navSensitivity.value,
     enableNavigation: enableNavigation.value,
@@ -343,6 +350,7 @@ function loadState() {
   if (typeof parsed.seasonEnd === 'string' && isValidDateStr(parsed.seasonEnd)) seasonEnd.value = parsed.seasonEnd
   if (typeof parsed.goalWinPoints === 'number' && isFinite(parsed.goalWinPoints)) goalWinPoints.value = parsed.goalWinPoints
   if (typeof parsed.autoSetSeasonFromImport === 'boolean') autoSetSeasonFromImport.value = parsed.autoSetSeasonFromImport
+  if (typeof parsed.simplifyImport === 'boolean') simplifyImport.value = parsed.simplifyImport
   if (typeof parsed.navSensitivity === 'number' && isFinite(parsed.navSensitivity)) navSensitivity.value = parsed.navSensitivity
   if (typeof parsed.enableNavigation === 'boolean') enableNavigation.value = parsed.enableNavigation
   if (Array.isArray(parsed.points)) {
@@ -565,7 +573,15 @@ const requiredPerDayFromLast = computed(() => {
 // Actions
 function addPointFromForm() {
   if (!isSeasonValid.value) return
-  points.push({ date: newDate.value, y: Number(newY.value) })
+  const yNum = Number(newY.value)
+  if (!isFinite(yNum)) return
+  // Upsert by date: if a point exists for this date, update it; otherwise add new
+  const idx = points.findIndex(p => dateToMs(p.date) === dateToMs(newDate.value))
+  if (idx !== -1) {
+    points[idx] = { date: newDate.value, y: yNum }
+  } else {
+    points.push({ date: newDate.value, y: yNum })
+  }
   // Convenience: advance date by one day
   const next = formatDate(addDays(new Date(newDate.value), 1))
   newDate.value = next
@@ -663,8 +679,12 @@ function readCSVFile(file) {
       if (imported.length === 0) {
         throw new Error('No valid rows found. Expected columns: date,y (YYYY-MM-DD, numeric y).')
       }
-      // Replace points
-      points.splice(0, points.length, ...imported)
+      // Optionally simplify consecutive duplicates (keep first of each run)
+      const simplified = simplifyImport.value
+        ? imported.filter((row, idx, arr) => idx === 0 || row.y !== arr[idx - 1].y)
+        : imported
+      // Replace points with imported (possibly simplified) data only
+      points.splice(0, points.length, ...simplified)
       // Optionally adjust season to imported min/max
       if (autoSetSeasonFromImport.value) {
         const dates = imported.map(r => dateToMs(r.date))
@@ -696,7 +716,7 @@ watch([seasonStart, seasonEnd], () => {
 })
 
 // Persist on changes
-watch([seasonStart, seasonEnd, goalWinPoints, autoSetSeasonFromImport], saveState)
+watch([seasonStart, seasonEnd, goalWinPoints, autoSetSeasonFromImport, simplifyImport], saveState)
 watch([navSensitivity, enableNavigation], saveState)
 watch(points, () => {
   saveState()
@@ -712,6 +732,28 @@ onMounted(() => {
   // Emit initial after load tick
   requestAnimationFrame(() => emit('win-points', currentWinPoints.value))
 })
+
+// Expose helper to add win points to today's date
+function addWinPoints(increment) {
+  const inc = Number(increment)
+  if (!isFinite(inc) || inc === 0) return
+  const todayStr = formatDate(new Date())
+  // Find existing point for today
+  const idxToday = points.findIndex(p => dateToMs(p.date) === dateToMs(todayStr))
+  if (idxToday !== -1) {
+    // Update today's point
+    points[idxToday] = { date: todayStr, y: Number(points[idxToday].y) + inc }
+  } else {
+    // Start from last known value if any, else 0
+    const last = sortedPoints.value.length ? sortedPoints.value[sortedPoints.value.length - 1] : { y: 0 }
+    const newY = Number(last.y) + inc
+    points.push({ date: todayStr, y: newY })
+  }
+}
+
+// Make available to parent via ref
+// eslint-disable-next-line no-undef
+defineExpose({ addWinPoints })
 </script>
 
 <style scoped>
@@ -892,6 +934,13 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 8px;
+  margin-top: 6px;
+}
+
+.import-hint {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 6px 0 0;
 }
 
 .error {
