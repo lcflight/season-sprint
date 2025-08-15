@@ -37,13 +37,13 @@ body {
 /* Utility buttons styled for the theme */
 button {
   font-family: var(--font-sans);
-  font-weight: 700;
-  letter-spacing: 0.02em;
+  font-weight: 900;
+  letter-spacing: 0.03em;
   text-transform: uppercase;
   font-size: 12px;
   border-radius: 10px;
-  border: 1px solid color-mix(in oklab, var(--primary) 28%, var(--surface));
-  background: linear-gradient(180deg, color-mix(in oklab, var(--surface) 85%, #000) 0%, var(--surface) 100%);
+  border: 1px solid color-mix(in oklab, var(--primary) 36%, var(--surface));
+  background: linear-gradient(180deg, #1e2430 0%, #131821 100%);
   color: var(--text-strong);
   padding: 10px 14px;
   cursor: pointer;
@@ -52,8 +52,8 @@ button {
 
 button:hover {
   transform: translateY(-1px);
-  box-shadow: 0 8px 22px rgba(0,0,0,0.4), 0 0 0 3px var(--ring);
-  border-color: color-mix(in oklab, var(--primary) 45%, var(--surface));
+  box-shadow: 0 8px 22px rgba(0,0,0,0.45), 0 0 0 3px var(--ring);
+  border-color: color-mix(in oklab, var(--primary) 52%, var(--surface));
 }
 
 button:disabled {
@@ -64,14 +64,15 @@ button:disabled {
 
 /* Button variants */
 .btn-primary {
-  background: linear-gradient(180deg, color-mix(in oklab, var(--primary) 20%, #222) 0%, color-mix(in oklab, var(--primary) 8%, #111) 100%);
-  color: #111;
+  background: linear-gradient(180deg, #ffd400 0%, #ffea00 100%);
+  color: #0b0d12;
   border-color: var(--ring-strong);
-  box-shadow: 0 0 0 1px rgba(255,255,255,0.05), 0 8px 24px rgba(255, 212, 0, 0.18);
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.06), 0 10px 30px rgba(255, 212, 0, 0.35);
 }
 
 .btn-primary:hover {
-  box-shadow: 0 10px 28px rgba(255, 212, 0, 0.28), 0 0 0 3px var(--ring);
+  filter: saturate(1.05);
+  box-shadow: 0 12px 34px rgba(255, 212, 0, 0.45), 0 0 0 3px var(--ring);
 }
 
 .btn-ghost {

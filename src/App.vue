@@ -60,6 +60,64 @@ export default {
   margin-top: 0;
 }
 
+/* Global button styles to clearly differentiate interactive elements */
+button,
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 8px 14px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in oklab, var(--primary) 36%, var(--surface));
+  background: linear-gradient(180deg, #1e2430 0%, #131821 100%);
+  color: var(--text-strong);
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: transform 120ms ease, box-shadow 120ms ease,
+    border-color 120ms ease, background 120ms ease, color 120ms ease;
+}
+button:hover,
+.button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.45), 0 0 0 3px var(--ring);
+  border-color: color-mix(in oklab, var(--primary) 52%, var(--surface));
+}
+button:focus-visible,
+.button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--ring), 0 10px 28px rgba(0, 0, 0, 0.5);
+}
+button:disabled,
+.button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+/* Variants */
+.btn-primary {
+  background: linear-gradient(180deg, #ffd400 0%, #ffea00 100%);
+  color: #0b0d12;
+  border-color: var(--ring-strong);
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.06), 0 10px 30px rgba(255, 212, 0, 0.35);
+}
+.btn-primary:hover {
+  filter: saturate(1.05);
+  box-shadow: 0 12px 34px rgba(255, 212, 0, 0.45), 0 0 0 3px var(--ring);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--text-strong);
+}
+.btn-ghost:hover {
+  background: color-mix(in oklab, var(--surface) 92%, #000);
+}
+
 .season-banner {
   max-width: 1000px;
   margin: 8px auto 0;
