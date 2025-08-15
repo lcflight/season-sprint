@@ -22,10 +22,10 @@
       </ul>
       <div class="sheet-note">Quick reference for THE FINALS World Tour placement points.</div>
       <div class="quick-add">
-        <button class="qa-btn" @click="$emit('quick-add', values.round1)">Add R1 KO (+{{ values.round1 }})</button>
-        <button class="qa-btn" @click="$emit('quick-add', values.round2)">Add R2 KO (+{{ values.round2 }})</button>
-        <button class="qa-btn" @click="$emit('quick-add', values.finalLose)">Add Final Loss (+{{ values.finalLose }})</button>
-        <button class="qa-btn" @click="$emit('quick-add', values.finalWin)">Add Final Win (+{{ values.finalWin }})</button>
+        <button class="qa-btn btn-primary" @click="$emit('quick-add', values.round1)">Add R1 KO (+{{ values.round1 }})</button>
+        <button class="qa-btn btn-primary" @click="$emit('quick-add', values.round2)">Add R2 KO (+{{ values.round2 }})</button>
+        <button class="qa-btn btn-primary" @click="$emit('quick-add', values.finalLose)">Add Final Loss (+{{ values.finalLose }})</button>
+        <button class="qa-btn btn-primary" @click="$emit('quick-add', values.finalWin)">Add Final Win (+{{ values.finalWin }})</button>
       </div>
     </div>
   </aside>
@@ -81,8 +81,9 @@ export default {
   gap: 12px;
   padding: 8px 10px;
   border-radius: 10px;
-  background: color-mix(in oklab, var(--surface) 88%, #000);
-  border: 1px solid color-mix(in oklab, var(--primary) 16%, var(--surface));
+  background: color-mix(in oklab, var(--surface) 90%, #000);
+  border: 1px solid color-mix(in oklab, var(--primary) 12%, var(--surface));
+  cursor: default; /* make it clear these are informational */
 }
 
 .label {
@@ -105,17 +106,21 @@ export default {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
+  position: relative;
+}
+.quick-add::before {
+  content: 'Quick add';
+  position: absolute;
+  top: -18px;
+  left: 2px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
 }
 
 .qa-btn {
-  padding: 8px 10px;
-  border-radius: 8px;
-  border: 1px solid color-mix(in oklab, var(--primary) 22%, var(--surface));
-  background: color-mix(in oklab, var(--surface) 88%, #000);
-  color: var(--text);
-  font-weight: 800;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
+  width: 100%;
 }
 </style>
 

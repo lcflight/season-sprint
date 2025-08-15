@@ -851,6 +851,32 @@ function addWinPoints(increment) {
   margin-right: 8px;
 }
 
+/* Make small floating control buttons visually distinct */
+.settings-btn,
+.recenter-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 10;
+}
+.recenter-btn { right: 90px; }
+
+.settings-btn,
+.recenter-btn {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 8px;
+  background: color-mix(in oklab, var(--surface) 85%, #000);
+  border: 1px solid color-mix(in oklab, var(--primary) 30%, var(--surface));
+  box-shadow: 0 8px 20px rgba(0,0,0,0.4);
+}
+.settings-btn:hover,
+.recenter-btn:hover {
+  background: color-mix(in oklab, var(--surface) 90%, #000);
+  box-shadow: 0 10px 26px rgba(0,0,0,0.5), 0 0 0 3px var(--ring);
+}
+
 .quick-actions .spacer { flex: 1; }
 
 .chart-actions {
