@@ -28,7 +28,7 @@
       <PointsCheatsheet :values="quickAddValues" @quick-add="onQuickAdd" />
 
       <div class="custom-point">
-        <div class="cp-header">Add points</div>
+        <div class="cp-header">Set points</div>
         <div class="cp-row">
           <label class="toggle-row">
             <input type="checkbox" v-model="useCustomDate" />

@@ -3,7 +3,7 @@
     <header class="lg-header">
       <h2 class="lg-season-title">{{ headerTitle || seasonTitle || 'Interactive Line Graph' }}</h2>
       <div v-if="headerDisclaimer" class="lg-disclaimer">{{ headerDisclaimer }}</div>
-    </header>
+        </header>
 
     <div class="controls" v-if="showGoalControl">
       <div class="quick-actions">
@@ -17,6 +17,24 @@
               </option>
             </select>
           </label>
+          <div class="rank-indicator">
+            <div class="rank-header">
+              <span class="rank-badge">{{ rankInfo.badge }}</span>
+              <span class="rank-points">{{ (currentWinPoints.toLocaleString?.() || currentWinPoints) }} WP</span>
+            </div>
+            <div class="rank-progress">
+              <div class="bar">
+                <div class="fill" :style="{ width: progressPct + '%' }"></div>
+              </div>
+              <div class="labels">
+                <span>{{ (rankInfo.currentFloor.toLocaleString?.() || rankInfo.currentFloor) }} WP</span>
+                <span v-if="rankInfo.nextTarget !== null">
+                  Next rank: {{ rankInfo.nextBadge }} at {{ (rankInfo.nextTarget.toLocaleString?.() || rankInfo.nextTarget) }} WP • {{ (toNext.toLocaleString?.() || toNext) }} more WP needed
+                </span>
+                <span v-else>Max rank reached</span>
+              </div>
+            </div>
+          </div>
         </template>
         <template v-else>
           <label>
@@ -381,6 +399,41 @@ const pathD = computed(() => buildPathD(scaledPoints.value))
 const currentWinPoints = computed(() => {
   const pts = sortedPoints.value
   return pts.length ? Number(pts[pts.length - 1].y) : 0
+})
+
+// Rank info based on goalOptions thresholds
+const rankInfo = computed(() => {
+  const opts = Array.isArray(props.goalOptions) ? props.goalOptions : []
+  if (!opts.length) {
+    return { badge: '—', currentFloor: 0, nextTarget: null, nextBadge: null }
+  }
+  const wp = Math.max(0, Number(currentWinPoints.value) || 0)
+  let prev = { badge: 'Unranked', points: 0 }
+  for (let i = 0; i < opts.length; i++) {
+    const t = opts[i]
+    const pts = Number(t?.points)
+    if (!Number.isFinite(pts)) continue
+    if (wp < pts) {
+      return { badge: prev.badge, currentFloor: prev.points, nextTarget: pts, nextBadge: t.badge ?? '' }
+    }
+    prev = { badge: t.badge ?? prev.badge, points: pts }
+  }
+  // At or beyond the top threshold
+  return { badge: prev.badge, currentFloor: prev.points, nextTarget: null, nextBadge: null }
+})
+
+const toNext = computed(() => {
+  return rankInfo.value.nextTarget === null
+    ? 0
+    : Math.max(0, Number(rankInfo.value.nextTarget) - Math.floor(Number(currentWinPoints.value) || 0))
+})
+
+const progressPct = computed(() => {
+  const floor = Number(rankInfo.value.currentFloor) || 0
+  const ceil = rankInfo.value.nextTarget ?? floor
+  const span = Math.max(1, Number(ceil) - floor)
+  const clamped = Math.min(Number(ceil), Math.max(floor, Number(currentWinPoints.value) || 0))
+  return ((clamped - floor) / span) * 100
 })
 
 // Pan/Zoom state
@@ -776,21 +829,20 @@ onMounted(async () => {
   requestAnimationFrame(() => emit('win-points', currentWinPoints.value))
 })
 
-// Expose helper to add win points to today's date
+// Expose helper to set today's win points to a specific value (replace, not add)
 function addWinPoints(increment) {
-  const inc = Number(increment)
-  if (!isFinite(inc) || inc === 0) return
+  const val = Number(increment)
+  // Allow setting to 0; only guard against non-finite inputs
+  if (!isFinite(val)) return
   const todayStr = formatDate(new Date())
   // Find existing point for today
   const idxToday = points.findIndex(p => dateToMs(p.date) === dateToMs(todayStr))
   if (idxToday !== -1) {
-    // Update today's point
-    points[idxToday] = { date: todayStr, y: Number(points[idxToday].y) + inc }
+    // Replace today's point value with the provided value
+    points[idxToday] = { date: todayStr, y: val }
   } else {
-    // Start from last known value if any, else 0
-    const last = sortedPoints.value.length ? sortedPoints.value[sortedPoints.value.length - 1] : { y: 0 }
-    const newY = Number(last.y) + inc
-    points.push({ date: todayStr, y: newY })
+    // No point for today yet; create one with the provided value
+    points.push({ date: todayStr, y: val })
   }
 }
 
@@ -1204,5 +1256,59 @@ svg.nav-disabled {
 
 .points-ul li:last-child {
   border-bottom: 0;
+}
+
+/* Rank indicator (uses same styling language as views) */
+.rank-indicator {
+  margin: 8px 0 6px;
+  margin-top: 8px;
+  margin-bottom: 0px;
+  border: 1px solid color-mix(in oklab, var(--primary) 20%, var(--surface));
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: color-mix(in oklab, var(--surface) 92%, black);
+}
+.rank-header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.rank-badge {
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-strong);
+}
+.rank-points {
+  color: var(--muted);
+}
+.rank-progress .bar {
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--surface) 85%, #000);
+  overflow: hidden;
+  border: 1px solid color-mix(in oklab, var(--primary) 18%, var(--surface));
+}
+.rank-progress .fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--primary), color-mix(in oklab, var(--accent) 50%, var(--primary)));
+}
+.rank-progress .labels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* Positioned version for inside the graph wrapper */
+.rank-in-graph {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  max-width: min(460px, 60%);
+  z-index: 9;
 }
 </style>
