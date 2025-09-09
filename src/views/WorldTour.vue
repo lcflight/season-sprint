@@ -28,7 +28,7 @@
       <PointsCheatsheet :values="quickAddValues" @quick-add="onQuickAdd" />
 
       <div class="custom-point">
-        <div class="cp-header">Add points</div>
+        <div class="cp-header">Set points</div>
         <div class="cp-row">
           <label class="toggle-row">
             <input type="checkbox" v-model="useCustomDate" />
@@ -107,7 +107,10 @@ methods: {
     },
     onQuickAdd(inc) {
       const graph = this.$refs.graphRef
-      if (graph && typeof graph.addWinPoints === 'function') {
+      if (graph && typeof graph.incrementWinPoints === 'function') {
+        graph.incrementWinPoints(inc)
+      } else if (graph && typeof graph.addWinPoints === 'function') {
+        // Fallback: approximate cumulative by reading and setting (if available in future)
         graph.addWinPoints(inc)
       }
     },
