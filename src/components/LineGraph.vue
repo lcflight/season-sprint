@@ -6,101 +6,40 @@
         </header>
 
     <div class="controls" v-if="showGoalControl">
-      <div class="quick-actions">
-        <template v-if="Array.isArray(goalOptions) && goalOptions.length">
-          <label>
-            Goal rank
-            <select v-model.number="selectedGoalIndex" @change="applySelectedGoal">
-              <option :value="-1">Select rank…</option>
-              <option v-for="(opt, i) in goalOptions" :key="opt.badge || i" :value="i">
-                {{ opt.badge }} ({{ opt.points }} WP)
-              </option>
-            </select>
-          </label>
-          <div class="rank-indicator">
-            <div class="rank-header">
-              <span class="rank-badge">{{ rankInfo.badge }}</span>
-              <span class="rank-points">{{ (currentWinPoints.toLocaleString?.() || currentWinPoints) }} WP</span>
-            </div>
-            <div class="rank-progress">
-              <div class="bar">
-                <div class="fill" :style="{ width: progressPct + '%' }"></div>
-              </div>
-              <div class="labels">
-                <span>{{ (rankInfo.currentFloor.toLocaleString?.() || rankInfo.currentFloor) }} WP</span>
-                <span v-if="rankInfo.nextTarget !== null">
-                  Next rank: {{ rankInfo.nextBadge }} at {{ (rankInfo.nextTarget.toLocaleString?.() || rankInfo.nextTarget) }} WP • {{ (toNext.toLocaleString?.() || toNext) }} more WP needed
-                </span>
-                <span v-else>Max rank reached</span>
-              </div>
-            </div>
-          </div>
-        </template>
-        <template v-else>
-          <label>
-            Goal win points
-            <input v-model.number="goalWinPoints" type="number" step="any" />
-          </label>
-        </template>
-      </div>
+      <GoalControls
+        :goal-options="goalOptions"
+        :selected-goal-index="selectedGoalIndex"
+        :goal-win-points="goalWinPoints"
+        :rank-info="rankInfo"
+        :current-win-points="currentWinPoints"
+        :to-next="toNext"
+        :progress-pct="progressPct"
+        unit="WP"
+        @select-goal="onSelectGoal"
+        @set-goal-win-points="setGoalWinPoints"
+      />
     </div>
 
-    <div v-if="isSeasonValid" class="stats">
-      <div class="stat">
-        <div class="stat-label">Required/day (zero → goal)</div>
-        <div class="stat-value">{{ requiredPerDayZero.toFixed(2) }}</div>
-      </div>
-      <div class="stat">
-        <div class="stat-label">Required/day (last → goal)</div>
-        <div class="stat-value">
-          <template v-if="isFromLastDefined">{{ requiredPerDayFromLast.toFixed(2) }}</template>
-          <template v-else>—</template>
-        </div>
-      </div>
-    </div>
+    <StatsPanel
+      v-if="isSeasonValid"
+      :required-per-day-zero="requiredPerDayZero"
+      :required-per-day-from-last="requiredPerDayFromLast"
+      :is-from-last-defined="isFromLastDefined"
+    />
 
     <!-- Custom content below stats -->
     <slot name="below-stats"></slot>
 
     <!-- Import Modal -->
-    <div v-if="showImportModal" class="modal-backdrop" @click.self="closeImportModal">
-      <div class="modal">
-        <header class="modal-header">
-          <h3>Import CSV</h3>
-        </header>
-        <section class="modal-body">
-          <p>Provide a CSV with columns: <strong>date,y</strong> (y = points). Supported date formats include YYYY-MM-DD, YYYY/MM/DD, MM/DD/YYYY, DD/MM/YYYY, and names like 5 Jan 2025. Header row is optional. Delimiters supported: comma, semicolon, colon, or tab.</p>
-          <pre class="example">date,y
-2025-03-01,2
-2025-03-07,5.5
-2025-03-15,7
-</pre>
-          <div
-            class="dropzone"
-            @dragover.prevent
-            @dragenter.prevent
-            @drop.prevent="onDropCSV"
-          >
-            <p>Drag and drop a CSV file here</p>
-            <p>or</p>
-            <input ref="fileInput" type="file" accept=".csv,text/csv" @change="onFilePick" />
-          </div>
-      <label class="import-options">
-        <input type="checkbox" v-model="autoSetSeasonFromImport" />
-        Auto-set season range to imported data dates
-      </label>
-      <label class="import-options">
-        <input type="checkbox" v-model="simplifyImport" />
-        Simplify consecutive duplicates
-      </label>
-      <div class="import-hint">If enabled, consecutive rows with the same y value are collapsed into a single point (keeps the first, skips the rest).</div>
-      <p v-if="importError" class="error">{{ importError }}</p>
-        </section>
-        <footer class="modal-footer">
-          <button @click="closeImportModal">Cancel</button>
-        </footer>
-      </div>
-    </div>
+    <ImportModal
+      v-if="showImportModal"
+      :auto-set-season-from-import="autoSetSeasonFromImport"
+      :simplify-import="simplifyImport"
+      @update:autoSetSeasonFromImport="(v) => autoSetSeasonFromImport = v"
+      @update:simplifyImport="(v) => simplifyImport = v"
+      @import-data="onImportedRows"
+      @close="closeImportModal"
+    />
 
     <!-- Settings Modal -->
     <div v-if="showSettingsModal" class="modal-backdrop" @click.self="closeSettingsModal">
@@ -273,10 +212,13 @@
 <script setup>
 import { computed, reactive, ref, watch, onMounted } from 'vue'
 import { isValidDateStr, dateToMs, msToDateInput, addDays, clamp, formatDate } from '@/utils/date'
-import { parseCSVText, buildCSV } from '@/utils/csv'
+import { buildCSV } from '@/utils/csv'
 import { saveState as saveLocalState, loadState as loadLocalState, saveStateWithKey, loadStateWithKey } from '@/utils/storage'
 import { MS_PER_DAY, calcXDomain, calcYDomain, scaleXFactory, scaleYFactory, buildPathD, buildXTicks } from '@/utils/chart'
 import { loadSeasonJson } from '@/utils/season'
+import GoalControls from '@/components/GoalControls.vue'
+import StatsPanel from '@/components/StatsPanel.vue'
+import ImportModal from '@/components/modals/ImportModal.vue'
 
 // eslint-disable-next-line no-undef
 const emit = defineEmits(['win-points'])
@@ -321,10 +263,8 @@ const selectedGoalIndex = ref(-1)
 // Import/Export state
 const showImportModal = ref(false)
 const showPointsModal = ref(false)
-const importError = ref('')
 const autoSetSeasonFromImport = ref(true)
 const simplifyImport = ref(false)
-const fileInput = ref(null)
 
 // Settings
 const showSettingsModal = ref(false)
@@ -642,6 +582,11 @@ function applySelectedGoal() {
   }
 }
 
+function onSelectGoal(idx) {
+  selectedGoalIndex.value = Number(idx)
+  applySelectedGoal()
+}
+
 function addPointAtDate(dateStr, yVal) {
   if (!isSeasonValid.value) return
   if (!isValidDateStr(dateStr)) return
@@ -700,15 +645,25 @@ function exportCSV() {
 }
 
 function openImportModal() {
-  importError.value = ''
   showImportModal.value = true
 }
 
 function closeImportModal() {
   showImportModal.value = false
-  importError.value = ''
-  // reset input element so same file can be re-picked
-  if (fileInput.value) fileInput.value.value = ''
+}
+
+function onImportedRows(rows) {
+  // Replace points with imported data
+  if (Array.isArray(rows) && rows.length) {
+    points.splice(0, points.length, ...rows)
+    if (autoSetSeasonFromImport.value) {
+      const dates = rows.map(r => dateToMs(r.date))
+      const min = Math.min(...dates)
+      const max = Math.max(...dates)
+      seasonStart.value = msToDateInput(min)
+      seasonEnd.value = msToDateInput(max)
+    }
+  }
 }
 
 function openPointsModal() {
@@ -727,50 +682,6 @@ function closeSettingsModal() {
   showSettingsModal.value = false
 }
 
-function onFilePick(e) {
-  const f = e.target.files && e.target.files[0]
-  if (f) readCSVFile(f)
-}
-
-function onDropCSV(e) {
-  const f = e.dataTransfer.files && e.dataTransfer.files[0]
-  if (f) readCSVFile(f)
-}
-
-function readCSVFile(file) {
-  importError.value = ''
-  const reader = new FileReader()
-  reader.onload = () => {
-    try {
-      let text = reader.result?.toString() || ''
-      const imported = parseCSVText(text)
-      if (imported.length === 0) {
-        throw new Error('No valid rows found. Expected columns: date,y (YYYY-MM-DD, numeric y).')
-      }
-      // Optionally simplify consecutive duplicates (keep first of each run)
-      const simplified = simplifyImport.value
-        ? imported.filter((row, idx, arr) => idx === 0 || row.y !== arr[idx - 1].y)
-        : imported
-      // Replace points with imported (possibly simplified) data only
-      points.splice(0, points.length, ...simplified)
-      // Optionally adjust season to imported min/max
-      if (autoSetSeasonFromImport.value) {
-        const dates = imported.map(r => dateToMs(r.date))
-        const min = Math.min(...dates)
-        const max = Math.max(...dates)
-        seasonStart.value = msToDateInput(min)
-        seasonEnd.value = msToDateInput(max)
-      }
-      closeImportModal()
-    } catch (err) {
-      importError.value = err?.message || 'Failed to parse CSV.'
-    }
-  }
-  reader.onerror = () => {
-    importError.value = 'Unable to read file.'
-  }
-reader.readAsText(file)
-}
 
 
 // (Removed per design) newDate is managed by parent when adding custom points.
@@ -779,6 +690,7 @@ reader.readAsText(file)
 // eslint-disable-next-line no-undef
 defineExpose({
   addWinPoints,
+  incrementWinPoints,
   addPointAtDate,
   setGoalWinPoints,
   getGoalWinPoints,
@@ -830,8 +742,8 @@ onMounted(async () => {
 })
 
 // Expose helper to set today's win points to a specific value (replace, not add)
-function addWinPoints(increment) {
-  const val = Number(increment)
+function addWinPoints(value) {
+  const val = Number(value)
   // Allow setting to 0; only guard against non-finite inputs
   if (!isFinite(val)) return
   const todayStr = formatDate(new Date())
@@ -843,6 +755,20 @@ function addWinPoints(increment) {
   } else {
     // No point for today yet; create one with the provided value
     points.push({ date: todayStr, y: val })
+  }
+}
+
+// Expose helper to add to today's win points cumulatively
+function incrementWinPoints(increment) {
+  const inc = Number(increment)
+  if (!isFinite(inc)) return
+  const todayStr = formatDate(new Date())
+  const idxToday = points.findIndex(p => dateToMs(p.date) === dateToMs(todayStr))
+  if (idxToday !== -1) {
+    const current = Number(points[idxToday].y) || 0
+    points[idxToday] = { date: todayStr, y: current + inc }
+  } else {
+    points.push({ date: todayStr, y: inc })
   }
 }
 

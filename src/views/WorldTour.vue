@@ -107,7 +107,10 @@ methods: {
     },
     onQuickAdd(inc) {
       const graph = this.$refs.graphRef
-      if (graph && typeof graph.addWinPoints === 'function') {
+      if (graph && typeof graph.incrementWinPoints === 'function') {
+        graph.incrementWinPoints(inc)
+      } else if (graph && typeof graph.addWinPoints === 'function') {
+        // Fallback: approximate cumulative by reading and setting (if available in future)
         graph.addWinPoints(inc)
       }
     },
