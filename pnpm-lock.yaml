@@ -69,9 +69,6 @@ importers:
       vitest:
         specifier: ^1.6.0
         version: 1.6.1(@types/node@24.2.1)(terser@5.43.1)
-      wrangler:
-        specifier: ^4.35.0
-        version: 4.35.0
 
 packages:
 
