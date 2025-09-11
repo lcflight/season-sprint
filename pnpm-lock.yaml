@@ -8,6 +8,12 @@ importers:
 
   .:
     dependencies:
+      '@clerk/themes':
+        specifier: ^2.4.18
+        version: 2.4.18
+      '@clerk/vue':
+        specifier: ^1.13.0
+        version: 1.13.0(vue@3.5.18)
       axios:
         specifier: ^1.11.0
         version: 1.11.0
@@ -606,6 +612,32 @@ packages:
   '@babel/types@7.28.2':
     resolution: {integrity: sha512-ruv7Ae4J5dUYULmeXw1gmb7rYRz57OWCPM57pHojnLq/3Z1CK2lNSLTCVjxVk1F/TZHwOZZrOWi0ur95BbLxNQ==}
     engines: {node: '>=6.9.0'}
+
+  '@clerk/shared@3.24.2':
+    resolution: {integrity: sha512-gGnB08PWdM6gHVhlyrQ32xwWt/bIyg8nQhrxUCnNSf/xlPC2mFUtx24JYLsFRjbIGg/uA3z2qVnllBMkxejIDA==}
+    engines: {node: '>=18.17.0'}
+    peerDependencies:
+      react: ^18.0.0 || ^19.0.0 || ^19.0.0-0
+      react-dom: ^18.0.0 || ^19.0.0 || ^19.0.0-0
+    peerDependenciesMeta:
+      react:
+        optional: true
+      react-dom:
+        optional: true
+
+  '@clerk/themes@2.4.18':
+    resolution: {integrity: sha512-Hrfm5/Nr1ZL+Jg3oRL9FEaFIt+AYO82znd78CBeeKdlYxNKHbihA2xydLmaoj08SX6cmfbf7snnJN6DW3UCqEQ==}
+    engines: {node: '>=18.17.0'}
+
+  '@clerk/types@4.85.0':
+    resolution: {integrity: sha512-0s7KZbWpX4e9/CHl29sYGGBUBbZa7qlXp74OaaXfm1WTzYGiOOTyyE54j2WTz91+TZxIZZu5UA5rfn9qc79hYA==}
+    engines: {node: '>=18.17.0'}
+
+  '@clerk/vue@1.13.0':
+    resolution: {integrity: sha512-ZEUKey7hmsbSvjPpAeZCpI+fotnDxCrUElio5cZPP2KT0V3aZPXf9PhhX0eWcW9q56y4pWLZu1MN0dh89/kfNw==}
+    engines: {node: '>=18.17.0'}
+    peerDependencies:
+      vue: ^3.2.0
 
   '@discoveryjs/json-ext@0.5.7':
     resolution: {integrity: sha512-dBVuXR082gk3jsFp7Rd/JI4kytwGHecnCoTtXFb7DB6CNHp4rg5k1bhg0nWdLGLnOV71lmDzGQaLMy8iPLY0pw==}
@@ -2003,6 +2035,10 @@ packages:
     resolution: {integrity: sha512-g7nH6P6dyDioJogAAGprGpCtVImJhpPk/roCzdb3fIh61/s/nPsfR6onyMwkCAR/OlC3yBC0lESvUoQEAssIrw==}
     engines: {node: '>= 0.8'}
 
+  dequal@2.0.3:
+    resolution: {integrity: sha512-0je+qPKHEMohvfRTCEo3CrPG6cAzAYgmzKyxRiYSSDkS6eGJdyVJm7WaYA5ECaAD9wLB2T4EEeymA5aFVcYXCA==}
+    engines: {node: '>=6'}
+
   destroy@1.2.0:
     resolution: {integrity: sha512-2sJGJTaXIIaR1w4iJSNoN0hnMY7Gpc/n8D4qSCJw8QqFWXf7cuAgnEHxBpweaVcPevC2l3KpjYCx3NypQQgaJg==}
     engines: {node: '>= 0.8', npm: 1.2.8000 || >= 1.4.16}
@@ -2721,6 +2757,10 @@ packages:
 
   joi@17.13.3:
     resolution: {integrity: sha512-otDA4ldcIx+ZXsKHWmp0YizCweVRZG96J10b0FevjfuncLO1oX59THoAmHkNubYJ+9gWsYsp5k8v4ib6oDv1fA==}
+
+  js-cookie@3.0.5:
+    resolution: {integrity: sha512-cEiJEAEoIbWfCZYKWhVwFuvPX1gETRYPw6LlaTKoxD3s2AkXzkCjnp6h0V77ozyqj0jakteJ4YqDJT830+lVGw==}
+    engines: {node: '>=14'}
 
   js-message@1.0.7:
     resolution: {integrity: sha512-efJLHhLjIyKRewNS9EGZ4UpI8NguuL6fKkhRxVuMmrGV2xN/0APGdQYwLFky5w9naebSZ0OwAGp0G6/2Cg90rA==}
@@ -3881,6 +3921,11 @@ packages:
     engines: {node: '>=10.13.0'}
     hasBin: true
 
+  swr@2.3.4:
+    resolution: {integrity: sha512-bYd2lrhc+VarcpkgWclcUi92wYCpOgMws9Sd1hG1ntAu0NEy+14CbotuFjshBU2kt9rYj9TSmDcybpxpeTU1fg==}
+    peerDependencies:
+      react: ^16.11.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
+
   table@6.9.0:
     resolution: {integrity: sha512-9kY+CygyYM6j02t5YFHbNz2FN5QmYGv9zAjVp4lCDjlCw7amdckXlEt/bjMhUIfj4ThGRE4gCUH5+yGnNuPo5A==}
     engines: {node: '>=10.0.0'}
@@ -4024,6 +4069,11 @@ packages:
 
   uri-js@4.4.1:
     resolution: {integrity: sha512-7rKUyy33Q1yc98pQ1DAmLtwX109F7TIfWlW1Ydo8Wl1ii1SeHieeh0HHfPeL2fMXK6z0s8ecKs9frCuLJvndBg==}
+
+  use-sync-external-store@1.5.0:
+    resolution: {integrity: sha512-Rb46I4cGGVBmjamjphe8L/UnvJD+uPPtTkNvX5mZgqdbavhI4EbgIWJiIHXJ8bc/i9EQGPRh4DwEURJ552Do0A==}
+    peerDependencies:
+      react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
 
   util-deprecate@1.0.2:
     resolution: {integrity: sha512-EPD5q1uXyFxJpCrLnCc1nHnq3gOa6DZBocAIiI2TaSCA7VCJ1UJDMagCzIkXNsUYfD1daK//LTEQ8xiIbrHtcw==}
@@ -5072,6 +5122,33 @@ snapshots:
     dependencies:
       '@babel/helper-string-parser': 7.27.1
       '@babel/helper-validator-identifier': 7.27.1
+
+  '@clerk/shared@3.24.2':
+    dependencies:
+      '@clerk/types': 4.85.0
+      dequal: 2.0.3
+      glob-to-regexp: 0.4.1
+      js-cookie: 3.0.5
+      std-env: 3.9.0
+      swr: 2.3.4
+
+  '@clerk/themes@2.4.18':
+    dependencies:
+      '@clerk/types': 4.85.0
+      tslib: 2.8.1
+
+  '@clerk/types@4.85.0':
+    dependencies:
+      csstype: 3.1.3
+
+  '@clerk/vue@1.13.0(vue@3.5.18)':
+    dependencies:
+      '@clerk/shared': 3.24.2
+      '@clerk/types': 4.85.0
+      vue: 3.5.18
+    transitivePeerDependencies:
+      - react
+      - react-dom
 
   '@discoveryjs/json-ext@0.5.7': {}
 
@@ -6603,6 +6680,8 @@ snapshots:
 
   depd@2.0.0: {}
 
+  dequal@2.0.3: {}
+
   destroy@1.2.0: {}
 
   detect-node@2.1.0: {}
@@ -7404,6 +7483,8 @@ snapshots:
       '@sideway/address': 4.1.5
       '@sideway/formula': 3.0.1
       '@sideway/pinpoint': 2.0.0
+
+  js-cookie@3.0.5: {}
 
   js-message@1.0.7: {}
 
@@ -8565,6 +8646,11 @@ snapshots:
       picocolors: 1.1.1
       stable: 0.1.8
 
+  swr@2.3.4:
+    dependencies:
+      dequal: 2.0.3
+      use-sync-external-store: 1.5.0
+
   table@6.9.0:
     dependencies:
       ajv: 8.17.1
@@ -8677,6 +8763,8 @@ snapshots:
   uri-js@4.4.1:
     dependencies:
       punycode: 2.3.1
+
+  use-sync-external-store@1.5.0: {}
 
   util-deprecate@1.0.2: {}
 

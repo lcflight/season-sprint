@@ -1,18 +1,19 @@
+<script setup>
+import { RedirectToSignIn, SignedIn, SignedOut, UserButton } from "@clerk/vue";
+</script>
+
 <template>
   <div class="header-bar">
     <div class="brand">
       <span class="brand-accent">THE</span> FINALS | Season Sprint
     </div>
-    <div class="actions">
-      <router-link
-        to="/world-tour"
-        class="nav-btn"
-        exact-active-class="is-active"
-        >World Tour</router-link
-      >
-      <router-link to="/ranked" class="nav-btn" exact-active-class="is-active"
-        >Ranked</router-link
-      >
+    <div class="user-actions">
+      <SignedIn>
+        <UserButton />
+      </SignedIn>
+      <SignedOut>
+        <RedirectToSignIn />
+      </SignedOut>
     </div>
   </div>
 </template>
