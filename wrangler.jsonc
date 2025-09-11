@@ -1,0 +1,9 @@
+{
+	"d1_databases": [
+		{
+			"binding": "season_sprint_dev",
+			"database_name": "season-sprint-dev",
+			"database_id": "932dddd1-4215-46f0-a697-fcf6fa537dd2"
+		}
+	]
+}
