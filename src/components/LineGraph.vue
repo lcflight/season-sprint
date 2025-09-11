@@ -475,7 +475,17 @@ const isSeasonValid = computed(
 const xDomain = computed(() =>
   calcXDomain(seasonStart.value, seasonEnd.value, today)
 );
-const yDomain = computed(() => calcYDomain(points, goalWinPoints.value));
+
+// Filter raw points to the current season (x) domain for display/scaling
+const pointsInSeason = computed(() => {
+  const [min, max] = xDomain.value;
+  return points.filter((p) => {
+    const ms = dateToMs(p.date);
+    return isFinite(ms) && ms >= min && ms <= max;
+  });
+});
+
+const yDomain = computed(() => calcYDomain(pointsInSeason.value, goalWinPoints.value));
 
 // Scales
 const scaleX = (dateStr) =>
@@ -487,8 +497,17 @@ const sortedPoints = computed(() =>
   [...points].sort((a, b) => dateToMs(a.date) - dateToMs(b.date))
 );
 
+// Points within season, but sorted by date for path rendering
+const sortedPointsInSeason = computed(() => {
+  const [min, max] = xDomain.value;
+  return sortedPoints.value.filter((p) => {
+    const ms = dateToMs(p.date);
+    return ms >= min && ms <= max;
+  });
+});
+
 const scaledPoints = computed(() =>
-  sortedPoints.value.map((p) => ({ x: scaleX(p.date), y: scaleY(p.y) }))
+  sortedPointsInSeason.value.map((p) => ({ x: scaleX(p.date), y: scaleY(p.y) }))
 );
 
 const pathD = computed(() => buildPathD(scaledPoints.value));
@@ -709,8 +728,8 @@ const pathGoalFromZero = computed(() => {
 });
 
 const pathGoalFromLast = computed(() => {
-  if (!isSeasonValid.value || sortedPoints.value.length === 0) return "";
-  const last = sortedPoints.value[sortedPoints.value.length - 1];
+  if (!isSeasonValid.value || sortedPointsInSeason.value.length === 0) return "";
+  const last = sortedPointsInSeason.value[sortedPointsInSeason.value.length - 1];
   const lastMs = dateToMs(last.date);
   if (lastMs >= xDomain.value[1]) return "";
   const x1 = scaleX(last.date);
@@ -737,14 +756,14 @@ const requiredPerDayZero = computed(() => {
 
 const isFromLastDefined = computed(
   () =>
-    sortedPoints.value.length > 0 &&
-    dateToMs(sortedPoints.value[sortedPoints.value.length - 1].date) <
+    sortedPointsInSeason.value.length > 0 &&
+    dateToMs(sortedPointsInSeason.value[sortedPointsInSeason.value.length - 1].date) <
       xDomain.value[1]
 );
 
 const requiredPerDayFromLast = computed(() => {
   if (!isFromLastDefined.value) return 0;
-  const last = sortedPoints.value[sortedPoints.value.length - 1];
+  const last = sortedPointsInSeason.value[sortedPointsInSeason.value.length - 1];
   const remaining = goalWinPoints.value - last.y;
   const endMs = xDomain.value[1];
   const left = Math.max(
