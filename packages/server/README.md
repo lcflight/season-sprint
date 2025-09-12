@@ -1,21 +1,16 @@
-```txt
-npm install
-npm run dev
-```
+# server
 
-```txt
-npm run deploy
-```
+## Make a Database Migration
 
-[For generating/synchronizing types based on your Worker configuration run](https://developers.cloudflare.com/workers/wrangler/commands/#types):
+Modify your prisma/schema.prisma file, then:
 
-```txt
-npm run cf-typegen
-```
-
-Pass the `CloudflareBindings` as generics when instantiation `Hono`:
-
-```ts
-// src/index.ts
-const app = new Hono<{ Bindings: CloudflareBindings }>()
+```bash
+pnpm wrangler d1 migrations create season-sprint-dev the_migration_name
+pnpm prisma migrate diff \
+    --from-url="file:.wrangler/state/v3/d1/miniflare-D1DataqbaseObject/the_file_name.sqlite" \
+    --to-schema-datamodel ./prisma/schema.prisma \
+    --script \
+    --output migrations/1234_the_migration_name.sql
+pnpm wrangler d1 migrations apply season-sprint-dev --local
+pnpm wrangler d1 migrations apply season-sprint-dev --remote
 ```
