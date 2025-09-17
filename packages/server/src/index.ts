@@ -20,8 +20,10 @@ export interface Env {
 
 const app = new Hono<Env>();
 
-app.use("*", async (c) => {
+app.use("*", async (c, next) => {
   c.set("db", new DbService(c.env.D1));
+
+  return next();
 });
 
 app.get("/", (c) => {
