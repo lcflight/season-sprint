@@ -5,6 +5,7 @@
   "scripts": {
     "serve": "vue-cli-service serve",
     "build": "vue-cli-service build",
+    "dev": "pnpm serve",
     "lint": "vue-cli-service lint",
     "test": "vitest run",
     "scrape:finals": "node scripts/scrape-finals-seasons.mjs"
