@@ -510,7 +510,22 @@ const scaledPoints = computed(() =>
   sortedPointsInSeason.value.map((p) => ({ x: scaleX(p.date), y: scaleY(p.y) }))
 );
 
-const pathD = computed(() => buildPathD(scaledPoints.value));
+// Build path points with a synthetic baseline at season start (y=0) when
+// the first in-season point occurs after the season start. This extends the
+// blue line visually back to day zero without adding a visible point.
+const scaledPathPoints = computed(() => {
+  const sp = scaledPoints.value;
+  if (!sp.length) return sp;
+  const seasonStartMs = dateToMs(seasonStart.value);
+  const firstMs = dateToMs(sortedPointsInSeason.value[0].date);
+  if (isFinite(seasonStartMs) && isFinite(firstMs) && firstMs > seasonStartMs) {
+    const baseline = { x: scaleX(seasonStart.value), y: scaleY(0) };
+    return [baseline, ...sp];
+  }
+  return sp;
+});
+
+const pathD = computed(() => buildPathD(scaledPathPoints.value));
 
 // Current win points (latest y)
 const currentWinPoints = computed(() => {
@@ -1007,14 +1022,33 @@ function incrementWinPoints(increment) {
   const inc = Number(increment);
   if (!isFinite(inc)) return;
   const todayStr = formatDate(new Date());
+  const todayMs = dateToMs(todayStr);
   const idxToday = points.findIndex(
-    (p) => dateToMs(p.date) === dateToMs(todayStr)
+    (p) => dateToMs(p.date) === todayMs
   );
+
+  // Determine base value to increment from:
+  // - If today's point exists, use its current value
+  // - Otherwise, use the most recent prior point's value (carry-over)
+  // - If no prior points, use 0
+  let base = 0;
   if (idxToday !== -1) {
-    const current = Number(points[idxToday].y) || 0;
-    points[idxToday] = { date: todayStr, y: current + inc };
+    base = Number(points[idxToday].y) || 0;
   } else {
-    points.push({ date: todayStr, y: inc });
+    // Find the latest point on or before today
+    let last = null;
+    for (const p of sortedPoints.value) {
+      const ms = dateToMs(p.date);
+      if (isFinite(ms) && ms <= todayMs) last = p;
+    }
+    base = last ? Number(last.y) || 0 : 0;
+  }
+
+  const newVal = base + inc;
+  if (idxToday !== -1) {
+    points[idxToday] = { date: todayStr, y: newVal };
+  } else {
+    points.push({ date: todayStr, y: newVal });
   }
 }
 </script>
