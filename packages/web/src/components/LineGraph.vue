@@ -118,8 +118,8 @@
         <section class="modal-body">
           <p v-if="!points.length" class="muted">No points yet.</p>
           <ul class="points-ul" v-else>
-            <li v-for="(pt, i) in points" :key="i">
-              <template v-if="editIndex === i">
+            <li v-for="(pt, i) in sortedPointsReverse" :key="i">
+              <template v-if="editIndex === getOriginalIndex(pt)">
                 <div class="edit-row">
                   <label>
                     date
@@ -138,7 +138,7 @@
                 <div class="row-actions">
                   <button
                     class="btn-primary"
-                    @click="saveEdit(i)"
+                    @click="saveEdit(getOriginalIndex(pt))"
                     :disabled="!canSaveEdit"
                   >
                     save
@@ -149,8 +149,8 @@
               <template v-else>
                 <span>({{ pt.date }} , {{ pt.y }} pts)</span>
                 <div class="row-actions">
-                  <button class="btn-primary" @click="openEdit(i)">edit</button>
-                  <button class="btn-ghost" @click="removePoint(i)">
+                  <button class="btn-primary" @click="openEdit(getOriginalIndex(pt))">edit</button>
+                  <button class="btn-ghost" @click="removePoint(getOriginalIndex(pt))">
                     remove
                   </button>
                 </div>
@@ -495,6 +495,11 @@ const scaleY = (y) => scaleYFactory(yDomain.value, height, padding)(y);
 // Derived
 const sortedPoints = computed(() =>
   [...points].sort((a, b) => dateToMs(a.date) - dateToMs(b.date))
+);
+
+// Points sorted in reverse order for display (newest first)
+const sortedPointsReverse = computed(() =>
+  [...points].sort((a, b) => dateToMs(b.date) - dateToMs(a.date))
 );
 
 // Points within season, but sorted by date for path rendering
@@ -856,6 +861,10 @@ function saveEdit(index) {
 
 function cancelEdit() {
   editIndex.value = -1;
+}
+
+function getOriginalIndex(point) {
+  return points.findIndex(p => p.date === point.date && p.y === point.y);
 }
 
 function clearPoints() {
