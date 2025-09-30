@@ -15,6 +15,7 @@
 <script>
 import HeaderBar from "./components/HeaderBar.vue";
 import { loadSeasonJson } from "@/utils/season";
+import { getRecords } from "@/services/api";
 
 export default {
   name: "App",
@@ -22,6 +23,15 @@ export default {
     HeaderBar,
   },
   data() {
+    getRecords()
+      .then((records) => {
+        console.log("Records loaded");
+        console.log({ records });
+      })
+      .catch((error) => {
+        console.error("Error loading records:", error);
+      });
+
     return { seasonInfo: null };
   },
   computed: {
@@ -103,7 +113,8 @@ button:disabled,
   background: linear-gradient(180deg, #ffd400 0%, #ffea00 100%);
   color: #0b0d12;
   border-color: var(--ring-strong);
-  box-shadow: 0 0 0 1px rgba(255,255,255,0.06), 0 10px 30px rgba(255, 212, 0, 0.35);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06),
+    0 10px 30px rgba(255, 212, 0, 0.35);
 }
 .btn-primary:hover {
   filter: saturate(1.05);

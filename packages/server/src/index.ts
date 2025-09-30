@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { DbService } from "./services/db";
 import { clerkMiddleware, getAuth } from "@hono/clerk-auth";
+import { cors } from "hono/cors";
 
 interface Bindings {
   D1: D1Database;
@@ -19,6 +20,8 @@ export interface Env {
 }
 
 const app = new Hono<Env>();
+
+app.use("*", cors());
 
 app.use("*", async (c, next) => {
   c.set("db", new DbService(c.env.D1));
