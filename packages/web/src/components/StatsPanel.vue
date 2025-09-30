@@ -2,12 +2,23 @@
   <div class="stats">
     <div class="stat stat-zero">
       <div class="stat-label">Required/day (zero → goal)</div>
+      <div class="sample-row" aria-hidden="true">
+        <span class="sample-line sample-zero"></span>
+      </div>
       <div class="stat-value">{{ requiredPerDayZero.toFixed(2) }}</div>
     </div>
     <div class="stat stat-from-last" :class="{ active: isFromLastDefined }">
       <div class="stat-label">Required/day (last → goal)</div>
+      <div class="sample-row" aria-hidden="true">
+        <span
+          class="sample-line sample-from-last"
+          :class="{ inactive: !isFromLastDefined }"
+        ></span>
+      </div>
       <div class="stat-value">
-        <template v-if="isFromLastDefined">{{ requiredPerDayFromLast.toFixed(2) }}</template>
+        <template v-if="isFromLastDefined">{{
+          requiredPerDayFromLast.toFixed(2)
+        }}</template>
         <template v-else>—</template>
       </div>
     </div>
@@ -20,7 +31,7 @@ defineProps({
   requiredPerDayZero: { type: Number, required: true },
   requiredPerDayFromLast: { type: Number, required: true },
   isFromLastDefined: { type: Boolean, required: true },
-})
+});
 </script>
 
 <style scoped>
@@ -37,7 +48,8 @@ defineProps({
   border-radius: 10px;
   padding: 12px;
   background: color-mix(in oklab, var(--surface) 85%, black);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02), 0 6px 24px rgba(0,0,0,0.35);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02),
+    0 6px 24px rgba(0, 0, 0, 0.35);
 }
 
 /* Secondary dashed outlines to visually match projection lines */
@@ -74,5 +86,29 @@ defineProps({
   color: var(--text-strong);
   text-shadow: 0 0 20px color-mix(in oklab, var(--primary) 35%, transparent);
 }
+.sample-row {
+  margin: 6px 0 4px;
+}
+.sample-line {
+  display: block;
+  width: 100%;
+  height: 0;
+  border-top-style: dashed;
+  border-top-width: 3px; /* match graph line thickness more closely */
+  border-radius: 999px;
+  opacity: 0.8;
+}
+.sample-zero {
+  border-top-color: color-mix(
+    in oklab,
+    var(--primary) 45%,
+    #9ca3af
+  ); /* same as .proj */
+}
+.sample-from-last {
+  border-top-color: var(--success); /* same as .proj-from-last */
+}
+.sample-from-last.inactive {
+  opacity: 0.4;
+}
 </style>
-
