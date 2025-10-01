@@ -3,6 +3,9 @@ import { DbService } from "./services/db";
 import { clerkMiddleware, getAuth } from "@hono/clerk-auth";
 import { cors } from "hono/cors";
 import type { Record } from "./types";
+import * as dotenv from "dotenv";
+
+dotenv.config();
 
 interface Bindings {
   D1: D1Database;
@@ -44,6 +47,9 @@ app.use("*", async (c, next) => {
   const authFromHeader = c.req.header("Authorization");
 
   if (authFromHeader === constants.DEV_AUTH_TOKEN) {
+    c.set("auth", {
+      userId: "dev_user_id",
+    });
     return next();
   }
 
@@ -71,9 +77,16 @@ app.post("/me/records", async (c) => {
 
   const { date, winPoints } = await c.req.json<Record>();
 
+  if (date === undefined || winPoints === undefined) {
+    return c.text("Missing data", 400);
+  }
+
   await db.createRecord(userId, date, winPoints);
 
-  return c.json({ message: "Record created" });
+  return c.json({
+    message: "Record created",
+    missingData: { date: date, winPoints: winPoints },
+  });
 });
 
 export default app;

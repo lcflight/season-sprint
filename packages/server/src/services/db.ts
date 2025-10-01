@@ -24,6 +24,10 @@ export class DbService {
   }
 
   async createRecord(userId: string, date: Date, winPoints: number) {
+    console.log("Creating record for user", userId);
+    console.log("Date:", date);
+    console.log("Win Points:", winPoints);
+
     await this.prisma.record.create({
       data: {
         userId,
