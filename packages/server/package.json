@@ -9,6 +9,7 @@
     "lint": "eslint . --config eslint.config.ts"
   },
   "dependencies": {
+    "@clerk/clerk-sdk-node": "^5.1.6",
     "@hono/clerk-auth": "^3.0.3",
     "@prisma/adapter-d1": "^6.16.1",
     "@prisma/client": "^6.16.1",
