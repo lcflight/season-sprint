@@ -5,14 +5,14 @@
   "compatibility_date": "2025-09-11",
   "d1_databases": [
     {
-      "binding": "DB",
+      "binding": "D1",
       "database_name": "season-sprint-dev",
       "database_id": "932dddd1-4215-46f0-a697-fcf6fa537dd2"
     }
-  ]
-  // "compatibility_flags": [
-  //   "nodejs_compat"
-  // ],
+  ],
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
   // "vars": {
   //   "MY_VAR": "my-variable"
   // },

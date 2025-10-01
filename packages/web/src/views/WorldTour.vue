@@ -1,9 +1,14 @@
 <template>
-<section>
-  <div class="wt-layout">
-    <div class="wt-main">
-<LineGraph ref="graphRef" storageKey="world-tour" :goalOptions="thresholds" headerDisclaimer="Based on World Tour wiki thresholds." @win-points="onWinPoints"
->
+  <section>
+    <div class="wt-layout">
+      <div class="wt-main">
+        <LineGraph
+          ref="graphRef"
+          storageKey="world-tour"
+          :goalOptions="thresholds"
+          headerDisclaimer="Based on World Tour wiki thresholds."
+          @win-points="onWinPoints"
+        >
           <div class="rank-indicator">
             <div class="rank-header">
               <span class="rank-badge">{{ rankInfo.badge }}</span>
@@ -16,118 +21,147 @@
               <div class="labels">
                 <span>{{ rankInfo.currentFloor }} WP</span>
                 <span v-if="rankInfo.nextTarget !== null">
-                  Next rank: {{ rankInfo.nextBadge }} at {{ rankInfo.nextTarget }} WP • {{ toNext }} more WP needed
+                  Next rank: {{ rankInfo.nextBadge }} at
+                  {{ rankInfo.nextTarget }} WP • {{ toNext }} more WP needed
                 </span>
                 <span v-else>Max rank reached</span>
               </div>
             </div>
           </div>
-      </LineGraph>
-    </div>
-    <div class="wt-aside">
-      <PointsCheatsheet :values="quickAddValues" @quick-add="onQuickAdd" />
+        </LineGraph>
+      </div>
+      <div class="wt-aside">
+        <PointsCheatsheet :values="quickAddValues" @quick-add="onQuickAdd" />
 
-      <div class="custom-point">
-        <div class="cp-header">Set points</div>
-        <div class="cp-row">
-          <label class="toggle-row">
-            <input type="checkbox" v-model="useCustomDate" />
-            <span class="toggle-text">Use custom date</span>
-          </label>
-        </div>
-        <div class="cp-row" v-if="useCustomDate">
-          <input type="date" v-model="customDate" />
-          <input type="number" step="any" v-model.number="customY" placeholder="points" />
-          <button class="btn-primary" @click="addCustom" :disabled="!customDate || !isFinite(customY)">Add</button>
-        </div>
-        <div class="cp-row" v-else>
-          <input type="number" step="any" v-model.number="customY" placeholder="points" />
-          <button class="btn-primary" @click="addToday" :disabled="!isFinite(customY)">Add for today</button>
+        <div class="custom-point">
+          <div class="cp-header">Set points</div>
+          <div class="cp-row">
+            <label class="toggle-row">
+              <input type="checkbox" v-model="useCustomDate" />
+              <span class="toggle-text">Use custom date</span>
+            </label>
+          </div>
+          <div class="cp-row" v-if="useCustomDate">
+            <input type="date" v-model="customDate" />
+            <input
+              type="number"
+              step="any"
+              v-model.number="customY"
+              placeholder="points"
+            />
+            <button
+              class="btn-primary"
+              @click="addCustom"
+              :disabled="!customDate || !isFinite(customY)"
+            >
+              Add
+            </button>
+          </div>
+          <div class="cp-row" v-else>
+            <input
+              type="number"
+              step="any"
+              v-model.number="customY"
+              placeholder="points"
+            />
+            <button
+              class="btn-primary"
+              @click="addToday"
+              :disabled="!isFinite(customY)"
+            >
+              Add for today
+            </button>
+          </div>
         </div>
       </div>
     </div>
-  </div>
-
-</section>
+  </section>
 </template>
 <script>
-import LineGraph from '@/components/LineGraph.vue'
-import PointsCheatsheet from '@/components/PointsCheatsheet.vue'
-import WT_THRESHOLDS from '@/data/worldTourRanks.json'
+import LineGraph from "@/components/LineGraph.vue";
+import PointsCheatsheet from "@/components/PointsCheatsheet.vue";
+import WT_THRESHOLDS from "@/data/worldTourRanks.json";
 
 export default {
-  name: 'WorldTourView',
+  name: "WorldTourView",
   components: { LineGraph, PointsCheatsheet },
   data() {
-    return { 
+    return {
       winPoints: 0,
       quickAddValues: { round1: 2, round2: 6, finalLose: 14, finalWin: 25 },
       useCustomDate: false,
-      customDate: new Date().toISOString().slice(0,10),
+      customDate: new Date().toISOString().slice(0, 10),
       customY: 0,
-    }
+    };
   },
   computed: {
     thresholds() {
-      return WT_THRESHOLDS
+      return WT_THRESHOLDS;
     },
     rankInfo() {
-      const wp = Math.max(0, Math.floor(this.winPoints))
-      let prev = 0
+      const wp = Math.max(0, Math.floor(this.winPoints));
+      let prev = 0;
       for (let i = 0; i < this.thresholds.length; i++) {
-        const t = this.thresholds[i]
+        const t = this.thresholds[i];
         if (wp < t.points) {
           return {
-            badge: i > 0 ? this.thresholds[i - 1].badge : 'Unranked',
+            badge: i > 0 ? this.thresholds[i - 1].badge : "Unranked",
             currentFloor: prev,
             nextTarget: t.points,
             nextBadge: t.badge,
-          }
+          };
         }
-        prev = t.points
+        prev = t.points;
       }
       // At or beyond the top
-      const top = this.thresholds[this.thresholds.length - 1]
-      return { badge: top.badge, currentFloor: top.points, nextTarget: null, nextBadge: null }
+      const top = this.thresholds[this.thresholds.length - 1];
+      return {
+        badge: top.badge,
+        currentFloor: top.points,
+        nextTarget: null,
+        nextBadge: null,
+      };
     },
     toNext() {
-      return this.rankInfo.nextTarget === null ? 0 : Math.max(0, this.rankInfo.nextTarget - Math.floor(this.winPoints))
+      return this.rankInfo.nextTarget === null
+        ? 0
+        : Math.max(0, this.rankInfo.nextTarget - Math.floor(this.winPoints));
     },
     progressPct() {
-      const floor = this.rankInfo.currentFloor
-      const ceil = this.rankInfo.nextTarget ?? this.rankInfo.currentFloor
-      const span = Math.max(1, ceil - floor)
-      const clamped = Math.min(ceil, Math.max(floor, this.winPoints))
-      return ((clamped - floor) / span) * 100
-    }
+      const floor = this.rankInfo.currentFloor;
+      const ceil = this.rankInfo.nextTarget ?? this.rankInfo.currentFloor;
+      const span = Math.max(1, ceil - floor);
+      const clamped = Math.min(ceil, Math.max(floor, this.winPoints));
+      return ((clamped - floor) / span) * 100;
+    },
   },
-methods: {
+  methods: {
     onWinPoints(v) {
-      this.winPoints = Number(v) || 0
+      this.winPoints = Number(v) || 0;
     },
     onQuickAdd(inc) {
-      const graph = this.$refs.graphRef
-      if (graph && typeof graph.incrementWinPoints === 'function') {
-        graph.incrementWinPoints(inc)
-      } else if (graph && typeof graph.addWinPoints === 'function') {
+      const graph = this.$refs.graphRef;
+      if (graph && typeof graph.incrementWinPoints === "function") {
+        graph.incrementWinPoints(inc);
+      } else if (graph && typeof graph.addWinPoints === "function") {
         // Fallback: approximate cumulative by reading and setting (if available in future)
-        graph.addWinPoints(inc)
+        graph.addWinPoints(inc);
       }
     },
     addCustom() {
-      const graph = this.$refs.graphRef
-      if (graph && typeof graph.addPointAtDate === 'function') {
-        graph.addPointAtDate(this.customDate, this.customY)
+      const graph = this.$refs.graphRef;
+      if (graph && typeof graph.addPointAtDate === "function") {
+        graph.addPointAtDate(this.customDate, this.customY);
       }
     },
     addToday() {
-      const graph = this.$refs.graphRef
-      if (graph && typeof graph.addWinPoints === 'function') {
-        graph.addWinPoints(this.customY)
+      const graph = this.$refs.graphRef;
+      if (graph && typeof graph.addWinPoints === "function") {
+        graph.addWinPoints(this.customY);
       }
-    }
-  }
-}
+    },
+  },
+};
 </script>
 
 <style scoped>
@@ -146,9 +180,6 @@ methods: {
 
 .wt-main {
   min-width: 0;
-}
-
-.wt-aside {
 }
 
 .custom-point {
@@ -215,7 +246,11 @@ methods: {
 }
 .rank-progress .fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--primary), color-mix(in oklab, var(--accent) 50%, var(--primary)));
+  background: linear-gradient(
+    90deg,
+    var(--primary),
+    color-mix(in oklab, var(--accent) 50%, var(--primary))
+  );
 }
 .rank-progress .labels {
   display: flex;
@@ -230,4 +265,3 @@ methods: {
   color: var(--muted);
 }
 </style>
-
