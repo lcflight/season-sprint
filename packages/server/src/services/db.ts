@@ -31,6 +31,7 @@ export class DbService {
         },
       },
       select: {
+        id: true,
         date: true,
         winPoints: true,
       },
