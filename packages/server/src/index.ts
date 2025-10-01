@@ -4,6 +4,7 @@ import { clerkMiddleware, getAuth } from "@hono/clerk-auth";
 import { cors } from "hono/cors";
 import type { Record } from "./types";
 import getEmail from "./getEmail";
+import { parseDate } from "./utils/parseDate";
 
 
 interface Bindings {
@@ -84,7 +85,7 @@ app.get("/me/records", async (c) => {
 });
 
 app.post("/me/records", async (c) => {
-const { userId } = c.get("auth");
+  const { userId } = c.get("auth");
   const email = await getEmail(userId, c.env);
 
   const db = c.get("db");
@@ -98,6 +99,38 @@ const { userId } = c.get("auth");
     userEmail: email,
     userId,
   });
+});
+
+// Update a record that belongs to the authenticated user
+app.put("/me/records/:id", async (c) => {
+  const { userId } = c.get("auth");
+  const db = c.get("db");
+  const id = c.req.param("id");
+
+  let body: unknown;
+  try {
+    body = await c.req.json<Partial<{ date: string | Date; winPoints: number }>>();
+  } catch {
+    body = {};
+  }
+
+  const maybeDate = (body as { date?: string | Date }).date;
+  const maybeWinPoints = (body as { winPoints?: unknown }).winPoints;
+
+  const date = parseDate(maybeDate);
+  const winPoints = typeof maybeWinPoints === "number" ? maybeWinPoints : undefined;
+
+  if (date === undefined && winPoints === undefined) {
+    return c.text("No fields to update", 400);
+  }
+
+  const updated = await db.updateRecordIfOwner(userId, id, { date, winPoints });
+  if (!updated) {
+    // Hide whether the record exists to avoid leaking info
+    return c.text("Not found", 404);
+  }
+
+  return c.json(updated);
 });
 
 export default app;

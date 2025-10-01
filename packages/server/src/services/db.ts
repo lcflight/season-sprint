@@ -61,4 +61,37 @@ export class DbService {
       },
     });
   }
+
+  async updateRecordIfOwner(
+    clerkUserId: string,
+    recordId: string,
+    updates: { date?: Date; winPoints?: number }
+  ) {
+    // Verify ownership by joining to the related User via clerkUserId
+    const existing = await this.prisma.record.findFirst({
+      where: {
+        id: recordId,
+        User: { clerkUserId },
+      },
+      select: { id: true },
+    });
+
+    if (!existing) {
+      return null;
+    }
+
+    const data: { date?: Date; winPoints?: number } = {};
+    if (updates.date instanceof Date) {
+      data.date = updates.date;
+    }
+    if (typeof updates.winPoints === "number") {
+      data.winPoints = updates.winPoints;
+    }
+
+    return await this.prisma.record.update({
+      where: { id: recordId },
+      data,
+      select: { id: true, date: true, winPoints: true },
+    });
+  }
 }
