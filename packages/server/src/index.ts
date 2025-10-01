@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { DbService } from "./services/db";
 import { clerkMiddleware, getAuth } from "@hono/clerk-auth";
 import { cors } from "hono/cors";
+import type { Record } from "./types";
 
 interface Bindings {
   D1: D1Database;
@@ -18,6 +19,10 @@ export interface Env {
   Bindings: Bindings;
   Variables: Variables;
 }
+
+const constants = {
+  DEV_AUTH_TOKEN: process.env.DEV_AUTH_TOKEN,
+};
 
 const app = new Hono<Env>();
 
@@ -36,6 +41,12 @@ app.get("/", (c) => {
 app.use("*", clerkMiddleware());
 
 app.use("*", async (c, next) => {
+  const authFromHeader = c.req.header("Authorization");
+
+  if (authFromHeader === constants.DEV_AUTH_TOKEN) {
+    return next();
+  }
+
   const auth = getAuth(c);
 
   if (!auth?.isAuthenticated) {
@@ -52,6 +63,17 @@ app.get("/me/records", (c) => {
   const db = c.get("db");
 
   return c.json(db.getUserRecords(userId));
+});
+
+app.post("/me/records", async (c) => {
+  const { userId } = c.get("auth");
+  const db = c.get("db");
+
+  const { date, winPoints } = await c.req.json<Record>();
+
+  await db.createRecord(userId, date, winPoints);
+
+  return c.json({ message: "Record created" });
 });
 
 export default app;

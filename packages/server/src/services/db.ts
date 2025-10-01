@@ -22,4 +22,14 @@ export class DbService {
       },
     });
   }
+
+  async createRecord(userId: string, date: Date, winPoints: number) {
+    await this.prisma.record.create({
+      data: {
+        userId,
+        date,
+        winPoints,
+      },
+    });
+  }
 }
