@@ -149,8 +149,16 @@
               <template v-else>
                 <span>({{ pt.date }} , {{ pt.y }} pts)</span>
                 <div class="row-actions">
-                  <button class="btn-primary" @click="openEdit(getOriginalIndex(pt))">edit</button>
-                  <button class="btn-ghost" @click="removePoint(getOriginalIndex(pt))">
+                  <button
+                    class="btn-primary"
+                    @click="openEdit(getOriginalIndex(pt))"
+                  >
+                    edit
+                  </button>
+                  <button
+                    class="btn-ghost"
+                    @click="removePoint(getOriginalIndex(pt))"
+                  >
                     remove
                   </button>
                 </div>
@@ -485,7 +493,9 @@ const pointsInSeason = computed(() => {
   });
 });
 
-const yDomain = computed(() => calcYDomain(pointsInSeason.value, goalWinPoints.value));
+const yDomain = computed(() =>
+  calcYDomain(pointsInSeason.value, goalWinPoints.value)
+);
 
 // Scales
 const scaleX = (dateStr) =>
@@ -748,8 +758,10 @@ const pathGoalFromZero = computed(() => {
 });
 
 const pathGoalFromLast = computed(() => {
-  if (!isSeasonValid.value || sortedPointsInSeason.value.length === 0) return "";
-  const last = sortedPointsInSeason.value[sortedPointsInSeason.value.length - 1];
+  if (!isSeasonValid.value || sortedPointsInSeason.value.length === 0)
+    return "";
+  const last =
+    sortedPointsInSeason.value[sortedPointsInSeason.value.length - 1];
   const lastMs = dateToMs(last.date);
   if (lastMs >= xDomain.value[1]) return "";
   const x1 = scaleX(last.date);
@@ -777,13 +789,15 @@ const requiredPerDayZero = computed(() => {
 const isFromLastDefined = computed(
   () =>
     sortedPointsInSeason.value.length > 0 &&
-    dateToMs(sortedPointsInSeason.value[sortedPointsInSeason.value.length - 1].date) <
-      xDomain.value[1]
+    dateToMs(
+      sortedPointsInSeason.value[sortedPointsInSeason.value.length - 1].date
+    ) < xDomain.value[1]
 );
 
 const requiredPerDayFromLast = computed(() => {
   if (!isFromLastDefined.value) return 0;
-  const last = sortedPointsInSeason.value[sortedPointsInSeason.value.length - 1];
+  const last =
+    sortedPointsInSeason.value[sortedPointsInSeason.value.length - 1];
   const remaining = goalWinPoints.value - last.y;
   const endMs = xDomain.value[1];
   const left = Math.max(
@@ -864,7 +878,7 @@ function cancelEdit() {
 }
 
 function getOriginalIndex(point) {
-  return points.findIndex(p => p.date === point.date && p.y === point.y);
+  return points.findIndex((p) => p.date === point.date && p.y === point.y);
 }
 
 function clearPoints() {
@@ -1032,9 +1046,7 @@ function incrementWinPoints(increment) {
   if (!isFinite(inc)) return;
   const todayStr = formatDate(new Date());
   const todayMs = dateToMs(todayStr);
-  const idxToday = points.findIndex(
-    (p) => dateToMs(p.date) === todayMs
-  );
+  const idxToday = points.findIndex((p) => dateToMs(p.date) === todayMs);
 
   // Determine base value to increment from:
   // - If today's point exists, use its current value
