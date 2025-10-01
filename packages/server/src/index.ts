@@ -6,7 +6,6 @@ import type { Record } from "./types";
 import getEmail from "./getEmail";
 import { parseDate } from "./utils/parseDate";
 
-
 interface Bindings {
   D1: D1Database;
   DEV_AUTH_TOKEN: string;
@@ -26,7 +25,6 @@ export interface Env {
   Bindings: Bindings;
   Variables: Variables;
 }
-
 
 const app = new Hono<Env>();
 
@@ -50,6 +48,8 @@ app.use("*", async (c, next) => {
 });
 
 app.get("/", (c) => {
+  const auth = getAuth(c);
+  console.log({ auth });
   return c.text("Hello Hono!");
 });
 
@@ -109,7 +109,9 @@ app.put("/me/records/:id", async (c) => {
 
   let body: unknown;
   try {
-    body = await c.req.json<Partial<{ date: string | Date; winPoints: number }>>();
+    body = await c.req.json<
+      Partial<{ date: string | Date; winPoints: number }>
+    >();
   } catch {
     body = {};
   }
@@ -118,7 +120,8 @@ app.put("/me/records/:id", async (c) => {
   const maybeWinPoints = (body as { winPoints?: unknown }).winPoints;
 
   const date = parseDate(maybeDate);
-  const winPoints = typeof maybeWinPoints === "number" ? maybeWinPoints : undefined;
+  const winPoints =
+    typeof maybeWinPoints === "number" ? maybeWinPoints : undefined;
 
   if (date === undefined && winPoints === undefined) {
     return c.text("No fields to update", 400);
