@@ -5,9 +5,6 @@ export class DbService {
   private prisma: PrismaClient;
 
   constructor(d1: D1Database) {
-    if (!d1 || typeof (d1 as any).prepare !== "function") {
-      console.error("DbService: received invalid D1 binding (missing prepare)", d1);
-    }
     this.prisma = new PrismaClient({
       adapter: new PrismaD1(d1),
     });

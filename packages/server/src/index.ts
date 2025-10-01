@@ -31,9 +31,14 @@ const app = new Hono<Env>();
 
 app.use("*", cors());
 
+// Type guard for D1 bindings without using any
+const hasPrepare = (db: unknown): db is D1Database => {
+  return !!db && typeof (db as { prepare?: unknown }).prepare === "function";
+};
+
 app.use("*", async (c, next) => {
   // Ensure the D1 binding exists at runtime
-  if (!c.env.D1 || typeof (c.env.D1 as any).prepare !== "function") {
+  if (!hasPrepare(c.env.D1)) {
     console.error("D1 binding D1 is missing or invalid at runtime");
     return c.text("Server misconfigured: D1 binding missing", 500);
   }
@@ -61,11 +66,11 @@ app.use("*", async (c, next) => {
 
   const auth = getAuth(c);
 
-  if (!auth?.isAuthenticated) {
+  if (!auth?.isAuthenticated || !auth.userId) {
     return c.text("Unauthorized", 401);
   }
 
-  c.set("auth", auth);
+  c.set("auth", { userId: auth.userId });
 
   return next();
 });
@@ -79,8 +84,8 @@ app.get("/me/records", async (c) => {
 });
 
 app.post("/me/records", async (c) => {
-  const { userId } = c.get("auth");
-  const email = await getEmail(userId);
+const { userId } = c.get("auth");
+  const email = await getEmail(userId, c.env);
 
   const db = c.get("db");
 
