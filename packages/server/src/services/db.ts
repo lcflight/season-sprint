@@ -5,6 +5,9 @@ export class DbService {
   private prisma: PrismaClient;
 
   constructor(d1: D1Database) {
+    if (!d1 || typeof (d1 as any).prepare !== "function") {
+      console.error("DbService: received invalid D1 binding (missing prepare)", d1);
+    }
     this.prisma = new PrismaClient({
       adapter: new PrismaD1(d1),
     });
@@ -14,24 +17,22 @@ export class DbService {
     clerkUserId: string,
     userEmail: string
   ) {
-    // Ensure there is a User row for the authenticated (Clerk) user id.
-    // Email is required; use a deterministic placeholder in dev if unknown.
-    const placeholderEmail = `${clerkUserId}@dev.local`;
-
-    const user = await this.prisma.user.upsert({
+    return await this.prisma.user.upsert({
       where: { clerkUserId },
       update: {},
-      create: { clerkUserId, email: placeholderEmail },
+      create: { clerkUserId, email: userEmail },
     });
-
-    return user;
   }
 
   async getUserRecords(clerkUserId: string) {
-    const user = await this.getOrCreateUserByClerkId(clerkUserId);
+    console.warn("Getting user records for clerk user", clerkUserId);
 
-    return this.prisma.record.findMany({
-      where: { userId: user.id },
+    return await this.prisma.record.findMany({
+      where: {
+        User: {
+          clerkUserId,
+        },
+      },
       select: {
         date: true,
         winPoints: true,

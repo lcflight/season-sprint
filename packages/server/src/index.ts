@@ -3,13 +3,15 @@ import { DbService } from "./services/db";
 import { clerkMiddleware, getAuth } from "@hono/clerk-auth";
 import { cors } from "hono/cors";
 import type { Record } from "./types";
-import * as dotenv from "dotenv";
 import getEmail from "./getEmail";
 
-dotenv.config();
 
 interface Bindings {
   D1: D1Database;
+  DEV_AUTH_TOKEN: string;
+  DEV_USER_ID: string;
+  CLERK_PUBLISHABLE_KEY: string;
+  CLERK_SECRET_KEY: string;
 }
 
 export interface Variables {
@@ -24,16 +26,18 @@ export interface Env {
   Variables: Variables;
 }
 
-export const constants = {
-  DEV_AUTH_TOKEN: process.env.DEV_AUTH_TOKEN,
-  DEV_USER_ID: process.env.DEV_USER_ID,
-};
 
 const app = new Hono<Env>();
 
 app.use("*", cors());
 
 app.use("*", async (c, next) => {
+  // Ensure the D1 binding exists at runtime
+  if (!c.env.D1 || typeof (c.env.D1 as any).prepare !== "function") {
+    console.error("D1 binding D1 is missing or invalid at runtime");
+    return c.text("Server misconfigured: D1 binding missing", 500);
+  }
+
   c.set("db", new DbService(c.env.D1));
 
   return next();
@@ -48,9 +52,9 @@ app.use("*", clerkMiddleware());
 app.use("*", async (c, next) => {
   const authFromHeader = c.req.header("Authorization");
 
-  if (authFromHeader === constants.DEV_AUTH_TOKEN) {
+  if (authFromHeader && authFromHeader === c.env.DEV_AUTH_TOKEN) {
     c.set("auth", {
-      userId: constants.DEV_USER_ID,
+      userId: c.env.DEV_USER_ID,
     });
     return next();
   }
@@ -66,11 +70,12 @@ app.use("*", async (c, next) => {
   return next();
 });
 
-app.get("/me/records", (c) => {
+app.get("/me/records", async (c) => {
   const { userId } = c.get("auth");
   const db = c.get("db");
 
-  return c.json(db.getUserRecords(userId));
+  const records = await db.getUserRecords(userId);
+  return c.json(records);
 });
 
 app.post("/me/records", async (c) => {
