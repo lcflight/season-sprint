@@ -11,10 +11,6 @@ if (!PUBLISHABLE_KEY) {
   throw new Error("Add your Clerk Publishable Key to the .env file");
 }
 
-//tmp call to api hello route for debugging
-//add clerk auth header
-fetch("https://season-sprint-server.lcarthur747.workers.dev/");
-
 createApp(App)
   .use(router)
   .use(clerkPlugin, {
