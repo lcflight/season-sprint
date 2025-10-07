@@ -10,12 +10,14 @@
       "database_id": "932dddd1-4215-46f0-a697-fcf6fa537dd2"
     }
   ],
-  "compatibility_flags": [
-    "nodejs_compat"
-  ],
-  // "vars": {
-  //   "MY_VAR": "my-variable"
-  // },
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    "DATABASE_URL": "the-database-url",
+    "CLERK_PUBLISHABLE_KEY": "the-clerk-publishable-key",
+    "CLERK_SECRET_KEY": "the-clerk-secret-key",
+    "DEV_AUTH_TOKEN": "the-dev-auth-token",
+    "DEV_USER_ID": "the-dev-user-id"
+  }
   // "kv_namespaces": [
   //   {
   //     "binding": "MY_KV_NAMESPACE",
