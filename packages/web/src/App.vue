@@ -15,7 +15,7 @@
 <script>
 import HeaderBar from "./components/HeaderBar.vue";
 import { loadSeasonJson } from "@/utils/season";
-import { getRecords } from "@/services/api";
+import { getClerkUser, getAuthToken } from "@/services/clerk";
 
 export default {
   name: "App",
@@ -23,15 +23,12 @@ export default {
     HeaderBar,
   },
   data() {
-    getRecords()
-      .then((records) => {
-        console.log("Records loaded");
-        console.log({ records });
-      })
-      .catch((error) => {
-        console.error("Error loading records:", error);
-      });
-
+    getClerkUser().then((user) => {
+      console.log(user, { depth: null });
+    });
+    getAuthToken().then((token) => {
+      console.log(token, { depth: null });
+    });
     return { seasonInfo: null };
   },
   computed: {

@@ -21,8 +21,10 @@
     "vue-router": "4"
   },
   "devDependencies": {
+    "@babel/plugin-proposal-object-rest-spread": "^7.20.7",
     "@babel/core": "^7.12.16",
     "@babel/eslint-parser": "^7.12.16",
+    "@babel/preset-typescript": "^7.27.1",
     "@vue/cli-plugin-babel": "~5.0.0",
     "@vue/cli-plugin-eslint": "~5.0.0",
     "@vue/cli-service": "~5.0.0",
@@ -44,7 +46,14 @@
       "eslint:recommended"
     ],
     "parserOptions": {
-      "parser": "@babel/eslint-parser"
+      "parser": "@babel/eslint-parser",
+      "requireConfigFile": false,
+      "babelOptions": {
+        "presets": [
+          "@babel/preset-typescript",
+          "@vue/cli-plugin-babel/preset"
+        ]
+      }
     },
     "rules": {}
   },
