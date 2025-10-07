@@ -62,6 +62,50 @@ export class DbService {
     });
   }
 
+  async upsertRecord(
+    clerkUserId: string,
+    userEmail: string,
+    date: Date,
+    winPoints: number
+  ) {
+    console.log("Upserting record for user", clerkUserId);
+    console.log("Date:", date);
+    console.log("Win Points:", winPoints);
+
+    const user = await this.getOrCreateUserByClerkId(clerkUserId, userEmail);
+
+    // Normalize the date to start of day for consistent matching
+    const normalizedDate = new Date(date);
+    normalizedDate.setUTCHours(0, 0, 0, 0);
+
+    // Find existing record for this user and date
+    const existing = await this.prisma.record.findFirst({
+      where: {
+        userId: user.id,
+        date: normalizedDate,
+      },
+    });
+
+    if (existing) {
+      // Update existing record
+      return await this.prisma.record.update({
+        where: { id: existing.id },
+        data: { winPoints },
+        select: { id: true, date: true, winPoints: true },
+      });
+    } else {
+      // Create new record
+      return await this.prisma.record.create({
+        data: {
+          userId: user.id,
+          date: normalizedDate,
+          winPoints,
+        },
+        select: { id: true, date: true, winPoints: true },
+      });
+    }
+  }
+
   async updateRecordIfOwner(
     clerkUserId: string,
     recordId: string,
