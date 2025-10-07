@@ -92,12 +92,13 @@ app.post("/me/records", async (c) => {
 
   const { date, winPoints } = await c.req.json<Record>();
 
-  await db.createRecord(userId, email, date, winPoints);
+  const record = await db.upsertRecord(userId, email, date, winPoints);
 
   return c.json({
-    message: "Record created",
+    message: "Record upserted",
     userEmail: email,
     userId,
+    record,
   });
 });
 
