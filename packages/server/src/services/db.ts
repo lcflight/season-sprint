@@ -47,10 +47,6 @@ export class DbService {
     date: Date,
     winPoints: number
   ) {
-    console.log("Creating record for user", clerkUserId);
-    console.log("Date:", date);
-    console.log("Win Points:", winPoints);
-
     const user = await this.getOrCreateUserByClerkId(clerkUserId, userEmail);
 
     await this.prisma.record.create({
@@ -68,10 +64,6 @@ export class DbService {
     date: Date,
     winPoints: number
   ) {
-    console.log("Upserting record for user", clerkUserId);
-    console.log("Date:", date);
-    console.log("Win Points:", winPoints);
-
     const user = await this.getOrCreateUserByClerkId(clerkUserId, userEmail);
 
     // Normalize the date to start of day for consistent matching
