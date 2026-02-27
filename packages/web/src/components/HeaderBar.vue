@@ -1,5 +1,13 @@
 <script setup>
 import { RedirectToSignIn, SignedIn, SignedOut, UserButton } from "@clerk/vue";
+
+const publishableKey = process.env.VUE_APP_CLERK_PUBLISHABLE_KEY;
+const isLocalDevHost =
+  window.location.hostname === "localhost" ||
+  window.location.hostname === "127.0.0.1";
+const isLiveClerkKey =
+  typeof publishableKey === "string" && publishableKey.startsWith("pk_live_");
+const clerkEnabled = Boolean(publishableKey) && !(isLocalDevHost && isLiveClerkKey);
 </script>
 
 <template>
@@ -8,12 +16,15 @@ import { RedirectToSignIn, SignedIn, SignedOut, UserButton } from "@clerk/vue";
       <span class="brand-accent">THE</span> FINALS | Season Sprint
     </div>
     <div class="user-actions">
-      <SignedIn>
-        <UserButton />
-      </SignedIn>
-      <SignedOut>
-        <RedirectToSignIn />
-      </SignedOut>
+      <template v-if="clerkEnabled">
+        <SignedIn>
+          <UserButton />
+        </SignedIn>
+        <SignedOut>
+          <RedirectToSignIn />
+        </SignedOut>
+      </template>
+      <span v-else class="dev-auth-pill">Dev auth mode</span>
     </div>
   </div>
 </template>
@@ -73,6 +84,14 @@ export default {
 
 .brand-accent {
   color: var(--primary);
+}
+
+.dev-auth-pill {
+  font-size: 12px;
+  color: var(--muted);
+  border: 1px solid color-mix(in oklab, var(--primary) 20%, var(--surface));
+  border-radius: 999px;
+  padding: 4px 8px;
 }
 
 .actions {

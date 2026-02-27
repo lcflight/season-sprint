@@ -1,13 +1,36 @@
-import { useAuth } from "@clerk/vue";
+const BASE = process.env.VUE_APP_API_BASE_URL || "http://localhost:8787";
 
-const BASE = "http://localhost:8787";
+export async function getRecords(authorizationHeader) {
+  if (!authorizationHeader) {
+    throw new Error("Missing authorization header");
+  }
+  const response = await fetch(`${BASE}/me/records`, {
+    headers: { Authorization: authorizationHeader },
+  });
 
-export async function getRecords() {
-  const { getToken } = useAuth(); // returns a function that resolves the JWT
+  if (!response.ok) {
+    throw new Error(`Failed to fetch records: ${response.status}`);
+  }
 
-  const token = await getToken();
+  return response.json();
+}
 
-  return fetch(`${BASE}/me/records`, {
-    headers: { Authorization: `Bearer ${token}` },
-  }).then((response) => response.json());
+export async function upsertRecord(date, winPoints, authorizationHeader) {
+  if (!authorizationHeader) {
+    throw new Error("Missing authorization header");
+  }
+  const response = await fetch(`${BASE}/me/records`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: authorizationHeader,
+    },
+    body: JSON.stringify({ date, winPoints }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to upsert record: ${response.status}`);
+  }
+
+  return response.json();
 }

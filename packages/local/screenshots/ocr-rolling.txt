@@ -1,0 +1,28 @@
+----- 2026-02-27T17:04:55-05:00 file=screenshot-20260227-170455.png -----
+pdate)
+
+user/1000/gdm/Xauthority SHOT_DIR=/home/luke/Documents/Development/season-sprint/packages/local/s
+
+son-sprint/packages/local/screenshots/ocr-rolling.txt max_lines=2000 lang=eng
+
+----- 2026-02-27T17:05:15-05:00 file=screenshot-20260227-170515.png -----
+RANK SCORE
+19,764 / 19,999
+
+
+----- 2026-02-27T17:05:36-05:00 file=screenshot-20260227-170535.png -----
+“#
+
+
+----- 2026-02-27T17:05:56-05:00 file=screenshot-20260227-170556.png -----
+TOUR POINTS
+2,000 / 2,200
+—
+
+
+----- 2026-02-27T17:06:17-05:00 file=screenshot-20260227-170616.png -----
+WORLD TOUR POINTS
+2,000 / 2,200
+vi
+
+

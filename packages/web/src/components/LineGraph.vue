@@ -324,6 +324,7 @@
 
 <script setup>
 import { computed, reactive, ref, watch, onMounted } from "vue";
+import { useAuth } from "@clerk/vue";
 import {
   isValidDateStr,
   dateToMs,
@@ -339,6 +340,7 @@ import {
   saveStateWithKey,
   loadStateWithKey,
 } from "@/utils/storage";
+import { upsertRecord as upsertRemoteRecord } from "@/services/api";
 import {
   MS_PER_DAY,
   calcXDomain,
@@ -366,6 +368,15 @@ const props = defineProps({
   headerDisclaimer: { type: String, default: "" },
   headerTitle: { type: String, default: "" },
 });
+let getClerkToken = null;
+try {
+  const auth = useAuth();
+  if (auth && typeof auth.getToken === "function") {
+    getClerkToken = auth.getToken;
+  }
+} catch {
+  getClerkToken = null;
+}
 
 // Config
 const width = 600;
@@ -849,6 +860,7 @@ function addPointAtDate(dateStr, yVal) {
   } else {
     points.push({ date: dateStr, y: yNum });
   }
+  void persistPointToRemote(dateStr, yNum);
 }
 
 function removePoint(index) {
@@ -1038,6 +1050,7 @@ function addWinPoints(value) {
     // No point for today yet; create one with the provided value
     points.push({ date: todayStr, y: val });
   }
+  void persistPointToRemote(todayStr, val);
 }
 
 // Expose helper to add to today's win points cumulatively
@@ -1070,6 +1083,28 @@ function incrementWinPoints(increment) {
     points[idxToday] = { date: todayStr, y: newVal };
   } else {
     points.push({ date: todayStr, y: newVal });
+  }
+  void persistPointToRemote(todayStr, newVal);
+}
+
+async function persistPointToRemote(dateStr, yVal) {
+  try {
+    const clerkToken = getClerkToken ? await getClerkToken() : null;
+    const isLocalDevHost =
+      window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1";
+    const devToken = isLocalDevHost ? process.env.VUE_APP_DEV_AUTH_TOKEN : null;
+    const authorizationHeader = clerkToken ? `Bearer ${clerkToken}` : devToken;
+
+    if (!authorizationHeader) {
+      console.warn("Skipping server persistence: no auth token available");
+      return;
+    }
+
+    await upsertRemoteRecord(dateStr, Number(yVal), authorizationHeader);
+  } catch (error) {
+    // Keep local updates even if the server write fails.
+    console.warn("Failed to persist point to server", error);
   }
 }
 </script>
