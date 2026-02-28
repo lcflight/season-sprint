@@ -324,7 +324,6 @@
 
 <script setup>
 import { computed, reactive, ref, watch, onMounted } from "vue";
-import { useAuth } from "@clerk/vue";
 import {
   isValidDateStr,
   dateToMs,
@@ -340,6 +339,7 @@ import {
   saveStateWithKey,
   loadStateWithKey,
 } from "@/utils/storage";
+import { getAuthToken } from "@/services/clerk";
 import { upsertRecord as upsertRemoteRecord } from "@/services/api";
 import {
   MS_PER_DAY,
@@ -368,15 +368,6 @@ const props = defineProps({
   headerDisclaimer: { type: String, default: "" },
   headerTitle: { type: String, default: "" },
 });
-let getClerkToken = null;
-try {
-  const auth = useAuth();
-  if (auth && typeof auth.getToken === "function") {
-    getClerkToken = auth.getToken;
-  }
-} catch {
-  getClerkToken = null;
-}
 
 // Config
 const width = 600;
@@ -883,6 +874,7 @@ function saveEdit(index) {
   if (!isFinite(yNum)) return;
   points[index] = { date: editDate.value, y: yNum };
   editIndex.value = -1;
+  void persistPointToRemote(editDate.value, yNum);
 }
 
 function cancelEdit() {
@@ -1089,7 +1081,7 @@ function incrementWinPoints(increment) {
 
 async function persistPointToRemote(dateStr, yVal) {
   try {
-    const clerkToken = getClerkToken ? await getClerkToken() : null;
+    const clerkToken = await getAuthToken();
     const isLocalDevHost =
       window.location.hostname === "localhost" ||
       window.location.hostname === "127.0.0.1";
@@ -1097,7 +1089,9 @@ async function persistPointToRemote(dateStr, yVal) {
     const authorizationHeader = clerkToken ? `Bearer ${clerkToken}` : devToken;
 
     if (!authorizationHeader) {
-      console.warn("Skipping server persistence: no auth token available");
+      console.warn(
+        "Skipping server persistence: no auth token available. Ensure user is signed in and VUE_APP_CLERK_PUBLISHABLE_KEY is configured."
+      );
       return;
     }
 
