@@ -1,10 +1,25 @@
-const BASE = process.env.VUE_APP_API_BASE_URL || "http://localhost:8787";
+const isLocalDevHost =
+  typeof window !== "undefined" &&
+  (window.location.hostname === "localhost" ||
+    window.location.hostname === "127.0.0.1");
+
+const BASE = process.env.VUE_APP_API_BASE_URL || (isLocalDevHost ? "http://localhost:8787" : "");
+
+function requireApiBaseUrl() {
+  if (!BASE) {
+    throw new Error(
+      "Missing VUE_APP_API_BASE_URL for non-local environment. Configure your deployed worker URL."
+    );
+  }
+  return BASE;
+}
 
 export async function getRecords(authorizationHeader) {
   if (!authorizationHeader) {
     throw new Error("Missing authorization header");
   }
-  const response = await fetch(`${BASE}/me/records`, {
+  const apiBase = requireApiBaseUrl();
+  const response = await fetch(`${apiBase}/me/records`, {
     headers: { Authorization: authorizationHeader },
   });
 
@@ -19,7 +34,8 @@ export async function upsertRecord(date, winPoints, authorizationHeader) {
   if (!authorizationHeader) {
     throw new Error("Missing authorization header");
   }
-  const response = await fetch(`${BASE}/me/records`, {
+  const apiBase = requireApiBaseUrl();
+  const response = await fetch(`${apiBase}/me/records`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
