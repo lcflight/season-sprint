@@ -53,7 +53,14 @@ app.get("/", (c) => {
   return c.text("Hello Hono!");
 });
 
-app.use("*", clerkMiddleware());
+const clerk = clerkMiddleware();
+app.use("*", async (c, next) => {
+  // In local/dev-token mode, skip Clerk middleware entirely.
+  if (c.req.header("Authorization") === c.env.DEV_AUTH_TOKEN) {
+    return next();
+  }
+  return clerk(c, next);
+});
 
 app.use("*", async (c, next) => {
   const authFromHeader = c.req.header("Authorization");

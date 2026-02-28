@@ -15,7 +15,6 @@
 <script>
 import HeaderBar from "./components/HeaderBar.vue";
 import { loadSeasonJson } from "@/utils/season";
-import { getClerkUser, getAuthToken } from "@/services/clerk";
 
 export default {
   name: "App",
@@ -23,12 +22,6 @@ export default {
     HeaderBar,
   },
   data() {
-    getClerkUser().then((user) => {
-      console.log(user, { depth: null });
-    });
-    getAuthToken().then((token) => {
-      console.log(token, { depth: null });
-    });
     return { seasonInfo: null };
   },
   computed: {

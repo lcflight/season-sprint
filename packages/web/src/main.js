@@ -6,15 +6,27 @@ import { clerkPlugin } from "@clerk/vue";
 import { dark } from "@clerk/themes";
 
 const PUBLISHABLE_KEY = process.env.VUE_APP_CLERK_PUBLISHABLE_KEY;
+const isLocalDevHost =
+  window.location.hostname === "localhost" ||
+  window.location.hostname === "127.0.0.1";
+const isLiveClerkKey =
+  typeof PUBLISHABLE_KEY === "string" && PUBLISHABLE_KEY.startsWith("pk_live_");
 
-if (!PUBLISHABLE_KEY) {
+if (!PUBLISHABLE_KEY && !process.env.VUE_APP_DEV_AUTH_TOKEN) {
   throw new Error("Add your Clerk Publishable Key to the .env file");
 }
 
-createApp(App)
-  .use(router)
-  .use(clerkPlugin, {
+const app = createApp(App).use(router);
+
+if (PUBLISHABLE_KEY && !(isLocalDevHost && isLiveClerkKey)) {
+  app.use(clerkPlugin, {
     publishableKey: PUBLISHABLE_KEY,
     appearance: { theme: dark },
-  })
-  .mount("#app");
+  });
+} else if (isLocalDevHost && isLiveClerkKey) {
+  console.warn(
+    "Skipping Clerk plugin on localhost with a live key. Use a test key for local auth."
+  );
+}
+
+app.mount("#app");
