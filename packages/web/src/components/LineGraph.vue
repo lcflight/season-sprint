@@ -10,12 +10,6 @@
       </div>
     </header>
 
-    <div v-if="isLoading" class="status-banner loading-banner">
-      Loading your data...
-    </div>
-    <div v-if="loadError" class="status-banner error-banner">
-      {{ loadError }}
-    </div>
     <div v-if="!isAuthenticated && !isLoading" class="status-banner auth-banner">
       Sign in to save and sync your data.
     </div>
@@ -209,7 +203,7 @@
         :height="height"
         role="img"
         aria-label="Line chart"
-        :class="{ 'nav-disabled': !enableNavigation }"
+        :class="{ 'nav-disabled': !enableNavigation, 'chart-blurred': isLoading || loadError }"
         @wheel="onWheel"
         @pointerdown="onPointerDown"
         @pointermove="onPointerMove"
@@ -314,6 +308,10 @@
           :height="height - padding * 2"
         />
       </svg>
+      <div v-if="isLoading || loadError" class="chart-overlay">
+        <span v-if="isLoading" class="chart-overlay-text">Loading data...</span>
+        <span v-if="loadError" class="chart-overlay-text chart-overlay-error">{{ loadError }}</span>
+      </div>
     </div>
 
     <div class="chart-actions">
@@ -1431,20 +1429,40 @@ async function incrementWinPoints(increment) {
   font-size: 13px;
   font-weight: 600;
 }
-.loading-banner {
-  background: color-mix(in oklab, var(--primary) 10%, var(--surface));
-  color: var(--text);
-  border: 1px solid color-mix(in oklab, var(--primary) 20%, var(--surface));
-}
-.error-banner {
-  background: color-mix(in oklab, var(--danger) 10%, var(--surface));
-  color: #ff6b6b;
-  border: 1px solid color-mix(in oklab, var(--danger) 25%, var(--surface));
-}
 .auth-banner {
   background: color-mix(in oklab, var(--warning, #f59e0b) 10%, var(--surface));
   color: var(--muted);
   border: 1px solid color-mix(in oklab, var(--warning, #f59e0b) 20%, var(--surface));
+}
+
+.chart-blurred {
+  filter: blur(4px);
+  opacity: 0.4;
+  transition: filter 0.3s, opacity 0.3s;
+  pointer-events: none;
+}
+
+.chart-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.chart-overlay-text {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  background: color-mix(in oklab, var(--surface) 80%, transparent);
+  padding: 10px 20px;
+  border-radius: 8px;
+}
+
+.chart-overlay-error {
+  color: #ff6b6b;
 }
 
 .error {
