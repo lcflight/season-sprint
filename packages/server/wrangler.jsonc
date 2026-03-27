@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "server",
+  "name": "season-sprint-server",
   "main": "src/index.ts",
   "compatibility_date": "2025-09-11",
   "d1_databases": [
@@ -16,6 +16,9 @@
     "CLERK_PUBLISHABLE_KEY": "pk_live_Y2xlcmsuc2Vhc29uc3ByaW50LmNvbSQ",
     "DEV_AUTH_TOKEN": "secret_dev_key",
     "DEV_USER_ID": "the-dev-user-id"
+  },
+  "triggers": {
+    "crons": ["0 */6 * * *"]
   }
   // "kv_namespaces": [
   //   {

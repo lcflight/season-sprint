@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { Miniflare } from "miniflare";
-import app from "../src/index";
+import { app } from "../src/index";
 import fs from "fs";
 import path from "path";
 
@@ -233,6 +233,50 @@ describe("API Routes", () => {
         (r: { date: string }) => r.date.slice(0, 10) === "2026-03-01"
       );
       expect(march1.winPoints).toBe(999);
+    });
+  });
+
+  describe("GET /seasons", () => {
+    it("returns cached season data without auth", async () => {
+      // Seed cache
+      const payload = JSON.stringify({
+        fetchedAt: "2026-03-27T00:00:00.000Z",
+        source: "https://www.thefinals.wiki/wiki/Seasons",
+        seasons: [
+          { name: "Season 10", start: "2026-03-26T00:00:00.000Z", end: "2026-06-21T00:00:00.000Z", source: "wikitable" },
+        ],
+        currentSeason: { name: "Season 10", start: "2026-03-26T00:00:00.000Z", end: "2026-06-21T00:00:00.000Z" },
+      });
+      await d1
+        .prepare(
+          `INSERT INTO "ScrapeCache" ("key", "value", "updatedAt") VALUES (?, ?, datetime('now'))`
+        )
+        .bind("finals-seasons", payload)
+        .run();
+
+      // Request without auth header
+      const env = makeEnv(d1);
+      const req = new Request("http://localhost/seasons");
+      const res = await app.fetch(req, env);
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.seasons).toHaveLength(1);
+      expect(body.seasons[0].name).toBe("Season 10");
+    });
+
+    it("returns 503 when cache is empty and scrape fails", async () => {
+      // Mock fetch to simulate wiki being unreachable
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = vi.fn().mockRejectedValue(new Error("Network error"));
+
+      try {
+        const env = makeEnv(d1);
+        const req = new Request("http://localhost/seasons");
+        const res = await app.fetch(req, env);
+        expect(res.status).toBe(503);
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
     });
   });
 
