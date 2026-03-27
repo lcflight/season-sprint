@@ -13,8 +13,7 @@
   "compatibility_flags": ["nodejs_compat"],
   "vars": {
     "DATABASE_URL": "file:./dev.db",
-    "CLERK_PUBLISHABLE_KEY": "the-clerk-publishable-key",
-    "CLERK_SECRET_KEY": "the-clerk-secret-key",
+    "CLERK_PUBLISHABLE_KEY": "pk_live_Y2xlcmsuc2Vhc29uc3ByaW50LmNvbSQ",
     "DEV_AUTH_TOKEN": "secret_dev_key",
     "DEV_USER_ID": "the-dev-user-id"
   }
