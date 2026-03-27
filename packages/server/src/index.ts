@@ -144,4 +144,46 @@ app.put("/me/records/:id", async (c) => {
   return c.json(updated);
 });
 
+// Delete a single record that belongs to the authenticated user
+app.delete("/me/records/:id", async (c) => {
+  const { userId } = c.get("auth");
+  const db = c.get("db");
+  const id = c.req.param("id");
+
+  const deleted = await db.deleteRecordIfOwner(userId, id);
+  if (!deleted) {
+    return c.text("Not found", 404);
+  }
+
+  return c.json({ deleted: true });
+});
+
+// Delete all records for the authenticated user
+app.delete("/me/records", async (c) => {
+  const { userId } = c.get("auth");
+  const db = c.get("db");
+
+  const count = await db.deleteAllUserRecords(userId);
+  return c.json({ deleted: count });
+});
+
+// Bulk upsert records for the authenticated user
+app.post("/me/records/bulk", async (c) => {
+  const { userId } = c.get("auth");
+  const email = await getEmail(userId, c.env);
+  const db = c.get("db");
+
+  const { records: input } = await c.req.json<{
+    records: { date: string; winPoints: number }[];
+  }>();
+
+  const records = await db.bulkUpsertRecords(
+    userId,
+    email,
+    input.map((r) => ({ date: new Date(r.date), winPoints: r.winPoints }))
+  );
+
+  return c.json({ records });
+});
+
 export default app;

@@ -50,3 +50,77 @@ export async function upsertRecord(date, winPoints, authorizationHeader) {
 
   return response.json();
 }
+
+export async function deleteRecord(id, authorizationHeader) {
+  if (!authorizationHeader) {
+    throw new Error("Missing authorization header");
+  }
+  const apiBase = requireApiBaseUrl();
+  const response = await fetch(`${apiBase}/me/records/${id}`, {
+    method: "DELETE",
+    headers: { Authorization: authorizationHeader },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to delete record: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export async function deleteAllRecords(authorizationHeader) {
+  if (!authorizationHeader) {
+    throw new Error("Missing authorization header");
+  }
+  const apiBase = requireApiBaseUrl();
+  const response = await fetch(`${apiBase}/me/records`, {
+    method: "DELETE",
+    headers: { Authorization: authorizationHeader },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to delete records: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export async function bulkUpsertRecords(records, authorizationHeader) {
+  if (!authorizationHeader) {
+    throw new Error("Missing authorization header");
+  }
+  const apiBase = requireApiBaseUrl();
+  const response = await fetch(`${apiBase}/me/records/bulk`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: authorizationHeader,
+    },
+    body: JSON.stringify({ records }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to bulk upsert records: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export async function getAuthorizationHeader() {
+  try {
+    const { getAuthToken } = await import("./clerk.js");
+    const clerkToken = await getAuthToken();
+    if (clerkToken) {
+      return `Bearer ${clerkToken}`;
+    }
+  } catch {
+    // Clerk not available
+  }
+
+  // Fall back to dev token on localhost
+  if (isLocalDevHost && process.env.VUE_APP_DEV_AUTH_TOKEN) {
+    return process.env.VUE_APP_DEV_AUTH_TOKEN;
+  }
+
+  return null;
+}
