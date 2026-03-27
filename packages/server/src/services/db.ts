@@ -98,6 +98,80 @@ export class DbService {
     }
   }
 
+  async deleteRecordIfOwner(
+    clerkUserId: string,
+    recordId: string
+  ): Promise<boolean> {
+    const existing = await this.prisma.record.findFirst({
+      where: {
+        id: recordId,
+        User: { clerkUserId },
+      },
+      select: { id: true },
+    });
+
+    if (!existing) {
+      return false;
+    }
+
+    await this.prisma.record.delete({ where: { id: recordId } });
+    return true;
+  }
+
+  async deleteAllUserRecords(clerkUserId: string): Promise<number> {
+    const user = await this.prisma.user.findUnique({
+      where: { clerkUserId },
+      select: { id: true },
+    });
+
+    if (!user) {
+      return 0;
+    }
+
+    const result = await this.prisma.record.deleteMany({
+      where: { userId: user.id },
+    });
+
+    return result.count;
+  }
+
+  async bulkUpsertRecords(
+    clerkUserId: string,
+    userEmail: string,
+    records: { date: Date; winPoints: number }[]
+  ) {
+    if (records.length === 0) return [];
+
+    const user = await this.getOrCreateUserByClerkId(clerkUserId, userEmail);
+    const results = [];
+
+    for (const { date, winPoints } of records) {
+      const normalizedDate = new Date(date);
+      normalizedDate.setUTCHours(0, 0, 0, 0);
+
+      const existing = await this.prisma.record.findFirst({
+        where: { userId: user.id, date: normalizedDate },
+      });
+
+      if (existing) {
+        const updated = await this.prisma.record.update({
+          where: { id: existing.id },
+          data: { winPoints },
+          select: { id: true, date: true, winPoints: true },
+        });
+        results.push(updated);
+      } else {
+        const created = await this.prisma.record.create({
+          data: { userId: user.id, date: normalizedDate, winPoints },
+          select: { id: true, date: true, winPoints: true },
+        });
+        results.push(created);
+      }
+    }
+
+    return results;
+  }
+
   async updateRecordIfOwner(
     clerkUserId: string,
     recordId: string,

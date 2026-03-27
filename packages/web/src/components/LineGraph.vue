@@ -10,6 +10,16 @@
       </div>
     </header>
 
+    <div v-if="isLoading" class="status-banner loading-banner">
+      Loading your data...
+    </div>
+    <div v-if="loadError" class="status-banner error-banner">
+      {{ loadError }}
+    </div>
+    <div v-if="!isAuthenticated && !isLoading" class="status-banner auth-banner">
+      Sign in to save and sync your data.
+    </div>
+
     <div class="controls" v-if="showGoalControl">
       <GoalControls
         :goal-options="goalOptions"
@@ -307,7 +317,7 @@
     </div>
 
     <div class="chart-actions">
-      <button @click="clearPoints" :disabled="points.length === 0">
+      <button @click="clearPoints" :disabled="points.length === 0 || !isAuthenticated">
         Clear
       </button>
       <button @click="openPointsModal" :disabled="points.length === 0">
@@ -317,7 +327,7 @@
       <button @click="exportCSV" :disabled="points.length === 0">
         Export CSV
       </button>
-      <button @click="openImportModal">Import CSV</button>
+      <button @click="openImportModal" :disabled="!isAuthenticated">Import CSV</button>
     </div>
   </div>
 </template>
@@ -334,13 +344,17 @@ import {
 } from "@/utils/date";
 import { buildCSV } from "@/utils/csv";
 import {
-  saveState as saveLocalState,
-  loadState as loadLocalState,
   saveStateWithKey,
   loadStateWithKey,
 } from "@/utils/storage";
-import { getAuthToken } from "@/services/clerk";
-import { upsertRecord as upsertRemoteRecord } from "@/services/api";
+import {
+  getRecords,
+  upsertRecord,
+  deleteRecord,
+  deleteAllRecords,
+  bulkUpsertRecords,
+  getAuthorizationHeader,
+} from "@/services/api";
 import {
   MS_PER_DAY,
   calcXDomain,
@@ -381,12 +395,13 @@ const seasonStart = ref(formatDate(today));
 const seasonEnd = ref(formatDate(addDays(today, 30)));
 const seasonTitle = ref("");
 
-// Points (date-based)
-const points = reactive([
-  { date: formatDate(addDays(today, 0)), y: 0 },
-  { date: formatDate(addDays(today, 5)), y: 2 },
-  { date: formatDate(addDays(today, 10)), y: 3 },
-]);
+// Points (date-based, loaded from API)
+const points = reactive([]);
+
+// API state
+const isLoading = ref(false);
+const loadError = ref("");
+const isAuthenticated = ref(false);
 
 // Inputs for adding a point are managed by parent UI; expose helpers instead
 
@@ -414,29 +429,28 @@ const canSaveEdit = computed(
   () => isValidDateStr(editDate.value) && isFinite(editY.value)
 );
 
-// Persistence
-function saveState() {
+// Settings persistence (UI preferences only — points are in D1)
+function saveSettings() {
   const state = {
     seasonStart: seasonStart.value,
     seasonEnd: seasonEnd.value,
     goalWinPoints: goalWinPoints.value,
     autoSetSeasonFromImport: autoSetSeasonFromImport.value,
     simplifyImport: simplifyImport.value,
-    points: [...points],
     navSensitivity: navSensitivity.value,
     enableNavigation: enableNavigation.value,
   };
-  if (props.storageKey) {
-    saveStateWithKey(`season-sprint:${props.storageKey}:v1`, state);
-  } else {
-    saveLocalState(state);
-  }
+  const key = props.storageKey
+    ? `season-sprint:${props.storageKey}:v1`
+    : `season-sprint:line-graph:v1`;
+  saveStateWithKey(key, state);
 }
 
-function loadState() {
-  const parsed = props.storageKey
-    ? loadStateWithKey(`season-sprint:${props.storageKey}:v1`)
-    : loadLocalState();
+function loadSettings() {
+  const key = props.storageKey
+    ? `season-sprint:${props.storageKey}:v1`
+    : `season-sprint:line-graph:v1`;
+  const parsed = loadStateWithKey(key);
   if (!parsed || typeof parsed !== "object") return;
   if (
     typeof parsed.seasonStart === "string" &&
@@ -461,16 +475,44 @@ function loadState() {
     navSensitivity.value = parsed.navSensitivity;
   if (typeof parsed.enableNavigation === "boolean")
     enableNavigation.value = parsed.enableNavigation;
-  if (Array.isArray(parsed.points)) {
-    const sanitized = parsed.points
-      .map((p) => ({
-        date: typeof p.date === "string" ? p.date : "",
-        y: Number(p.y),
-      }))
-      .filter((p) => isValidDateStr(p.date) && isFinite(p.y));
-    if (sanitized.length) {
-      points.splice(0, points.length, ...sanitized);
+}
+
+// Load points from D1 via API
+async function loadPointsFromAPI() {
+  isLoading.value = true;
+  loadError.value = "";
+  try {
+    const authHeader = await getAuthorizationHeader();
+    if (!authHeader) {
+      isAuthenticated.value = false;
+      return;
     }
+    isAuthenticated.value = true;
+    const records = await getRecords(authHeader);
+    const mapped = records.map((r) => ({
+      remoteId: r.id,
+      date: typeof r.date === "string" ? r.date.slice(0, 10) : "",
+      y: r.winPoints,
+    }));
+    points.splice(0, points.length, ...mapped);
+  } catch (e) {
+    loadError.value = "Failed to load data. Please refresh to try again.";
+    console.error("Failed to load points from API", e);
+  } finally {
+    isLoading.value = false;
+  }
+}
+
+// Persist a single point to D1 (returns the upserted record)
+async function persistPoint(dateStr, yVal) {
+  try {
+    const authHeader = await getAuthorizationHeader();
+    if (!authHeader) return null;
+    const result = await upsertRecord(dateStr, Number(yVal), authHeader);
+    return result.record;
+  } catch (error) {
+    console.warn("Failed to persist point to server", error);
+    return null;
   }
 }
 
@@ -840,24 +882,40 @@ function onSelectGoal(idx) {
   applySelectedGoal();
 }
 
-function addPointAtDate(dateStr, yVal) {
+async function addPointAtDate(dateStr, yVal) {
   if (!isSeasonValid.value) return;
   if (!isValidDateStr(dateStr)) return;
   const yNum = Number(yVal);
   if (!isFinite(yNum)) return;
   const idx = points.findIndex((p) => dateToMs(p.date) === dateToMs(dateStr));
   if (idx !== -1) {
-    points[idx] = { date: dateStr, y: yNum };
+    points[idx] = { ...points[idx], date: dateStr, y: yNum };
   } else {
     points.push({ date: dateStr, y: yNum });
   }
-  void persistPointToRemote(dateStr, yNum);
+  const record = await persistPoint(dateStr, yNum);
+  if (record) {
+    // Update remoteId from server response
+    const updatedIdx = points.findIndex((p) => dateToMs(p.date) === dateToMs(dateStr));
+    if (updatedIdx !== -1) {
+      points[updatedIdx] = { ...points[updatedIdx], remoteId: record.id };
+    }
+  }
 }
 
-function removePoint(index) {
+async function removePoint(index) {
+  const point = points[index];
   points.splice(index, 1);
   if (editIndex.value === index) {
     editIndex.value = -1;
+  }
+  if (point?.remoteId) {
+    try {
+      const authHeader = await getAuthorizationHeader();
+      if (authHeader) await deleteRecord(point.remoteId, authHeader);
+    } catch (e) {
+      console.warn("Failed to delete point from server", e);
+    }
   }
 }
 
@@ -868,13 +926,19 @@ function openEdit(index) {
   editY.value = p.y;
 }
 
-function saveEdit(index) {
+async function saveEdit(index) {
   if (!canSaveEdit.value) return;
   const yNum = Number(editY.value);
   if (!isFinite(yNum)) return;
-  points[index] = { date: editDate.value, y: yNum };
+  points[index] = { ...points[index], date: editDate.value, y: yNum };
   editIndex.value = -1;
-  void persistPointToRemote(editDate.value, yNum);
+  const record = await persistPoint(editDate.value, yNum);
+  if (record) {
+    const updatedIdx = points.findIndex((p) => dateToMs(p.date) === dateToMs(editDate.value));
+    if (updatedIdx !== -1) {
+      points[updatedIdx] = { ...points[updatedIdx], remoteId: record.id };
+    }
+  }
 }
 
 function cancelEdit() {
@@ -885,8 +949,14 @@ function getOriginalIndex(point) {
   return points.findIndex((p) => p.date === point.date && p.y === point.y);
 }
 
-function clearPoints() {
+async function clearPoints() {
   points.splice(0, points.length);
+  try {
+    const authHeader = await getAuthorizationHeader();
+    if (authHeader) await deleteAllRecords(authHeader);
+  } catch (e) {
+    console.warn("Failed to clear points on server", e);
+  }
 }
 
 // Export CSV
@@ -911,17 +981,35 @@ function closeImportModal() {
   showImportModal.value = false;
 }
 
-function onImportedRows(rows) {
-  // Replace points with imported data
-  if (Array.isArray(rows) && rows.length) {
-    points.splice(0, points.length, ...rows);
-    if (autoSetSeasonFromImport.value) {
-      const dates = rows.map((r) => dateToMs(r.date));
-      const min = Math.min(...dates);
-      const max = Math.max(...dates);
-      seasonStart.value = msToDateInput(min);
-      seasonEnd.value = msToDateInput(max);
+async function onImportedRows(rows) {
+  if (!Array.isArray(rows) || !rows.length) return;
+  points.splice(0, points.length, ...rows);
+  if (autoSetSeasonFromImport.value) {
+    const dates = rows.map((r) => dateToMs(r.date));
+    const min = Math.min(...dates);
+    const max = Math.max(...dates);
+    seasonStart.value = msToDateInput(min);
+    seasonEnd.value = msToDateInput(max);
+  }
+  // Bulk upsert to API
+  try {
+    const authHeader = await getAuthorizationHeader();
+    if (authHeader) {
+      const input = rows.map((r) => ({ date: r.date, winPoints: r.y }));
+      const result = await bulkUpsertRecords(input, authHeader);
+      // Merge remoteIds back into local points
+      if (result.records) {
+        for (const rec of result.records) {
+          const dateStr = typeof rec.date === "string" ? rec.date.slice(0, 10) : "";
+          const idx = points.findIndex((p) => p.date === dateStr);
+          if (idx !== -1) {
+            points[idx] = { ...points[idx], remoteId: rec.id };
+          }
+        }
+      }
     }
+  } catch (e) {
+    console.warn("Failed to bulk upsert imported points", e);
   }
 }
 
@@ -953,7 +1041,7 @@ defineExpose({
   getGoalWinPoints,
 });
 
-// Persist on changes
+// Persist settings on changes (not points — those go through API)
 watch(
   [
     seasonStart,
@@ -962,9 +1050,9 @@ watch(
     autoSetSeasonFromImport,
     simplifyImport,
   ],
-  saveState
+  saveSettings
 );
-watch([navSensitivity, enableNavigation], saveState);
+watch([navSensitivity, enableNavigation], saveSettings);
 
 // Keep selectedGoalIndex in sync with goalWinPoints and provided options
 watch(
@@ -984,8 +1072,6 @@ watch(
 watch(
   points,
   () => {
-    saveState();
-    // also notify listeners of current win points
     emit("win-points", currentWinPoints.value);
   },
   { deep: true }
@@ -995,7 +1081,7 @@ watch(
 watch(currentWinPoints, (v) => emit("win-points", v));
 
 onMounted(async () => {
-  loadState();
+  loadSettings();
   try {
     const data = await loadSeasonJson();
     if (
@@ -1021,47 +1107,44 @@ onMounted(async () => {
   } catch (e) {
     // If fetch fails (e.g., CORS), keep existing defaults/state
   }
+  // Load points from D1
+  await loadPointsFromAPI();
   // Emit initial after load tick
   requestAnimationFrame(() => emit("win-points", currentWinPoints.value));
 });
 
 // Expose helper to set today's win points to a specific value (replace, not add)
-function addWinPoints(value) {
+async function addWinPoints(value) {
   const val = Number(value);
-  // Allow setting to 0; only guard against non-finite inputs
   if (!isFinite(val)) return;
   const todayStr = formatDate(new Date());
-  // Find existing point for today
   const idxToday = points.findIndex(
     (p) => dateToMs(p.date) === dateToMs(todayStr)
   );
   if (idxToday !== -1) {
-    // Replace today's point value with the provided value
-    points[idxToday] = { date: todayStr, y: val };
+    points[idxToday] = { ...points[idxToday], date: todayStr, y: val };
   } else {
-    // No point for today yet; create one with the provided value
     points.push({ date: todayStr, y: val });
   }
-  void persistPointToRemote(todayStr, val);
+  const record = await persistPoint(todayStr, val);
+  if (record) {
+    const idx = points.findIndex((p) => dateToMs(p.date) === dateToMs(todayStr));
+    if (idx !== -1) points[idx] = { ...points[idx], remoteId: record.id };
+  }
 }
 
 // Expose helper to add to today's win points cumulatively
-function incrementWinPoints(increment) {
+async function incrementWinPoints(increment) {
   const inc = Number(increment);
   if (!isFinite(inc)) return;
   const todayStr = formatDate(new Date());
   const todayMs = dateToMs(todayStr);
   const idxToday = points.findIndex((p) => dateToMs(p.date) === todayMs);
 
-  // Determine base value to increment from:
-  // - If today's point exists, use its current value
-  // - Otherwise, use the most recent prior point's value (carry-over)
-  // - If no prior points, use 0
   let base = 0;
   if (idxToday !== -1) {
     base = Number(points[idxToday].y) || 0;
   } else {
-    // Find the latest point on or before today
     let last = null;
     for (const p of sortedPoints.value) {
       const ms = dateToMs(p.date);
@@ -1072,33 +1155,14 @@ function incrementWinPoints(increment) {
 
   const newVal = base + inc;
   if (idxToday !== -1) {
-    points[idxToday] = { date: todayStr, y: newVal };
+    points[idxToday] = { ...points[idxToday], date: todayStr, y: newVal };
   } else {
     points.push({ date: todayStr, y: newVal });
   }
-  void persistPointToRemote(todayStr, newVal);
-}
-
-async function persistPointToRemote(dateStr, yVal) {
-  try {
-    const clerkToken = await getAuthToken();
-    const isLocalDevHost =
-      window.location.hostname === "localhost" ||
-      window.location.hostname === "127.0.0.1";
-    const devToken = isLocalDevHost ? process.env.VUE_APP_DEV_AUTH_TOKEN : null;
-    const authorizationHeader = clerkToken ? `Bearer ${clerkToken}` : devToken;
-
-    if (!authorizationHeader) {
-      console.warn(
-        "Skipping server persistence: no auth token available. Ensure user is signed in and VUE_APP_CLERK_PUBLISHABLE_KEY is configured."
-      );
-      return;
-    }
-
-    await upsertRemoteRecord(dateStr, Number(yVal), authorizationHeader);
-  } catch (error) {
-    // Keep local updates even if the server write fails.
-    console.warn("Failed to persist point to server", error);
+  const record = await persistPoint(todayStr, newVal);
+  if (record) {
+    const idx = points.findIndex((p) => dateToMs(p.date) === dateToMs(todayStr));
+    if (idx !== -1) points[idx] = { ...points[idx], remoteId: record.id };
   }
 }
 </script>
@@ -1358,6 +1422,29 @@ async function persistPointToRemote(dateStr, yVal) {
   color: var(--muted);
   font-size: 12px;
   margin: 6px 0 0;
+}
+
+.status-banner {
+  padding: 10px 14px;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.loading-banner {
+  background: color-mix(in oklab, var(--primary) 10%, var(--surface));
+  color: var(--text);
+  border: 1px solid color-mix(in oklab, var(--primary) 20%, var(--surface));
+}
+.error-banner {
+  background: color-mix(in oklab, var(--danger) 10%, var(--surface));
+  color: #ff6b6b;
+  border: 1px solid color-mix(in oklab, var(--danger) 25%, var(--surface));
+}
+.auth-banner {
+  background: color-mix(in oklab, var(--warning, #f59e0b) 10%, var(--surface));
+  color: var(--muted);
+  border: 1px solid color-mix(in oklab, var(--warning, #f59e0b) 20%, var(--surface));
 }
 
 .error {
