@@ -5,6 +5,7 @@ import { cors } from "hono/cors";
 import type { Record } from "./types";
 import getEmail from "./getEmail";
 import { parseDate } from "./utils/parseDate";
+import { getCachedSeasons, scrapeAndStore } from "./services/seasonScraper";
 
 interface Bindings {
   D1: D1Database;
@@ -51,6 +52,23 @@ app.get("/", (c) => {
   const auth = getAuth(c);
   console.log({ auth });
   return c.text("Hello Hono!");
+});
+
+// Public endpoint — no auth required
+app.get("/seasons", async (c) => {
+  try {
+    const cached = await getCachedSeasons(c.env.D1);
+    if (cached) {
+      c.header("Cache-Control", "public, max-age=3600");
+      return c.json(cached);
+    }
+    // No cache yet — bootstrap with a live scrape
+    const fresh = await scrapeAndStore(c.env.D1);
+    c.header("Cache-Control", "public, max-age=3600");
+    return c.json(fresh);
+  } catch (e) {
+    return c.json({ error: "Season data unavailable" }, 503);
+  }
 });
 
 const clerk = clerkMiddleware();
@@ -186,4 +204,16 @@ app.post("/me/records/bulk", async (c) => {
   return c.json({ records });
 });
 
-export default app;
+export { app };
+
+export default {
+  fetch: (req: Request, env: Bindings, ctx: ExecutionContext) =>
+    app.fetch(req, env, ctx),
+  async scheduled(
+    _event: ScheduledEvent,
+    env: Bindings,
+    ctx: ExecutionContext
+  ) {
+    ctx.waitUntil(scrapeAndStore(env.D1));
+  },
+};
