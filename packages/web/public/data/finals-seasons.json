@@ -1,5 +1,5 @@
 {
-  "fetchedAt": "2025-12-10T23:09:16.935Z",
+  "fetchedAt": "2026-03-27T20:04:22.461Z",
   "source": "https://www.thefinals.wiki/wiki/Seasons",
   "seasons": [
     {
@@ -59,13 +59,19 @@
     {
       "name": "Season 9",
       "start": "2025-12-10T05:00:00.000Z",
-      "end": "2026-03-18T04:00:00.000Z",
+      "end": "2026-03-26T04:00:00.000Z",
+      "source": "wikitable"
+    },
+    {
+      "name": "Season 10",
+      "start": "2026-03-26T04:00:00.000Z",
+      "end": "2026-06-21T04:00:00.000Z",
       "source": "wikitable"
     }
   ],
   "currentSeason": {
-    "name": "Season 9",
-    "start": "2025-12-10T05:00:00.000Z",
-    "end": "2026-03-18T04:00:00.000Z"
+    "name": "Season 10",
+    "start": "2026-03-26T04:00:00.000Z",
+    "end": "2026-06-21T04:00:00.000Z"
   }
 }
