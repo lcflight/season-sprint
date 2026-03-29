@@ -5,10 +5,6 @@
   </main>
   <footer class="site-footer" role="contentinfo">
     <div>Created by Luke Arthur (Aireal) 2025</div>
-    <div class="footer-note">
-      All data is stored locally in your browser cache and will not sync between
-      devices.
-    </div>
   </footer>
 </template>
 
