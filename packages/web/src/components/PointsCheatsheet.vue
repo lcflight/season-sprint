@@ -122,5 +122,11 @@ export default {
 .qa-btn {
   width: 100%;
 }
+
+@media (max-width: 480px) {
+  .quick-add {
+    grid-template-columns: 1fr;
+  }
+}
 </style>
 

@@ -172,4 +172,15 @@ button:disabled,
   margin-top: 6px;
   font-size: 12px;
 }
+
+@media (max-width: 480px) {
+  .container {
+    padding: 16px 12px 32px;
+    gap: 16px;
+  }
+  .site-footer {
+    margin: 16px auto 20px;
+    padding: 8px 12px;
+  }
+}
 </style>
