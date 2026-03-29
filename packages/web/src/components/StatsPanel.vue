@@ -44,17 +44,16 @@ defineProps({
 
 .stat {
   position: relative;
-  border: 1px solid color-mix(in oklab, var(--primary) 16%, var(--surface));
+  border: none;
   border-radius: 10px;
   padding: 12px;
   background: color-mix(in oklab, var(--surface) 85%, black);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02),
-    0 6px 24px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
 }
 
 /* Secondary dashed outlines to visually match projection lines */
 .stat-zero::after,
-.stat-from-last.active::after {
+.stat-from-last::after {
   content: "";
   position: absolute;
   inset: 0;
@@ -69,9 +68,12 @@ defineProps({
 }
 
 /* Last → goal matches .proj-from-last but toned down */
-.stat-from-last.active::after {
+.stat-from-last::after {
   border: 1.5px dashed color-mix(in oklab, var(--success) 55%, var(--surface));
   opacity: 0.7;
+}
+.stat-from-last:not(.active)::after {
+  opacity: 0.35;
 }
 
 .stat-label {

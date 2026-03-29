@@ -179,14 +179,15 @@
     <p v-if="!isSeasonValid" class="error">Season start must be before end.</p>
 
     <div class="chart-wrapper" v-if="isSeasonValid">
-      <button
-        class="settings-btn"
-        @click="openSettingsModal"
-        title="Settings"
-        aria-label="Open settings"
-      >
-        ⚙️
-      </button>
+      <div class="today-progress">
+        <template v-if="todayPoint">
+          <span class="today-label">Today</span>
+          <span class="today-value">+{{ todayGain }} pts</span>
+        </template>
+        <template v-else>
+          <span class="today-label">No points logged today</span>
+        </template>
+      </div>
       <button
         v-if="isOutOfDefault"
         class="recenter-btn"
@@ -241,7 +242,8 @@
         </g>
 
         <!-- Plot content (pan/zoom) -->
-        <g :transform="plotTransform" clip-path="url(#plot-clip)">
+        <g clip-path="url(#plot-clip)">
+        <g :transform="plotTransform">
           <!-- Grid lines (optional for readability) -->
           <g class="grid">
             <template v-for="t in 4" :key="`h-${t}`">
@@ -296,8 +298,22 @@
             </template>
           </g>
         </g>
+        </g>
 
-        <!-- Static labels -->
+        <!-- Axis labels -->
+        <text
+          class="axis-label"
+          :x="22"
+          :y="height / 2"
+          text-anchor="middle"
+          :transform="`rotate(-90 22 ${height / 2})`"
+        >Total Win Points</text>
+        <text
+          class="axis-label"
+          :x="width / 2"
+          :y="height - 10"
+          text-anchor="middle"
+        >Season Timeline</text>
 
         <!-- Transparent overlay for better hit area -->
         <rect
@@ -326,6 +342,7 @@
         Export CSV
       </button>
       <button @click="openImportModal" :disabled="!isAuthenticated">Import CSV</button>
+      <button @click="openSettingsModal" title="Settings" aria-label="Open settings">⚙️</button>
     </div>
   </div>
 </template>
@@ -417,7 +434,7 @@ const simplifyImport = ref(false);
 // Settings
 const showSettingsModal = ref(false);
 const navSensitivity = ref(1);
-const enableNavigation = ref(true);
+const enableNavigation = ref(false);
 
 // Editing state for points
 const editIndex = ref(-1);
@@ -584,6 +601,21 @@ const scaledPathPoints = computed(() => {
 
 const pathD = computed(() => buildPathD(scaledPathPoints.value));
 
+// Today's progress
+const todayStr = formatDate(new Date());
+const todayPoint = computed(() => {
+  return sortedPoints.value.find((p) => p.date === todayStr) || null;
+});
+const todayGain = computed(() => {
+  if (!todayPoint.value) return 0;
+  // Find the last point before today
+  const prev = [...sortedPoints.value]
+    .filter((p) => p.date < todayStr)
+    .pop();
+  const prevY = prev ? prev.y : 0;
+  return Math.round((todayPoint.value.y - prevY) * 100) / 100;
+});
+
 // Current win points (latest y)
 const currentWinPoints = computed(() => {
   const pts = sortedPoints.value;
@@ -645,8 +677,8 @@ const progressPct = computed(() => {
 // Pan/Zoom state
 const svgRef = ref(null);
 const zoomScale = ref(1);
-const minScale = 0.5;
-const maxScale = 8;
+const minScale = 1;
+const maxScale = 2;
 const translate = reactive({ x: 0, y: 0 });
 
 const plotTransform = computed(
@@ -666,6 +698,26 @@ function clampScale(s) {
   return Math.min(maxScale, Math.max(minScale, s));
 }
 
+function clampTranslate() {
+  // Prevent panning the plot area outside the visible SVG viewport.
+  // The plot area spans [padding .. width-padding] x [padding .. height-padding].
+  // After transform: a point at plotX maps to translate + plotX * scale.
+  // We want the left edge of the plot (padding) to not go right of the SVG left edge (padding),
+  // and the right edge (width-padding) to not go left of the SVG right edge (width-padding).
+  const s = zoomScale.value;
+
+  // max translate: left edge of scaled plot aligns with left edge of viewport plot area
+  const maxTx = padding - padding * s;
+  // min translate: right edge of scaled plot aligns with right edge of viewport plot area
+  const minTx = (width - padding) - (width - padding) * s;
+
+  const maxTy = padding - padding * s;
+  const minTy = (height - padding) - (height - padding) * s;
+
+  translate.x = clamp(translate.x, minTx, maxTx);
+  translate.y = clamp(translate.y, minTy, maxTy);
+}
+
 function wheelZoom(deltaY, mx, my) {
   const zoomIntensity = 0.0015 * navSensitivity.value;
   const scaleFactor = Math.exp(-deltaY * zoomIntensity);
@@ -676,6 +728,7 @@ function wheelZoom(deltaY, mx, my) {
   translate.x = mx - (mx - translate.x) * k;
   translate.y = my - (my - translate.y) * k;
   zoomScale.value = newScale;
+  clampTranslate();
 }
 
 function svgPointFromEvent(evt) {
@@ -755,6 +808,7 @@ function onPointerMove(evt) {
       dy *
       (height / svgRef.value.getBoundingClientRect().height) *
       navSensitivity.value;
+    clampTranslate();
     lastPos = { x: evt.clientX, y: evt.clientY };
   } else if (pointers.size === 2) {
     const [p1, p2] = Array.from(pointers.values());
@@ -772,6 +826,7 @@ function onPointerMove(evt) {
       translate.x = mx - (mx - translate.x) * k;
       translate.y = my - (my - translate.y) * k;
       zoomScale.value = newScale;
+      clampTranslate();
     }
     lastMid = mid;
     lastDist = dist;
@@ -1228,20 +1283,12 @@ async function incrementWinPoints(increment) {
   margin-right: 8px;
 }
 
-/* Make small floating control buttons visually distinct */
-.settings-btn,
+/* Recenter button floats inside chart-wrapper */
 .recenter-btn {
   position: absolute;
-  top: 8px;
-  right: 8px;
+  bottom: 8px;
+  left: 8px;
   z-index: 10;
-}
-.recenter-btn {
-  right: 90px;
-}
-
-.settings-btn,
-.recenter-btn {
   width: 36px;
   height: 36px;
   padding: 0;
@@ -1250,7 +1297,6 @@ async function incrementWinPoints(increment) {
   border: 1px solid color-mix(in oklab, var(--primary) 30%, var(--surface));
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
 }
-.settings-btn:hover,
 .recenter-btn:hover {
   background: color-mix(in oklab, var(--surface) 90%, #000);
   box-shadow: 0 10px 26px rgba(0, 0, 0, 0.5), 0 0 0 3px var(--ring);
@@ -1422,6 +1468,25 @@ async function incrementWinPoints(increment) {
   margin: 6px 0 0;
 }
 
+.today-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  font-size: 13px;
+}
+.today-label {
+  color: var(--muted);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 12px;
+}
+.today-value {
+  color: var(--success);
+  font-weight: 800;
+}
+
 .status-banner {
   padding: 10px 14px;
   border-radius: 8px;
@@ -1493,29 +1558,6 @@ svg {
 
 svg.nav-disabled {
   touch-action: auto;
-}
-
-.settings-btn {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  z-index: 10;
-  background: color-mix(in oklab, var(--surface) 92%, black);
-  border: 1px solid color-mix(in oklab, var(--primary) 25%, var(--surface));
-  border-radius: 8px;
-  padding: 6px 8px;
-  line-height: 1;
-}
-
-.recenter-btn {
-  position: absolute;
-  bottom: 8px;
-  right: 8px;
-  z-index: 10;
-  background: color-mix(in oklab, var(--surface) 92%, black);
-  border: 1px solid color-mix(in oklab, var(--primary) 25%, var(--surface));
-  border-radius: 8px;
-  padding: 6px 10px;
 }
 
 .setting-row {
@@ -1617,6 +1659,14 @@ svg.nav-disabled {
 .labels text {
   font-size: 12px;
   fill: var(--muted);
+}
+
+.axis-label {
+  font-size: 11px;
+  fill: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 700;
 }
 
 .points-ul {
