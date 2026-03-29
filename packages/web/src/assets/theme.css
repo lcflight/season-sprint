@@ -121,3 +121,25 @@ h1, h2, h3 {
   }
 }
 
+/* ── Mobile (phone) ── */
+@media (max-width: 480px) {
+  button,
+  .button {
+    min-height: 44px;
+    padding: 10px 14px;
+  }
+
+  input[type="date"],
+  input[type="number"],
+  input[type="text"],
+  select {
+    min-height: 44px;
+    padding: 10px 12px;
+    font-size: 16px; /* prevents iOS zoom on focus */
+  }
+
+  h1 { font-size: 20px; }
+  h2 { font-size: 16px; }
+  h3 { font-size: 14px; }
+}
+

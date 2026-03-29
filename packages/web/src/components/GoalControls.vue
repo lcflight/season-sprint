@@ -72,5 +72,19 @@ const toNextLabel = computed(() => `${(props.toNext?.toLocaleString?.() || props
   align-items: center;
   flex-wrap: wrap;
 }
+
+@media (max-width: 480px) {
+  .quick-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .quick-actions label {
+    width: 100%;
+  }
+  .quick-actions select,
+  .quick-actions input {
+    width: 100%;
+  }
+}
 </style>
 

@@ -80,6 +80,13 @@ export default {
   text-transform: uppercase;
   color: var(--text-strong);
   text-shadow: 0 0 24px color-mix(in oklab, var(--primary) 40%, transparent);
+  font-size: clamp(12px, 3.5vw, 16px);
+}
+
+@media (max-width: 480px) {
+  .header-bar {
+    padding: 12px 14px;
+  }
 }
 
 .brand-accent {

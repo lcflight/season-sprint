@@ -111,4 +111,19 @@ defineProps({
 .sample-from-last.inactive {
   opacity: 0.4;
 }
+
+@media (max-width: 480px) {
+  .stats {
+    grid-template-columns: 1fr 1fr;
+  }
+  .stat {
+    padding: 8px;
+  }
+  .stat-label {
+    font-size: 11px;
+  }
+  .stat-value {
+    font-size: 20px;
+  }
+}
 </style>

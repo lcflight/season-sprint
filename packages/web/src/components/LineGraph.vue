@@ -1708,4 +1708,60 @@ svg.nav-disabled {
   max-width: min(460px, 60%);
   z-index: 9;
 }
+
+/* ── Mobile (phone) ── */
+@media (max-width: 480px) {
+  .chart-actions {
+    flex-wrap: wrap;
+  }
+  .chart-actions button {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .chart-actions .spacer {
+    display: none;
+  }
+
+  .settings .setting-group {
+    grid-template-columns: 1fr;
+  }
+
+  .points-ul li {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .row-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+  .edit-row {
+    flex-direction: column;
+    width: 100%;
+  }
+  .edit-row label {
+    width: 100%;
+  }
+  .edit-row input {
+    width: 100%;
+  }
+
+  .controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .status-banner {
+    font-size: 12px;
+    padding: 8px 12px;
+  }
+
+  .rank-progress .labels {
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .lg-header {
+    padding: 0 4px;
+  }
+}
 </style>

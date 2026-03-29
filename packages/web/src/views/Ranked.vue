@@ -151,4 +151,11 @@ export default {
   font-size: 12px;
   color: var(--muted);
 }
+
+@media (max-width: 480px) {
+  .rank-progress .labels {
+    flex-direction: column;
+    gap: 4px;
+  }
+}
 </style>
