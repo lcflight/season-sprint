@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-test-build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint web
+        run: pnpm --filter web run lint
+
+      - name: Lint server
+        run: pnpm --filter server run lint
+
+      - name: Test web
+        run: pnpm --filter web run test
+
+      - name: Test server
+        run: pnpm --filter server run test
+
+      - name: Build web
+        run: pnpm --filter web run build
