@@ -297,9 +297,9 @@
             >{{ band.tier }}</text>
           </g>
 
-          <!-- Grid lines (optional for readability) -->
+          <!-- Grid lines -->
           <g class="grid">
-            <template v-for="t in 4" :key="`h-${t}`">
+            <template v-if="!showRankOverlay || !rankBands.length" v-for="t in 4" :key="`h-${t}`">
               <line
                 :x1="padding"
                 :x2="width - padding"
