@@ -32,6 +32,8 @@ jobs:
           node-version-file: .node-version
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Generate Prisma client
+        run: pnpm --filter server exec prisma generate
       - name: Test web
         run: pnpm --filter web run test
       - name: Test server
