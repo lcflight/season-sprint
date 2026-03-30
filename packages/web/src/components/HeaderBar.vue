@@ -13,7 +13,8 @@ const clerkEnabled = Boolean(publishableKey) && !(isLocalDevHost && isLiveClerkK
 <template>
   <div class="header-bar">
     <div class="brand">
-      <span class="brand-accent">THE</span> FINALS | Season Sprint
+      <img src="/logo-transparent.svg" alt="Season Sprint logo" class="brand-logo" />
+      <span class="brand-text"><span class="brand-accent">THE</span>&nbsp;FINALS</span> <span class="brand-sep">|</span> <span class="brand-text">Season Sprint</span>
     </div>
     <div class="user-actions">
       <template v-if="clerkEnabled">
@@ -75,12 +76,39 @@ export default {
 }
 
 .brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   font-weight: 800;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--text-strong);
   text-shadow: 0 0 24px color-mix(in oklab, var(--primary) 40%, transparent);
   font-size: clamp(12px, 3.5vw, 16px);
+  min-width: 0;
+}
+
+.brand-text:first-of-type {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.brand-sep {
+  flex-shrink: 0;
+  position: relative;
+  top: -2px;
+}
+
+.brand-text:last-of-type {
+  text-align: left;
+}
+
+.brand-logo {
+  height: 50px;
+  width: auto;
+  background: #CE2C30;
+  border-radius: 6px;
+  padding: 0;
 }
 
 @media (max-width: 480px) {

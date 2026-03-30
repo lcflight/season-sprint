@@ -1,0 +1,13 @@
+<svg version="1.2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 360" width="360" height="360">
+	<style>
+		.light { fill: #a4c9f5; stroke: none }
+		.dark { fill: #263342; stroke: none }
+	</style>
+	<g id="Layer 1" transform="translate(9.25, -13.48)">
+		<path id="Shape 1" fill-rule="evenodd" class="light" d="M71 308.45 L189.82 234.3 Q200 227.95 190.1 221.17 L109.9 166.23 Q100 159.45 109.12 151.65 L174.38 95.75 Q183.5 87.95 193.98 93.8 L272.52 137.6 Q283 143.45 273.82 151.19 L266.68 157.21 Q257.5 164.95 247.05 159.06 L196.95 130.84 Q186.5 124.95 177.76 133.17 L161.24 148.73 Q152.5 156.95 162.73 163.23 L252.27 218.17 Q262.5 224.45 253.62 232.51 L206.38 275.39 Q197.5 283.45 185.73 285.78 Z"/>
+		<path id="Shape 2" fill-rule="evenodd" class="dark" d="m185.5 227.37l-11.87-7.42-123.13 92z"/>
+		<path id="Shape 3" fill-rule="evenodd" class="dark" d="m167 214.45l-9-7.5-89.5 83.5z"/>
+		<path id="Shape 4" fill-rule="evenodd" d="m132 322.45"/>
+		<path id="Shape 5" fill-rule="evenodd" class="dark" d="m268.5 120c-12.44 0-22.5-10.06-22.5-22.5 0-12.44 10.06-22.5 22.5-22.5 12.44 0 22.5 10.06 22.5 22.5 0 12.44-10.06 22.5-22.5 22.5z"/>
+	</g>
+</svg>
