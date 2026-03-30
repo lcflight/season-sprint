@@ -349,6 +349,7 @@
 
 <script setup>
 import { computed, reactive, ref, watch, onMounted } from "vue";
+import { useAuth } from "@clerk/vue";
 import {
   isValidDateStr,
   dateToMs,
@@ -1165,6 +1166,18 @@ onMounted(async () => {
   // Emit initial after load tick
   requestAnimationFrame(() => emit("win-points", currentWinPoints.value));
 });
+
+// Re-load data when Clerk auth state changes (e.g. user signs in after mount)
+try {
+  const { isSignedIn } = useAuth();
+  watch(isSignedIn, (signedIn) => {
+    if (signedIn && !isAuthenticated.value) {
+      loadPointsFromAPI();
+    }
+  });
+} catch (_) {
+  // Clerk not available (e.g. dev mode)
+}
 
 // Expose helper to set today's win points to a specific value (replace, not add)
 async function addWinPoints(value) {
