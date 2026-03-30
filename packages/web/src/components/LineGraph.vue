@@ -297,10 +297,12 @@
             >{{ band.tier }}</text>
           </g>
 
-          <!-- Grid lines (optional for readability) -->
+          <!-- Grid lines -->
           <g class="grid">
-            <template v-for="t in 4" :key="`h-${t}`">
+            <template v-if="!showRankOverlay || !rankBands.length">
               <line
+                v-for="t in 4"
+                :key="`h-${t}`"
                 :x1="padding"
                 :x2="width - padding"
                 :y1="padding + t * (plotHeight / 5)"
