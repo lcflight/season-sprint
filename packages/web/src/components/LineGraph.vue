@@ -102,6 +102,26 @@
               </label>
             </div>
           </div>
+
+          <div class="setting-group" v-if="goalOptions.length">
+            <div class="setting-info">
+              <div class="setting-title">Rank overlay</div>
+              <div class="setting-desc">
+                Show translucent rank threshold bands on the chart.
+              </div>
+            </div>
+            <div class="setting-control">
+              <label class="toggle-row" for="showRankOverlay">
+                <input
+                  id="showRankOverlay"
+                  class="toggle"
+                  type="checkbox"
+                  v-model="showRankOverlay"
+                />
+                <span class="toggle-text">Show rank overlay</span>
+              </label>
+            </div>
+          </div>
         </section>
         <footer class="modal-footer">
           <button @click="closeSettingsModal">Close</button>
@@ -244,6 +264,39 @@
         <!-- Plot content (pan/zoom) -->
         <g clip-path="url(#plot-clip)">
         <g :transform="plotTransform">
+          <!-- Rank threshold overlay -->
+          <g v-if="showRankOverlay && rankBands.length" class="rank-overlay">
+            <rect
+              v-for="(band, i) in rankBands"
+              :key="'band-' + i"
+              :x="padding"
+              :width="width - padding * 2"
+              :y="scaleY(band.ceil)"
+              :height="Math.max(0, scaleY(band.floor) - scaleY(band.ceil))"
+              :fill="band.fill"
+            />
+            <line
+              v-for="(band, i) in rankBands"
+              :key="'thresh-' + i"
+              :x1="padding"
+              :x2="width - padding"
+              :y1="scaleY(band.ceil)"
+              :y2="scaleY(band.ceil)"
+              :stroke="band.stroke"
+              stroke-width="0.5"
+              stroke-dasharray="3 3"
+            />
+            <text
+              v-for="(band, i) in rankBands"
+              :key="'label-' + i"
+              :x="width - padding - 4"
+              :y="scaleY(band.ceil) + 12"
+              class="rank-label"
+              text-anchor="end"
+              :fill="band.stroke"
+            >{{ band.tier }}</text>
+          </g>
+
           <!-- Grid lines (optional for readability) -->
           <g class="grid">
             <template v-for="t in 4" :key="`h-${t}`">
@@ -381,6 +434,7 @@ import {
   buildXTicks,
 } from "@/utils/chart";
 import { loadSeasonJson } from "@/utils/season";
+import { buildRankBands } from "@/utils/rankColors";
 import GoalControls from "@/components/GoalControls.vue";
 import StatsPanel from "@/components/StatsPanel.vue";
 import ImportModal from "@/components/modals/ImportModal.vue";
@@ -436,6 +490,7 @@ const simplifyImport = ref(false);
 const showSettingsModal = ref(false);
 const navSensitivity = ref(1);
 const enableNavigation = ref(false);
+const showRankOverlay = ref(true);
 
 // Editing state for points
 const editIndex = ref(-1);
@@ -455,6 +510,7 @@ function saveSettings() {
     simplifyImport: simplifyImport.value,
     navSensitivity: navSensitivity.value,
     enableNavigation: enableNavigation.value,
+    showRankOverlay: showRankOverlay.value,
   };
   const key = props.storageKey
     ? `season-sprint:${props.storageKey}:v1`
@@ -491,6 +547,8 @@ function loadSettings() {
     navSensitivity.value = parsed.navSensitivity;
   if (typeof parsed.enableNavigation === "boolean")
     enableNavigation.value = parsed.enableNavigation;
+  if (typeof parsed.showRankOverlay === "boolean")
+    showRankOverlay.value = parsed.showRankOverlay;
 }
 
 // Load points from D1 via API
@@ -561,6 +619,9 @@ const yDomain = computed(() =>
 const scaleX = (dateStr) =>
   scaleXFactory(xDomain.value, width, padding)(dateStr);
 const scaleY = (y) => scaleYFactory(yDomain.value, height, padding)(y);
+
+// Rank overlay bands
+const rankBands = computed(() => buildRankBands(props.goalOptions));
 
 // Derived
 const sortedPoints = computed(() =>
@@ -1636,6 +1697,14 @@ svg.nav-disabled {
 .axes line {
   stroke: color-mix(in oklab, var(--primary) 35%, #1f2937);
   stroke-width: 1.25;
+}
+
+.rank-label {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  pointer-events: none;
 }
 
 .grid line {

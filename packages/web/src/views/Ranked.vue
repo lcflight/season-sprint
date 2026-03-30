@@ -1,6 +1,6 @@
 <template>
   <section>
-    <LineGraph storageKey="ranked" @win-points="onRankScore">
+    <LineGraph storageKey="ranked" :goalOptions="rankedThresholds" @win-points="onRankScore">
       <template #below-stats>
         <div class="rank-indicator">
           <div class="rank-header">
@@ -63,7 +63,7 @@ export default {
   name: 'RankedView',
   components: { LineGraph },
   data() {
-    return { rankScore: 0 }
+    return { rankScore: 0, rankedThresholds: RANKED_THRESHOLDS }
   },
   computed: {
     rankInfo() {
