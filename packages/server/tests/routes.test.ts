@@ -7,6 +7,7 @@ import path from "path";
 const DEV_AUTH_TOKEN = "test-dev-token";
 const DEV_USER_ID = "test-user-id";
 
+
 async function createTestD1(): Promise<D1Database> {
   const mf = new Miniflare({
     modules: true,
@@ -230,9 +231,9 @@ describe("API Routes", () => {
       const all = await listRes.json();
       expect(all).toHaveLength(2);
       const march1 = all.find(
-        (r: { date: string }) => r.date.slice(0, 10) === "2026-03-01"
+        (r) => r.date.slice(0, 10) === "2026-03-01"
       );
-      expect(march1.winPoints).toBe(999);
+      expect(march1?.winPoints).toBe(999);
     });
   });
 

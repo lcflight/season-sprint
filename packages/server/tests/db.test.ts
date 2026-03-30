@@ -144,7 +144,7 @@ describe("DbService", () => {
       expect(records[0].winPoints).toBe(100);
       expect(records[1].winPoints).toBe(200);
       expect(records[2].winPoints).toBe(300);
-      records.forEach((r) => expect(r.id).toBeDefined());
+      records.forEach((r) => { expect(r.id).toBeDefined(); });
     });
 
     it("upserts existing dates instead of duplicating", async () => {

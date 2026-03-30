@@ -121,16 +121,16 @@ describe("seasonScraper", () => {
       expect(seasons.length).toBeGreaterThanOrEqual(3);
       const s0 = seasons.find((s) => s.name === "Season 0");
       expect(s0).toBeDefined();
-      expect(s0!.start).toContain("2023");
-      expect(s0!.end).toContain("2023");
+      expect(s0?.start).toContain("2023");
+      expect(s0?.end).toContain("2023");
     });
 
     it("parses dates with commas (Month DD, YYYY)", () => {
       const seasons = parseSeasons(WIKI_HTML);
       const s1 = seasons.find((s) => s.name === "Season 1");
       expect(s1).toBeDefined();
-      expect(s1!.start).not.toBeNull();
-      expect(s1!.end).not.toBeNull();
+      expect(s1?.start).not.toBeNull();
+      expect(s1?.end).not.toBeNull();
     });
 
     it("strips footnote refs from dates", () => {
@@ -187,7 +187,7 @@ describe("seasonScraper", () => {
       const now = new Date("2024-04-01T00:00:00.000Z");
       const current = pickCurrentSeason(seasons, now);
       expect(current).not.toBeNull();
-      expect(current!.name).toBe("Season 2");
+      expect(current?.name).toBe("Season 2");
     });
 
     it("returns season with null end if start is before now", () => {
@@ -197,7 +197,7 @@ describe("seasonScraper", () => {
       const now = new Date("2026-04-01T00:00:00.000Z");
       const current = pickCurrentSeason(seasons, now);
       expect(current).not.toBeNull();
-      expect(current!.name).toBe("Season 10");
+      expect(current?.name).toBe("Season 10");
     });
 
     it("returns null when no season matches", () => {
@@ -216,7 +216,7 @@ describe("seasonScraper", () => {
       ];
       const now = new Date("2024-04-01T00:00:00.000Z");
       const current = pickCurrentSeason(seasons, now);
-      expect(current!.name).toBe("Season 2");
+      expect(current?.name).toBe("Season 2");
     });
   });
 
@@ -273,7 +273,7 @@ describe("seasonScraper", () => {
         // Verify it was cached
         const cached = await getCachedSeasons(d1);
         expect(cached).not.toBeNull();
-        expect(cached!.seasons.length).toBe(result.seasons.length);
+        expect(cached?.seasons.length).toBe(result.seasons.length);
       } finally {
         globalThis.fetch = originalFetch;
       }
