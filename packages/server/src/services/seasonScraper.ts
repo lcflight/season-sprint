@@ -87,7 +87,7 @@ function extractFromWikitable(tableHtml: string): Season[] {
 
     if (hasDuration && cells[idxDuration]) {
       const dur = stripFootnotes(cells[idxDuration]);
-      const parts = dur.split(/\s*[–\-]\s*/);
+      const parts = dur.split(/\s*[–-]\s*/);
       if (parts.length >= 1) start = parseDate(parts[0]);
       if (parts.length >= 2) {
         const endRaw = parts[parts.length - 1];
@@ -127,7 +127,7 @@ function extractFallback(tableHtml: string): Season[] {
 }
 
 export function parseSeasons(html: string): Season[] {
-  let seasons: Season[] = [];
+  const seasons: Season[] = [];
 
   // Try wikitable(s) first
   const wikitableRegex =
@@ -152,7 +152,7 @@ export function parseSeasons(html: string): Season[] {
   const seen = new Set<string>();
   const unique: Season[] = [];
   for (const s of seasons) {
-    const key = `${s.name}|${s.start}`;
+    const key = `${s.name}|${s.start ?? ''}`;
     if (!seen.has(key)) {
       seen.add(key);
       unique.push(s);
@@ -188,7 +188,7 @@ export function pickCurrentSeason(
 
   // Pick the one with the latest start
   matching.sort(
-    (a, b) => new Date(b.start!).getTime() - new Date(a.start!).getTime()
+    (a, b) => new Date(b.start ?? 0).getTime() - new Date(a.start ?? 0).getTime()
   );
   return matching[0];
 }
@@ -225,7 +225,7 @@ export async function scrapeAndStore(
     // Fetch failed — return cached if available
     const cached = await getCachedSeasons(d1);
     if (cached) return cached;
-    throw new Error(`Failed to fetch wiki and no cache available: ${e}`);
+    throw new Error(`Failed to fetch wiki and no cache available: ${String(e)}`);
   }
 
   const seasons = parseSeasons(html);

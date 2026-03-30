@@ -66,7 +66,7 @@ app.get("/seasons", async (c) => {
     const fresh = await scrapeAndStore(c.env.D1);
     c.header("Cache-Control", "public, max-age=3600");
     return c.json(fresh);
-  } catch (e) {
+  } catch {
     return c.json({ error: "Season data unavailable" }, 503);
   }
 });
@@ -209,7 +209,7 @@ export { app };
 export default {
   fetch: (req: Request, env: Bindings, ctx: ExecutionContext) =>
     app.fetch(req, env, ctx),
-  async scheduled(
+  scheduled(
     _event: ScheduledEvent,
     env: Bindings,
     ctx: ExecutionContext
