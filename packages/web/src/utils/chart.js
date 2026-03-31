@@ -51,6 +51,46 @@ export function buildPathD(pointsScaled) {
   return pointsScaled.reduce((d, p, i) => d + `${i === 0 ? 'M' : ' L'}${p.x},${p.y}`, '')
 }
 
+export function buildAveragePacePath(pointsInSeason, seasonStartMs, seasonEndMs, scaleX, scaleY) {
+  if (!pointsInSeason.length) return ''
+
+  // Convert points to (dayOffset, y) pairs, including an implicit origin (0, 0)
+  const pts = [{ x: 0, y: 0 }]
+  for (const p of pointsInSeason) {
+    const day = (dateToMs(p.date) - seasonStartMs) / MS_PER_DAY
+    pts.push({ x: day, y: p.y })
+  }
+
+  // Through-origin least-squares regression: y = slope * x
+  // Anchors the line at (0, 0) = season start with 0 points.
+  // slope = Σ(x·y) / Σ(x²)
+  let sumXX = 0, sumXY = 0
+  for (const p of pts) {
+    sumXX += p.x * p.x
+    sumXY += p.x * p.y
+  }
+  if (sumXX === 0) return ''
+
+  const slope = sumXY / sumXX
+  const totalDays = (seasonEndMs - seasonStartMs) / MS_PER_DAY
+  const yAtEnd = slope * totalDays
+
+  console.log('[avg-pace]', {
+    points: pts,
+    slope: slope.toFixed(2) + ' pts/day',
+    yAtEnd,
+    totalDays,
+  })
+
+  const startDateStr = msToDateInput(seasonStartMs)
+  const endDateStr = msToDateInput(seasonEndMs)
+  const x1 = scaleX(startDateStr)
+  const y1 = scaleY(0)
+  const x2 = scaleX(endDateStr)
+  const y2 = scaleY(yAtEnd)
+  return `M${x1},${y1} L${x2},${y2}`
+}
+
 export function buildXTicks(xDomain, width, padding, n = 4) {
   const plotWidth = width - padding * 2
   const [min, max] = xDomain
