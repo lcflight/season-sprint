@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { calcXDomain, calcYDomain, scaleXFactory, scaleYFactory, buildPathD, buildXTicks, buildAveragePacePath, MS_PER_DAY } from '@/utils/chart'
+import { calcXDomain, calcYDomain, scaleXFactory, scaleYFactory, buildPathD, buildXTicks, buildAveragePacePath } from '@/utils/chart'
 import { dateToMs } from '@/utils/date'
 
 const width = 600
