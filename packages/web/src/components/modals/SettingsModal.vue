@@ -69,6 +69,27 @@
             </label>
           </div>
         </div>
+
+        <div class="setting-group">
+          <div class="setting-info">
+            <div class="setting-title">Average pace line</div>
+            <div class="setting-desc">
+              Show a projection line based on your average points per day this season.
+            </div>
+          </div>
+          <div class="setting-control">
+            <label class="toggle-row" for="showAveragePace">
+              <input
+                id="showAveragePace"
+                class="toggle"
+                type="checkbox"
+                :checked="showAveragePace"
+                @change="$emit('update:showAveragePace', $event.target.checked)"
+              />
+              <span class="toggle-text">Show average pace</span>
+            </label>
+          </div>
+        </div>
       </section>
       <footer class="modal-footer">
         <button @click="$emit('close')">Close</button>
@@ -83,6 +104,7 @@ defineProps({
   navSensitivity: { type: Number, required: true },
   enableNavigation: { type: Boolean, required: true },
   showRankOverlay: { type: Boolean, required: true },
+  showAveragePace: { type: Boolean, required: true },
   hasGoalOptions: { type: Boolean, default: false },
 })
 
@@ -92,5 +114,6 @@ defineEmits([
   'update:navSensitivity',
   'update:enableNavigation',
   'update:showRankOverlay',
+  'update:showAveragePace',
 ])
 </script>
