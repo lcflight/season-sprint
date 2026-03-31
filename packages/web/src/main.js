@@ -1,6 +1,9 @@
 import { createApp } from "vue";
 import App from "./App.vue";
 import "./assets/theme.css";
+import "./assets/modal.css";
+import "./assets/toggle.css";
+import "./assets/rank-indicator.css";
 import router from "./router";
 import { clerkPlugin } from "@clerk/vue";
 import { dark } from "@clerk/themes";

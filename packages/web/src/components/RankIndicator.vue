@@ -37,47 +37,4 @@ defineProps({
 })
 </script>
 
-<style scoped>
-.rank-indicator {
-  margin: 8px 0 6px;
-  border: 1px solid color-mix(in oklab, var(--primary) 20%, var(--surface));
-  border-radius: 10px;
-  padding: 10px 12px;
-  background: color-mix(in oklab, var(--surface) 92%, black);
-}
-.rank-header {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  margin-bottom: 8px;
-}
-.rank-badge {
-  font-weight: 900;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-strong);
-}
-.rank-points {
-  color: var(--muted);
-}
-.rank-progress .bar {
-  width: 100%;
-  height: 8px;
-  border-radius: 999px;
-  background: color-mix(in oklab, var(--surface) 85%, #000);
-  overflow: hidden;
-  border: 1px solid color-mix(in oklab, var(--primary) 18%, var(--surface));
-}
-.rank-progress .fill {
-  height: 100%;
-  background: linear-gradient(90deg, var(--primary), color-mix(in oklab, var(--accent) 50%, var(--primary)));
-}
-.rank-progress .labels {
-  display: flex;
-  justify-content: space-between;
-  margin-top: 6px;
-  color: var(--muted);
-  font-size: 12px;
-}
-</style>
 
