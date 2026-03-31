@@ -56,10 +56,12 @@
       :nav-sensitivity="navSensitivity"
       :enable-navigation="enableNavigation"
       :show-rank-overlay="showRankOverlay"
+      :show-average-pace="showAveragePace"
       :has-goal-options="goalOptions.length > 0"
       @update:nav-sensitivity="navSensitivity = $event"
       @update:enable-navigation="enableNavigation = $event"
       @update:show-rank-overlay="showRankOverlay = $event"
+      @update:show-average-pace="showAveragePace = $event"
       @close="closeSettingsModal"
     />
 
@@ -207,6 +209,11 @@
             :d="pathGoalFromLast"
             class="proj proj-from-last"
           />
+          <path
+            v-if="showAveragePace && pathAveragePace"
+            :d="pathAveragePace"
+            class="proj proj-average-pace"
+          />
 
           <!-- Path -->
           <path v-if="pathD" :d="pathD" class="line" />
@@ -296,6 +303,7 @@ import {
   scaleYFactory,
   buildPathD,
   buildXTicks,
+  buildAveragePacePath,
 } from "@/utils/chart";
 import { loadSeasonJson } from "@/utils/season";
 import { buildRankBands } from "@/utils/rankColors";
@@ -343,6 +351,7 @@ const {
   navSensitivity,
   enableNavigation,
   showRankOverlay,
+  showAveragePace,
   loadSettings,
 } = useGraphSettings(props.storageKey);
 
@@ -473,6 +482,17 @@ const pathGoalFromLast = computed(() => {
   const x2 = scaleX(seasonEnd.value);
   const y2 = scaleY(goalWinPoints.value);
   return `M${x1},${y1} L${x2},${y2}`;
+});
+
+const pathAveragePace = computed(() => {
+  if (!isSeasonValid.value) return "";
+  return buildAveragePacePath(
+    sortedPointsInSeason.value,
+    xDomain.value[0],
+    xDomain.value[1],
+    scaleX,
+    scaleY
+  );
 });
 
 const xTicks = computed(() => buildXTicks(xDomain.value, width, padding, 4));
@@ -929,6 +949,12 @@ svg.nav-disabled {
 
 .proj-from-last {
   stroke: var(--success);
+}
+
+.proj-average-pace {
+  stroke: var(--accent);
+  stroke-dasharray: 4 4;
+  opacity: 0.5;
 }
 
 .point circle {

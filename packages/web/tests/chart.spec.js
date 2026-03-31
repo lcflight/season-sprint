@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { calcXDomain, calcYDomain, scaleXFactory, scaleYFactory, buildPathD, buildXTicks } from '@/utils/chart'
+import { calcXDomain, calcYDomain, scaleXFactory, scaleYFactory, buildPathD, buildXTicks, buildAveragePacePath } from '@/utils/chart'
+import { dateToMs } from '@/utils/date'
 
 const width = 600
 const height = 360
@@ -34,6 +35,99 @@ describe('chart utils', () => {
     const xDomain = calcXDomain('2025-01-01', '2025-01-05', new Date(2025,0,1))
     const ticks = buildXTicks(xDomain, width, padding, 4)
     expect(ticks.length).toBe(5)
+  })
+})
+
+describe('buildAveragePacePath', () => {
+  const seasonStart = '2025-01-01'
+  const seasonEnd = '2025-01-11'
+  const seasonStartMs = dateToMs(seasonStart)
+  const seasonEndMs = dateToMs(seasonEnd)
+  const xDomain = calcXDomain(seasonStart, seasonEnd, new Date(2025, 0, 1))
+  const scaleX = scaleXFactory(xDomain, width, padding)
+  const scaleY = scaleYFactory([0, 100], height, padding)
+
+  it('returns empty string when no in-season points exist', () => {
+    const result = buildAveragePacePath([], seasonStartMs, seasonEndMs, scaleX, scaleY)
+    expect(result).toBe('')
+  })
+
+  it('returns valid SVG path string', () => {
+    const points = [
+      { date: '2025-01-03', y: 20 },
+      { date: '2025-01-06', y: 50 },
+    ]
+    const result = buildAveragePacePath(points, seasonStartMs, seasonEndMs, scaleX, scaleY)
+    expect(result).toMatch(/^M[\d.]+,[\d.]+ L[\d.]+,[\d.]+$/)
+  })
+
+  it('computes best-fit line through origin and points', () => {
+    // Points perfectly on y = 10x line (day 0 = season start)
+    // (0,0) origin, (2,20), (5,50) → perfect fit, slope = 10
+    // At day 10 (season end): y = 100
+    const points = [
+      { date: '2025-01-03', y: 20 }, // day 2
+      { date: '2025-01-06', y: 50 }, // day 5
+    ]
+    const result = buildAveragePacePath(points, seasonStartMs, seasonEndMs, scaleX, scaleY)
+
+    const x1 = scaleX(seasonStart)
+    const y1 = scaleY(0)
+    expect(result).toContain(`M${x1},${y1}`)
+
+    const x2 = scaleX(seasonEnd)
+    const y2 = scaleY(100)
+    expect(result).toContain(`L${x2},${y2}`)
+  })
+
+  it('weights toward steep early growth even with a plateau', () => {
+    // Fast growth days 1-3 (10 pts/day), then plateau at day 8
+    // Points: (0,0), (1,10), (2,20), (3,30), (8,35)
+    // Regression slope should be pulled toward the cluster of steep points,
+    // producing a higher projection than simple endpoint average (35/8 = 4.375)
+    const points = [
+      { date: '2025-01-02', y: 10 },
+      { date: '2025-01-03', y: 20 },
+      { date: '2025-01-04', y: 30 },
+      { date: '2025-01-09', y: 35 },
+    ]
+    const result = buildAveragePacePath(points, seasonStartMs, seasonEndMs, scaleX, scaleY)
+
+    // Simple average would give 35/8*10 = 43.75 at season end
+    // Regression should give a higher value due to steep early cluster
+    const simpleProjected = (35 / 8) * 10
+    // Extract projected y from the path
+    const match = result.match(/L[\d.]+,([\d.]+)$/)
+    const projectedY = parseFloat(match[1])
+    // scaleY inverts: lower pixel = higher value
+    const simpleY = scaleY(simpleProjected)
+    expect(projectedY).toBeLessThan(simpleY) // less pixels = higher points
+  })
+
+  it('always starts at y=0 at season start even with non-zero intercept data', () => {
+    // Points that would produce a non-zero intercept in full regression:
+    // (1, 50), (2, 60) — intercept would be ~40 with full regression
+    // With through-origin regression, line must start at (seasonStart, 0)
+    const points = [
+      { date: '2025-01-02', y: 50 },
+      { date: '2025-01-03', y: 60 },
+    ]
+    const result = buildAveragePacePath(points, seasonStartMs, seasonEndMs, scaleX, scaleY)
+
+    const x1 = scaleX(seasonStart)
+    const y1 = scaleY(0)
+    expect(result).toContain(`M${x1},${y1}`)
+  })
+
+  it('with a single point, slope equals point_y / days_from_start', () => {
+    // Only point: day 5 = 50 pts. With origin (0,0), best-fit through
+    // two points is slope = 50/5 = 10. At day 10: y = 100
+    const points = [{ date: '2025-01-06', y: 50 }]
+    const result = buildAveragePacePath(points, seasonStartMs, seasonEndMs, scaleX, scaleY)
+
+    const x2 = scaleX(seasonEnd)
+    const y2 = scaleY(100)
+    expect(result).toContain(`L${x2},${y2}`)
   })
 })
 
