@@ -5,7 +5,7 @@
         Goal rank
         <select :value="selectedGoalIndex" @change="onSelectChange">
           <option :value="-1">Select rank…</option>
-          <option v-for="(opt, i) in goalOptions" :key="opt.badge || i" :value="i">
+          <option v-for="(opt, i) in reversedGoalOptions" :key="opt.badge || i" :value="opt.originalIndex">
             {{ opt.badge }} ({{ opt.points }} {{ unit }})
           </option>
         </select>
@@ -58,6 +58,10 @@ const onNumericInput = (e) => {
   const val = Number(e.target.value)
   if (Number.isFinite(val)) emit('set-goal-win-points', val)
 }
+
+const reversedGoalOptions = computed(() =>
+  [...props.goalOptions].map((opt, i) => ({ ...opt, originalIndex: i })).reverse()
+)
 
 const pointsLabel = computed(() => `${(props.currentWinPoints?.toLocaleString?.() || props.currentWinPoints)} ${props.unit}`)
 const floorLabel = computed(() => `${(props.rankInfo.currentFloor?.toLocaleString?.() || props.rankInfo.currentFloor)} ${props.unit}`)
