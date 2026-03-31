@@ -31,7 +31,9 @@
 </template>
 
 <script>
+import { ref, computed } from 'vue'
 import LineGraph from '@/components/LineGraph.vue'
+import { useRankInfo } from '@/composables/useRankInfo'
 
 // Ranked RS thresholds from THE FINALS wiki (Rank Score to reach tier)
 // Bronze (0 → 7,500), Silver (10,000 → 17,500), Gold (20,000 → 27,500),
@@ -62,39 +64,11 @@ const RANKED_THRESHOLDS = [
 export default {
   name: 'RankedView',
   components: { LineGraph },
-  data() {
-    return { rankScore: 0, rankedThresholds: RANKED_THRESHOLDS }
-  },
-  computed: {
-    rankInfo() {
-      const rs = Math.max(0, Math.floor(this.rankScore))
-      for (let i = 0; i < RANKED_THRESHOLDS.length; i++) {
-        const t = RANKED_THRESHOLDS[i]
-        if (rs < t.points) {
-          // Handle base case when thresholds start at 0
-          const last = i > 0 ? RANKED_THRESHOLDS[i - 1] : { badge: 'Unranked', points: 0 }
-          return {
-            badge: last.badge,
-            currentFloor: last.points,
-            nextTarget: t.points,
-            nextBadge: t.badge,
-          }
-        }
-      }
-      // At or beyond Diamond 1; Ruby is Top 500 only
-      const top = RANKED_THRESHOLDS[RANKED_THRESHOLDS.length - 1]
-      return { badge: top.badge, currentFloor: top.points, nextTarget: null, nextBadge: null }
-    },
-    toNext() {
-      return this.rankInfo.nextTarget === null ? 0 : Math.max(0, this.rankInfo.nextTarget - Math.floor(this.rankScore))
-    },
-    progressPct() {
-      const floor = this.rankInfo.currentFloor
-      const ceil = this.rankInfo.nextTarget ?? this.rankInfo.currentFloor
-      const span = Math.max(1, ceil - floor)
-      const clamped = Math.min(ceil, Math.max(floor, this.rankScore))
-      return ((clamped - floor) / span) * 100
-    },
+  setup() {
+    const rankScore = ref(0)
+    const thresholds = computed(() => RANKED_THRESHOLDS)
+    const { rankInfo, toNext, progressPct } = useRankInfo(rankScore, thresholds)
+    return { rankScore, rankedThresholds: RANKED_THRESHOLDS, rankInfo, toNext, progressPct }
   },
   methods: {
     onRankScore(v) {
@@ -104,58 +78,3 @@ export default {
 }
 </script>
 
-<style scoped>
-.rank-indicator {
-  margin: 8px 0 6px;
-  border: 1px solid color-mix(in oklab, var(--primary) 20%, var(--surface));
-  border-radius: 10px;
-  padding: 10px 12px;
-  background: color-mix(in oklab, var(--surface) 92%, black);
-}
-.rank-header {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  margin-bottom: 8px;
-}
-.rank-badge {
-  font-weight: 900;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-strong);
-}
-.rank-points {
-  color: var(--muted);
-}
-.rank-progress .bar {
-  width: 100%;
-  height: 8px;
-  border-radius: 999px;
-  background: color-mix(in oklab, var(--surface) 85%, #000);
-  overflow: hidden;
-  border: 1px solid color-mix(in oklab, var(--primary) 18%, var(--surface));
-}
-.rank-progress .fill {
-  height: 100%;
-  background: linear-gradient(90deg, var(--primary), color-mix(in oklab, var(--accent) 50%, var(--primary)));
-}
-.rank-progress .labels {
-  display: flex;
-  justify-content: space-between;
-  margin-top: 6px;
-  color: var(--muted);
-  font-size: 12px;
-}
-.rank-note {
-  margin-top: 8px;
-  font-size: 12px;
-  color: var(--muted);
-}
-
-@media (max-width: 480px) {
-  .rank-progress .labels {
-    flex-direction: column;
-    gap: 4px;
-  }
-}
-</style>

@@ -100,42 +100,6 @@ function readCSVFile(file) {
 </script>
 
 <style scoped>
-.modal-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.6);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 50;
-}
-
-.modal {
-  background: var(--surface);
-  width: min(720px, 95vw);
-  max-height: 85vh;
-  border-radius: 12px;
-  border: 1px solid color-mix(in oklab, var(--primary) 20%, var(--surface));
-  box-shadow: 0 10px 30px rgba(0,0,0,0.45);
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-.modal-header, .modal-footer {
-  padding: 12px 16px;
-  border-bottom: 1px solid color-mix(in oklab, var(--primary) 20%, var(--surface));
-}
-
-.modal-footer { border-bottom: 0; border-top: 1px solid color-mix(in oklab, var(--primary) 20%, var(--surface)); }
-
-.modal-body {
-  padding: 12px 16px;
-  overflow: auto;
-  -webkit-overflow-scrolling: touch;
-  flex: 1 1 auto;
-}
-
 .dropzone {
   border: 2px dashed color-mix(in oklab, var(--primary) 35%, var(--surface));
   border-radius: 10px;
