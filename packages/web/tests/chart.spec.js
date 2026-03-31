@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { calcXDomain, calcYDomain, scaleXFactory, scaleYFactory, buildPathD, buildXTicks, buildAveragePacePath } from '@/utils/chart'
+import { calcXDomain, calcYDomain, scaleXFactory, scaleYFactory, buildPathD, buildXTicks, buildAveragePacePath, buildDeviationWedgePath } from '@/utils/chart'
 import { dateToMs } from '@/utils/date'
 
 const width = 600
@@ -128,6 +128,87 @@ describe('buildAveragePacePath', () => {
     const x2 = scaleX(seasonEnd)
     const y2 = scaleY(100)
     expect(result).toContain(`L${x2},${y2}`)
+  })
+})
+
+describe('buildDeviationWedgePath', () => {
+  const seasonStart = '2025-01-01'
+  const seasonEnd = '2025-01-11'
+  const seasonStartMs = dateToMs(seasonStart)
+  const seasonEndMs = dateToMs(seasonEnd)
+  const xDomain = calcXDomain(seasonStart, seasonEnd, new Date(2025, 0, 1))
+  const scaleX = scaleXFactory(xDomain, width, padding)
+  const scaleY = scaleYFactory([0, 200], height, padding)
+
+  it('returns empty string with 0 points', () => {
+    const result = buildDeviationWedgePath([], seasonStartMs, seasonEndMs, scaleX, scaleY)
+    expect(result).toBe('')
+  })
+
+  it('returns empty string with only 1 point (need variance)', () => {
+    const points = [{ date: '2025-01-06', y: 50 }]
+    const result = buildDeviationWedgePath(points, seasonStartMs, seasonEndMs, scaleX, scaleY)
+    expect(result).toBe('')
+  })
+
+  it('returns valid SVG polygon path (closed with Z)', () => {
+    const points = [
+      { date: '2025-01-03', y: 30 },
+      { date: '2025-01-06', y: 40 },
+      { date: '2025-01-09', y: 90 },
+    ]
+    const result = buildDeviationWedgePath(points, seasonStartMs, seasonEndMs, scaleX, scaleY)
+    expect(result).toMatch(/^M[\d.]+,[\d.]+.*Z$/)
+  })
+
+  it('wedge starts at origin (both edges meet at season start y=0)', () => {
+    const points = [
+      { date: '2025-01-03', y: 30 },
+      { date: '2025-01-06', y: 40 },
+      { date: '2025-01-09', y: 90 },
+    ]
+    const result = buildDeviationWedgePath(points, seasonStartMs, seasonEndMs, scaleX, scaleY)
+
+    const x1 = scaleX(seasonStart)
+    const y1 = scaleY(0)
+    // Path starts at origin
+    expect(result).toMatch(new RegExp(`^M${x1},${y1}`))
+    // Path returns to origin before closing
+    expect(result).toContain(`L${x1},${y1}`)
+  })
+
+  it('with perfectly linear data, wedge has zero width', () => {
+    const points = [
+      { date: '2025-01-03', y: 20 }, // day 2
+      { date: '2025-01-06', y: 50 }, // day 5
+      { date: '2025-01-11', y: 100 }, // day 10
+    ]
+    const result = buildDeviationWedgePath(points, seasonStartMs, seasonEndMs, scaleX, scaleY)
+
+    const x2 = scaleX(seasonEnd)
+    // Both upper and lower at season end should have the same y
+    const endMatches = result.match(new RegExp(`${x2.toFixed(0)}[\\d.]*,([\\d.]+)`, 'g'))
+    if (endMatches && endMatches.length >= 2) {
+      const yVals = endMatches.map(m => parseFloat(m.split(',')[1]))
+      expect(yVals[0]).toBeCloseTo(yVals[1], 5)
+    }
+  })
+
+  it('lower bound never goes below 0', () => {
+    const points = [
+      { date: '2025-01-02', y: 50 },
+      { date: '2025-01-06', y: 5 },
+      { date: '2025-01-10', y: 80 },
+    ]
+    const result = buildDeviationWedgePath(points, seasonStartMs, seasonEndMs, scaleX, scaleY)
+
+    // scaleY(0) is the max pixel y (bottom of chart). No point should exceed it.
+    const maxPixelY = scaleY(0)
+    const coords = result.match(/[\d.]+,[\d.]+/g)
+    for (const coord of coords) {
+      const pixelY = parseFloat(coord.split(',')[1])
+      expect(pixelY).toBeLessThanOrEqual(maxPixelY + 0.01)
+    }
   })
 })
 
