@@ -91,6 +91,54 @@ export function buildAveragePacePath(pointsInSeason, seasonStartMs, seasonEndMs,
   return `M${x1},${y1} L${x2},${y2}`
 }
 
+export function buildDeviationWedgePath(pointsInSeason, seasonStartMs, seasonEndMs, scaleX, scaleY) {
+  if (pointsInSeason.length < 2) return ''
+
+  // Convert to (dayOffset, y) with implicit origin
+  const pts = [{ x: 0, y: 0 }]
+  for (const p of pointsInSeason) {
+    const day = (dateToMs(p.date) - seasonStartMs) / MS_PER_DAY
+    pts.push({ x: day, y: p.y })
+  }
+
+  // Through-origin regression: slope = Σ(x·y) / Σ(x²)
+  let sumXX = 0, sumXY = 0
+  for (const p of pts) {
+    sumXX += p.x * p.x
+    sumXY += p.x * p.y
+  }
+  if (sumXX === 0) return ''
+  const slope = sumXY / sumXX
+
+  // Standard deviation of residuals
+  let sumResidualSq = 0
+  for (const p of pts) {
+    const residual = p.y - slope * p.x
+    sumResidualSq += residual * residual
+  }
+  const stdDev = Math.sqrt(sumResidualSq / pts.length)
+
+  const totalDays = (seasonEndMs - seasonStartMs) / MS_PER_DAY
+  const startDateStr = msToDateInput(seasonStartMs)
+  const endDateStr = msToDateInput(seasonEndMs)
+  const x1 = scaleX(startDateStr)
+  const x2 = scaleX(endDateStr)
+
+  // Confidence multiplier: 1 = 68%, 1.96 ≈ 95%, 2.576 ≈ 99%
+  const CONFIDENCE_MULT = 1.96
+
+  const deviation = stdDev * CONFIDENCE_MULT
+  const yUpperEnd = slope * totalDays + deviation
+  const yLowerEnd = Math.max(0, slope * totalDays - deviation)
+
+  // Polygon: origin → upper end → lower end → origin → close
+  const y0 = scaleY(0)
+  const yU = scaleY(yUpperEnd)
+  const yL = scaleY(yLowerEnd)
+
+  return `M${x1},${y0} L${x2},${yU} L${x2},${yL} L${x1},${y0} Z`
+}
+
 export function buildXTicks(xDomain, width, padding, n = 4) {
   const plotWidth = width - padding * 2
   const [min, max] = xDomain

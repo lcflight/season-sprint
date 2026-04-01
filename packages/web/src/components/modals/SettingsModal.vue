@@ -90,6 +90,27 @@
             </label>
           </div>
         </div>
+
+        <div class="setting-group" v-if="showAveragePace">
+          <div class="setting-info">
+            <div class="setting-title">Deviation wedge</div>
+            <div class="setting-desc">
+              Show a confidence band around the pace line based on data variance.
+            </div>
+          </div>
+          <div class="setting-control">
+            <label class="toggle-row" for="showDeviationWedge">
+              <input
+                id="showDeviationWedge"
+                class="toggle"
+                type="checkbox"
+                :checked="showDeviationWedge"
+                @change="$emit('update:showDeviationWedge', $event.target.checked)"
+              />
+              <span class="toggle-text">Show deviation wedge</span>
+            </label>
+          </div>
+        </div>
       </section>
       <footer class="modal-footer">
         <button @click="$emit('close')">Close</button>
@@ -105,6 +126,7 @@ defineProps({
   enableNavigation: { type: Boolean, required: true },
   showRankOverlay: { type: Boolean, required: true },
   showAveragePace: { type: Boolean, required: true },
+  showDeviationWedge: { type: Boolean, required: true },
   hasGoalOptions: { type: Boolean, default: false },
 })
 
@@ -115,5 +137,6 @@ defineEmits([
   'update:enableNavigation',
   'update:showRankOverlay',
   'update:showAveragePace',
+  'update:showDeviationWedge',
 ])
 </script>

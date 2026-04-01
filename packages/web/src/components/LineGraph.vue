@@ -57,11 +57,13 @@
       :enable-navigation="enableNavigation"
       :show-rank-overlay="showRankOverlay"
       :show-average-pace="showAveragePace"
+      :show-deviation-wedge="showDeviationWedge"
       :has-goal-options="goalOptions.length > 0"
       @update:nav-sensitivity="navSensitivity = $event"
       @update:enable-navigation="enableNavigation = $event"
       @update:show-rank-overlay="showRankOverlay = $event"
       @update:show-average-pace="showAveragePace = $event"
+      @update:show-deviation-wedge="showDeviationWedge = $event"
       @close="closeSettingsModal"
     />
 
@@ -210,6 +212,11 @@
             class="proj proj-from-last"
           />
           <path
+            v-if="showAveragePace && showDeviationWedge && pathDeviationWedge"
+            :d="pathDeviationWedge"
+            class="deviation-wedge"
+          />
+          <path
             v-if="showAveragePace && pathAveragePace"
             :d="pathAveragePace"
             class="proj proj-average-pace"
@@ -304,6 +311,7 @@ import {
   buildPathD,
   buildXTicks,
   buildAveragePacePath,
+  buildDeviationWedgePath,
 } from "@/utils/chart";
 import { loadSeasonJson } from "@/utils/season";
 import { buildRankBands } from "@/utils/rankColors";
@@ -352,6 +360,7 @@ const {
   enableNavigation,
   showRankOverlay,
   showAveragePace,
+  showDeviationWedge,
   loadSettings,
 } = useGraphSettings(props.storageKey);
 
@@ -487,6 +496,17 @@ const pathGoalFromLast = computed(() => {
 const pathAveragePace = computed(() => {
   if (!isSeasonValid.value) return "";
   return buildAveragePacePath(
+    sortedPointsInSeason.value,
+    xDomain.value[0],
+    xDomain.value[1],
+    scaleX,
+    scaleY
+  );
+});
+
+const pathDeviationWedge = computed(() => {
+  if (!isSeasonValid.value) return "";
+  return buildDeviationWedgePath(
     sortedPointsInSeason.value,
     xDomain.value[0],
     xDomain.value[1],
@@ -949,6 +969,12 @@ svg.nav-disabled {
 
 .proj-from-last {
   stroke: var(--success);
+}
+
+.deviation-wedge {
+  fill: var(--accent);
+  opacity: 0.08;
+  stroke: none;
 }
 
 .proj-average-pace {
