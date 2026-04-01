@@ -1,31 +1,6 @@
 <template>
   <section>
     <LineGraph storageKey="ranked" :goalOptions="rankedThresholds" @win-points="onRankScore">
-      <template #below-stats>
-        <div class="rank-indicator">
-          <div class="rank-header">
-            <span class="rank-badge">{{ rankInfo.badge }}</span>
-            <span class="rank-points">{{ rankScore }} RS</span>
-          </div>
-          <div class="rank-progress">
-            <div class="bar">
-              <div class="fill" :style="{ width: progressPct + '%' }"></div>
-            </div>
-            <div class="labels">
-              <span>{{ rankInfo.currentFloor.toLocaleString() }} RS</span>
-              <span v-if="rankInfo.nextTarget !== null">
-                Next rank: {{ rankInfo.nextBadge }} at {{ rankInfo.nextTarget.toLocaleString() }} RS • {{ toNext.toLocaleString() }} more RS needed
-              </span>
-              <span v-else>
-                Max league tier reached
-              </span>
-            </div>
-          </div>
-          <div class="rank-note">
-            Ranked leagues use Rank Score (RS). Ruby is Top 500 only and not RS-based.
-          </div>
-        </div>
-      </template>
     </LineGraph>
   </section>
 </template>

@@ -76,6 +76,37 @@
   font-size: 12px;
 }
 
+.settings .setting-child {
+  padding-left: 24px;
+  border-top-style: dashed;
+}
+
+.setting-slide-enter-active,
+.setting-slide-leave-active {
+  transition:
+    max-height 0.25s ease,
+    opacity 0.25s ease,
+    padding-top 0.25s ease,
+    padding-bottom 0.25s ease,
+    margin 0.25s ease;
+  overflow: hidden;
+}
+
+.setting-slide-enter-from,
+.setting-slide-leave-to {
+  max-height: 0;
+  opacity: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  margin: 0;
+}
+
+.setting-slide-enter-to,
+.setting-slide-leave-from {
+  max-height: 320px;
+  opacity: 1;
+}
+
 @media (max-width: 480px) {
   .settings .setting-group {
     grid-template-columns: 1fr;
