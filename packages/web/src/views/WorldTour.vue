@@ -9,27 +9,6 @@
           headerDisclaimer="Based on World Tour wiki thresholds."
           @win-points="onWinPoints"
         >
-          <template #below-stats>
-          <div class="rank-indicator">
-            <div class="rank-header">
-              <span class="rank-badge">{{ rankInfo.badge }}</span>
-              <span class="rank-points">{{ winPoints }} WP</span>
-            </div>
-            <div class="rank-progress">
-              <div class="bar">
-                <div class="fill" :style="{ width: progressPct + '%' }"></div>
-              </div>
-              <div class="labels">
-                <span>{{ rankInfo.currentFloor }} WP</span>
-                <span v-if="rankInfo.nextTarget !== null">
-                  Next rank: {{ rankInfo.nextBadge }} at
-                  {{ rankInfo.nextTarget }} WP • {{ toNext }} more WP needed
-                </span>
-                <span v-else>Max rank reached</span>
-              </div>
-            </div>
-          </div>
-          </template>
         </LineGraph>
       </div>
       <div class="wt-aside">
