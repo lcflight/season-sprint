@@ -52,8 +52,8 @@ setup_env() {
   echo "You need two values:"
   echo "  1. SERVER_URL — Your Season Sprint API URL"
   echo "     (e.g. https://your-worker.workers.dev or http://localhost:8787)"
-  echo "  2. AUTH_TOKEN — Your authentication token"
-  echo "     (the same value as DEV_AUTH_TOKEN on your server)"
+  echo "  2. AUTH_TOKEN — Your personal API key (starts with sk_)"
+  echo "     Generate one from the web app: click 'API Keys' in the header."
   echo
 
   local server_url auth_token
