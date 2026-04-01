@@ -190,11 +190,10 @@ describe('buildDeviationWedgePath', () => {
 
     // Upper and lower at season end should differ (band is open)
     const x2 = scaleX(seasonEnd)
-    const endMatches = result.match(new RegExp(`${x2.toFixed(0)}[\\d.]*,([\\d.]+)`, 'g'))
-    if (endMatches && endMatches.length >= 2) {
-      const yVals = endMatches.map(m => parseFloat(m.split(',')[1]))
-      expect(Math.abs(yVals[0] - yVals[1])).toBeGreaterThan(0)
-    }
+    const endMatches = result.match(new RegExp(`${x2.toFixed(0)}[\\d.]*,([\\d.]+)`, 'g')) ?? []
+    expect(endMatches.length).toBeGreaterThanOrEqual(2)
+    const yVals = endMatches.map(m => parseFloat(m.split(',')[1]))
+    expect(Math.abs(yVals[0] - yVals[1])).toBeGreaterThan(0)
   })
 
   it('lower bound never goes below 0', () => {

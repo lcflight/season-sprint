@@ -135,7 +135,8 @@ export function buildDeviationWedgePath(pointsInSeason, seasonStartMs, seasonEnd
   // projected endpoint that shrinks as data grows.
   // TODO: make this logic smarter
   const projected = slope * totalDays
-  const minDeviation = n <= 3 ? projected * 0.3 : n <= 6 ? projected * 0.15 : projected * 0.05
+  const projectedMag = Math.abs(projected)
+  const minDeviation = n <= 3 ? projectedMag * 0.3 : n <= 6 ? projectedMag * 0.15 : projectedMag * 0.05
   const deviation = Math.max(stdDev * tFactor, minDeviation)
   const yUpperEnd = slope * totalDays + deviation
   const yLowerEnd = Math.max(0, slope * totalDays - deviation)
