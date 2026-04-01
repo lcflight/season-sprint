@@ -177,21 +177,23 @@ describe('buildDeviationWedgePath', () => {
     expect(result).toContain(`L${x1},${y1}`)
   })
 
-  it('with perfectly linear data, wedge has zero width', () => {
+  it('with perfectly linear data and few points, wedge still has width (low confidence)', () => {
+    // Even with zero residuals, few points means low confidence →
+    // minimum deviation floor keeps the band open
     const points = [
       { date: '2025-01-03', y: 20 }, // day 2
       { date: '2025-01-06', y: 50 }, // day 5
       { date: '2025-01-11', y: 100 }, // day 10
     ]
     const result = buildDeviationWedgePath(points, seasonStartMs, seasonEndMs, scaleX, scaleY)
+    expect(result).toMatch(/^M[\d.]+,[\d.]+.*Z$/)
 
+    // Upper and lower at season end should differ (band is open)
     const x2 = scaleX(seasonEnd)
-    // Both upper and lower at season end should have the same y
-    const endMatches = result.match(new RegExp(`${x2.toFixed(0)}[\\d.]*,([\\d.]+)`, 'g'))
-    if (endMatches && endMatches.length >= 2) {
-      const yVals = endMatches.map(m => parseFloat(m.split(',')[1]))
-      expect(yVals[0]).toBeCloseTo(yVals[1], 5)
-    }
+    const endMatches = result.match(new RegExp(`${x2.toFixed(0)}[\\d.]*,([\\d.]+)`, 'g')) ?? []
+    expect(endMatches.length).toBeGreaterThanOrEqual(2)
+    const yVals = endMatches.map(m => parseFloat(m.split(',')[1]))
+    expect(Math.abs(yVals[0] - yVals[1])).toBeGreaterThan(0)
   })
 
   it('lower bound never goes below 0', () => {
