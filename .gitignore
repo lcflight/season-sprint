@@ -24,3 +24,8 @@ pnpm-debug.log*
 *.sw?
 
 /generated/prisma
+
+# Local tracker state
+packages/local/.last-wtp
+packages/local/.capture-tmp.png
+packages/local/tracker.log
