@@ -110,13 +110,19 @@ export function buildDeviationWedgePath(pointsInSeason, seasonStartMs, seasonEnd
   if (sumXX === 0) return ''
   const slope = sumXY / sumXX
 
-  // Standard deviation of residuals
+  // Sample standard deviation of residuals (exclude synthetic origin, use N-1)
+  const dataPoints = pts.slice(1) // exclude (0,0) origin
   let sumResidualSq = 0
-  for (const p of pts) {
+  for (const p of dataPoints) {
     const residual = p.y - slope * p.x
     sumResidualSq += residual * residual
   }
-  const stdDev = Math.sqrt(sumResidualSq / pts.length)
+  const n = dataPoints.length
+  const stdDev = n > 1 ? Math.sqrt(sumResidualSq / (n - 1)) : Math.sqrt(sumResidualSq)
+
+  // Scale uncertainty inversely with sample size — fewer points = wider band.
+  // Approximates t-distribution critical value for small samples.
+  const tFactor = n <= 2 ? 4.303 : n <= 3 ? 3.182 : n <= 5 ? 2.776 : n <= 10 ? 2.228 : 1.96
 
   const totalDays = (seasonEndMs - seasonStartMs) / MS_PER_DAY
   const startDateStr = msToDateInput(seasonStartMs)
@@ -124,10 +130,13 @@ export function buildDeviationWedgePath(pointsInSeason, seasonStartMs, seasonEnd
   const x1 = scaleX(startDateStr)
   const x2 = scaleX(endDateStr)
 
-  // Confidence multiplier: 1 = 68%, 1.96 ≈ 95%, 2.576 ≈ 99%
-  const CONFIDENCE_MULT = 1.96
-
-  const deviation = stdDev * CONFIDENCE_MULT
+  // Minimum deviation floor: with few points, even if residuals are tiny,
+  // the band should reflect low confidence. Floor is a percentage of the
+  // projected endpoint that shrinks as data grows.
+  // TODO: make this logic smarter
+  const projected = slope * totalDays
+  const minDeviation = n <= 3 ? projected * 0.3 : n <= 6 ? projected * 0.15 : projected * 0.05
+  const deviation = Math.max(stdDev * tFactor, minDeviation)
   const yUpperEnd = slope * totalDays + deviation
   const yLowerEnd = Math.max(0, slope * totalDays - deviation)
 
