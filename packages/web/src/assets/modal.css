@@ -83,7 +83,12 @@
 
 .setting-slide-enter-active,
 .setting-slide-leave-active {
-  transition: all 0.25s ease;
+  transition:
+    max-height 0.25s ease,
+    opacity 0.25s ease,
+    padding-top 0.25s ease,
+    padding-bottom 0.25s ease,
+    margin 0.25s ease;
   overflow: hidden;
 }
 
@@ -98,7 +103,7 @@
 
 .setting-slide-enter-to,
 .setting-slide-leave-from {
-  max-height: 120px;
+  max-height: 320px;
   opacity: 1;
 }
 
