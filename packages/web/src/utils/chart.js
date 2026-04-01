@@ -124,9 +124,12 @@ export function buildDeviationWedgePath(pointsInSeason, seasonStartMs, seasonEnd
   const x1 = scaleX(startDateStr)
   const x2 = scaleX(endDateStr)
 
-  // Wedge fans out proportionally: deviation grows with distance from origin
-  const yUpperEnd = slope * totalDays + stdDev
-  const yLowerEnd = Math.max(0, slope * totalDays - stdDev)
+  // Confidence multiplier: 1 = 68%, 1.96 ≈ 95%, 2.576 ≈ 99%
+  const CONFIDENCE_MULT = 1.96
+
+  const deviation = stdDev * CONFIDENCE_MULT
+  const yUpperEnd = slope * totalDays + deviation
+  const yLowerEnd = Math.max(0, slope * totalDays - deviation)
 
   // Polygon: origin → upper end → lower end → origin → close
   const y0 = scaleY(0)
