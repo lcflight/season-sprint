@@ -15,8 +15,8 @@ records.get("/", async (c) => {
 });
 
 records.post("/", async (c) => {
-  const { userId } = c.get("auth");
-  const email = await getEmail(userId, c.env);
+  const { userId, email: cachedEmail } = c.get("auth");
+  const email = await getEmail(userId, c.env, cachedEmail);
   const db = c.get("db");
 
   const { date, winPoints } = await c.req.json<Record>();
@@ -86,8 +86,8 @@ records.delete("/", async (c) => {
 });
 
 records.post("/bulk", async (c) => {
-  const { userId } = c.get("auth");
-  const email = await getEmail(userId, c.env);
+  const { userId, email: cachedEmail } = c.get("auth");
+  const email = await getEmail(userId, c.env, cachedEmail);
   const db = c.get("db");
 
   const { records: input } = await c.req.json<{

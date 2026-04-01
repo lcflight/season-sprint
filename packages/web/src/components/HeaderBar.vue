@@ -1,5 +1,7 @@
 <script setup>
+import { ref } from "vue";
 import { RedirectToSignIn, SignedIn, SignedOut, UserButton } from "@clerk/vue";
+import ApiKeyModal from "@/components/modals/ApiKeyModal.vue";
 
 const publishableKey = process.env.VUE_APP_CLERK_PUBLISHABLE_KEY;
 const isLocalDevHost =
@@ -8,6 +10,8 @@ const isLocalDevHost =
 const isLiveClerkKey =
   typeof publishableKey === "string" && publishableKey.startsWith("pk_live_");
 const clerkEnabled = Boolean(publishableKey) && !(isLocalDevHost && isLiveClerkKey);
+
+const showApiKeyModal = ref(false);
 </script>
 
 <template>
@@ -17,6 +21,7 @@ const clerkEnabled = Boolean(publishableKey) && !(isLocalDevHost && isLiveClerkK
       <span class="brand-text"><span class="brand-accent">THE</span>&nbsp;FINALS</span> <span class="brand-sep">|</span> <span class="brand-text">Season Sprint</span>
     </div>
     <div class="user-actions">
+      <button class="btn-ghost api-key-btn" @click="showApiKeyModal = true">API Keys</button>
       <template v-if="clerkEnabled">
         <SignedIn>
           <UserButton />
@@ -28,6 +33,9 @@ const clerkEnabled = Boolean(publishableKey) && !(isLocalDevHost && isLiveClerkK
       <span v-else class="dev-auth-pill">Dev auth mode</span>
     </div>
   </div>
+  <Teleport to="body">
+    <ApiKeyModal v-if="showApiKeyModal" @close="showApiKeyModal = false" />
+  </Teleport>
 </template>
 
 <script>
@@ -119,6 +127,12 @@ export default {
 
 .brand-accent {
   color: var(--primary);
+}
+
+.api-key-btn {
+  font-size: 11px;
+  min-height: 30px;
+  padding: 4px 10px;
 }
 
 .dev-auth-pill {
