@@ -106,6 +106,60 @@ export async function bulkUpsertRecords(records, authorizationHeader) {
   return response.json();
 }
 
+export async function getApiKeys(authorizationHeader) {
+  if (!authorizationHeader) {
+    throw new Error("Missing authorization header");
+  }
+  const apiBase = requireApiBaseUrl();
+  const response = await fetch(`${apiBase}/me/api-keys`, {
+    headers: { Authorization: authorizationHeader },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch API keys: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export async function createApiKey(name, authorizationHeader) {
+  if (!authorizationHeader) {
+    throw new Error("Missing authorization header");
+  }
+  const apiBase = requireApiBaseUrl();
+  const response = await fetch(`${apiBase}/me/api-keys`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: authorizationHeader,
+    },
+    body: JSON.stringify({ name }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to create API key: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export async function revokeApiKey(keyId, authorizationHeader) {
+  if (!authorizationHeader) {
+    throw new Error("Missing authorization header");
+  }
+  const apiBase = requireApiBaseUrl();
+  const response = await fetch(`${apiBase}/me/api-keys/${keyId}`, {
+    method: "DELETE",
+    headers: { Authorization: authorizationHeader },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to revoke API key: ${response.status}`);
+  }
+
+  return response.json();
+}
+
 export async function getAuthorizationHeader() {
   try {
     const { getAuthToken } = await import("./clerk.js");

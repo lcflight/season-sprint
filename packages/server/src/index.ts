@@ -5,6 +5,7 @@ import { getAuth } from "@hono/clerk-auth";
 import { getCachedSeasons, scrapeAndStore } from "./services/seasonScraper";
 import { clerkOrDevToken, resolveAuth } from "./middleware/auth";
 import records from "./routes/records";
+import apiKeys from "./routes/apiKeys";
 
 interface Bindings {
   D1: D1Database;
@@ -18,6 +19,7 @@ export interface Variables {
   db: DbService;
   auth: {
     userId: string;
+    email?: string;
   };
 }
 
@@ -72,6 +74,7 @@ app.use("*", resolveAuth);
 
 // Authenticated routes
 app.route("/me/records", records);
+app.route("/me/api-keys", apiKeys);
 
 export { app };
 

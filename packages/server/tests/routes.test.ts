@@ -296,4 +296,128 @@ describe("API Routes", () => {
       expect(res.status).toBe(200);
     });
   });
+
+  describe("API Keys", () => {
+    it("creates a key and returns it with sk_ prefix", async () => {
+      const res = await appFetch(d1, "/me/api-keys", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "test-key" }),
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.key).toMatch(/^sk_[0-9a-f]{64}$/);
+      expect(body.name).toBe("test-key");
+      expect(body.keyPrefix).toBe(body.key.slice(0, 11));
+      expect(body.id).toBeDefined();
+      expect(body.createdAt).toBeDefined();
+    });
+
+    it("rejects create without name", async () => {
+      const res = await appFetch(d1, "/me/api-keys", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it("lists active keys with prefix only", async () => {
+      await appFetch(d1, "/me/api-keys", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "key-1" }),
+      });
+      await appFetch(d1, "/me/api-keys", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "key-2" }),
+      });
+
+      const res = await appFetch(d1, "/me/api-keys");
+      expect(res.status).toBe(200);
+      const keys = await res.json();
+      expect(keys).toHaveLength(2);
+      expect(keys[0].keyPrefix).toMatch(/^sk_[0-9a-f]{8}$/);
+      // Should not expose the hash or full key
+      expect(keys[0].keyHash).toBeUndefined();
+      expect(keys[0].key).toBeUndefined();
+    });
+
+    it("authenticates with an API key to access records", async () => {
+      // Create a key using dev token auth
+      const createRes = await appFetch(d1, "/me/api-keys", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "tracker" }),
+      });
+      const { key } = await createRes.json();
+
+      // Create a record using the API key
+      const recordRes = await appFetch(d1, "/me/records", {
+        method: "POST",
+        headers: {
+          Authorization: key,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ date: "2026-03-15", winPoints: 500 }),
+      });
+      expect(recordRes.status).toBe(200);
+
+      // Fetch records using the API key
+      const listRes = await appFetch(d1, "/me/records", {
+        headers: { Authorization: key },
+      });
+      expect(listRes.status).toBe(200);
+      const records = await listRes.json();
+      expect(records).toHaveLength(1);
+      expect(records[0].winPoints).toBe(500);
+    });
+
+    it("rejects revoked keys", async () => {
+      const createRes = await appFetch(d1, "/me/api-keys", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "temp-key" }),
+      });
+      const { key, id } = await createRes.json();
+
+      // Revoke the key
+      const revokeRes = await appFetch(d1, `/me/api-keys/${id}`, {
+        method: "DELETE",
+      });
+      expect(revokeRes.status).toBe(200);
+      const revokeBody = await revokeRes.json();
+      expect(revokeBody.revoked).toBe(true);
+
+      // Try to use revoked key
+      const listRes = await appFetch(d1, "/me/records", {
+        headers: { Authorization: key },
+      });
+      expect(listRes.status).toBe(401);
+    });
+
+    it("revoked key no longer appears in list", async () => {
+      const createRes = await appFetch(d1, "/me/api-keys", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "to-revoke" }),
+      });
+      const { id } = await createRes.json();
+
+      await appFetch(d1, `/me/api-keys/${id}`, { method: "DELETE" });
+
+      const listRes = await appFetch(d1, "/me/api-keys");
+      const keys = await listRes.json();
+      expect(keys).toHaveLength(0);
+    });
+
+    it("returns 404 when revoking non-existent key", async () => {
+      const res = await appFetch(d1, "/me/api-keys/fake-id", {
+        method: "DELETE",
+      });
+      expect(res.status).toBe(404);
+    });
+  });
 });

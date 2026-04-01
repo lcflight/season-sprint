@@ -172,6 +172,68 @@ export class DbService {
     return results;
   }
 
+  // ── API Keys ──────────────────────────────────────────────────────────────
+
+  async getUserByApiKeyHash(
+    keyHash: string
+  ): Promise<{ clerkUserId: string; email: string } | null> {
+    const apiKey = await this.prisma.apiKey.findUnique({
+      where: { keyHash },
+      select: {
+        revokedAt: true,
+        User: { select: { clerkUserId: true, email: true } },
+      },
+    });
+
+    if (!apiKey || apiKey.revokedAt) return null;
+    return { clerkUserId: apiKey.User.clerkUserId, email: apiKey.User.email };
+  }
+
+  async createApiKey(
+    clerkUserId: string,
+    email: string,
+    name: string,
+    keyHash: string,
+    keyPrefix: string
+  ) {
+    const user = await this.getOrCreateUserByClerkId(clerkUserId, email);
+    return await this.prisma.apiKey.create({
+      data: { name, keyHash, keyPrefix, userId: user.id },
+      select: { id: true, name: true, keyPrefix: true, createdAt: true },
+    });
+  }
+
+  async listApiKeys(clerkUserId: string) {
+    return await this.prisma.apiKey.findMany({
+      where: {
+        User: { clerkUserId },
+        revokedAt: null,
+      },
+      select: { id: true, name: true, keyPrefix: true, createdAt: true },
+      orderBy: { createdAt: "desc" },
+    });
+  }
+
+  async revokeApiKey(
+    clerkUserId: string,
+    keyId: string
+  ): Promise<boolean> {
+    const existing = await this.prisma.apiKey.findFirst({
+      where: { id: keyId, User: { clerkUserId }, revokedAt: null },
+      select: { id: true },
+    });
+
+    if (!existing) return false;
+
+    await this.prisma.apiKey.update({
+      where: { id: keyId },
+      data: { revokedAt: new Date() },
+    });
+    return true;
+  }
+
+  // ── Records ───────────────────────────────────────────────────────────────
+
   async updateRecordIfOwner(
     clerkUserId: string,
     recordId: string,
