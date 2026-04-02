@@ -61,12 +61,12 @@ _prune_log() {
 
 # ── Monitor detection ────────────────────────────────────────────────────────
 
-# List connected monitors. Each line: "NAME WxH+X+Y"
-# e.g. "DP-1 2560x1440+0+0"
+# List connected monitors. Each line: "NAME WxH+X+Y" (offsets may be negative)
+# e.g. "DP-1 2560x1440+0+0" or "HDMI-1 1920x1080+-1920+0"
 list_monitors() {
   xrandr --query 2>/dev/null \
     | grep ' connected' \
-    | sed -n 's/^\([^ ]*\) connected.* \([0-9]\+x[0-9]\++[0-9]\++[0-9]\+\).*/\1 \2/p'
+    | sed -n 's/^\([^ ]*\) connected.* \([0-9]\+x[0-9]\+[+-][0-9-]\+[+-][0-9-]\+\).*/\1 \2/p'
 }
 
 # Prompt user to pick a monitor. Sets SHOT_GEOMETRY.
@@ -167,11 +167,19 @@ setup_env() {
     shot_geometry="$SHOT_GEOMETRY"
   fi
 
-  cat > "$ENV_FILE" <<EOF
-SERVER_URL=$server_url
-AUTH_TOKEN=$auth_token
-SHOT_GEOMETRY=$shot_geometry
-EOF
+  # Merge into existing .env (preserve any custom overrides like SHOT_INTERVAL)
+  _env_set() {
+    local key="$1" val="$2"
+    if [[ -f "$ENV_FILE" ]] && grep -q "^${key}=" "$ENV_FILE" 2>/dev/null; then
+      sed -i "s|^${key}=.*|${key}=${val}|" "$ENV_FILE"
+    else
+      echo "${key}=${val}" >> "$ENV_FILE"
+    fi
+  }
+  touch "$ENV_FILE"
+  _env_set SERVER_URL "$server_url"
+  _env_set AUTH_TOKEN "$auth_token"
+  _env_set SHOT_GEOMETRY "$shot_geometry"
   chmod 600 "$ENV_FILE"
 
   echo
@@ -214,15 +222,22 @@ load_env() {
 # ── Screen capture ───────────────────────────────────────────────────────────
 
 get_capture_geometry() {
-  local base_size="${SHOT_GEOMETRY%%+*}"
-  local base_w="${base_size%x*}"
-  local base_h="${base_size#*x}"
-
-  local offset_x=0 offset_y=0
-  if [[ "$SHOT_GEOMETRY" == *+* ]]; then
-    local rest="${SHOT_GEOMETRY#*+}"
-    offset_x="${rest%%+*}"
-    offset_y="${rest#*+}"
+  # Parse WxH+X+Y or WxH+-X+Y (offsets can be negative)
+  local base_w base_h offset_x offset_y
+  if [[ "$SHOT_GEOMETRY" =~ ^([0-9]+)x([0-9]+)([+-][0-9-]+)([+-][0-9-]+)$ ]]; then
+    base_w="${BASH_REMATCH[1]}"
+    base_h="${BASH_REMATCH[2]}"
+    offset_x="${BASH_REMATCH[3]}"
+    offset_y="${BASH_REMATCH[4]}"
+    # Strip leading + for arithmetic (bash handles - fine, but not +-)
+    offset_x="${offset_x#+}"
+    offset_y="${offset_y#+}"
+  else
+    # Fallback: treat as WxH with no offset
+    base_w="${SHOT_GEOMETRY%x*}"
+    base_h="${SHOT_GEOMETRY#*x}"
+    offset_x=0
+    offset_y=0
   fi
 
   # Bottom center: middle third width, bottom fifth height
@@ -380,8 +395,6 @@ game_pid=""
 cleanup() {
   exiting=1
   log "Shutting down tracker."
-  # Clean up temp screenshot if it exists
-  rm -f "$SCRIPT_DIR/.capture-tmp.png"
 }
 trap cleanup INT TERM
 
@@ -395,6 +408,10 @@ run_tracker() {
   fi
   if ! command -v ffmpeg >/dev/null 2>&1; then
     echo "ERROR: ffmpeg is required. Install with: sudo apt install ffmpeg"
+    exit 1
+  fi
+  if ! command -v convert >/dev/null 2>&1; then
+    echo "ERROR: ImageMagick is required. Install with: sudo apt install imagemagick"
     exit 1
   fi
 
@@ -421,7 +438,12 @@ run_tracker() {
       # Preprocess: upscale, grayscale, invert (white text → black), threshold
       local ocr_tmp
       ocr_tmp=$(mktemp --suffix=.png)
-      convert "$tmp_img" -resize 300% -grayscale Rec709Luminance -negate -threshold 60% "$ocr_tmp" 2>/dev/null
+      if ! convert "$tmp_img" -resize 300% -grayscale Rec709Luminance -negate -threshold 60% "$ocr_tmp" 2>/dev/null; then
+        logq "Preprocess failed file=$(basename "$tmp_img")"
+        rm -f "$ocr_tmp" "$ocr_err" "$tmp_img"
+        if [[ "$exiting" -eq 0 ]]; then sleep "$SHOT_INTERVAL"; fi
+        continue
+      fi
 
       ocr_text=$(tesseract "$ocr_tmp" stdout 2>"$ocr_err") && ocr_rc=0 || ocr_rc=$?
       rm -f "$ocr_tmp"
@@ -480,8 +502,10 @@ main() {
   # If any config is missing, run interactive setup to fill in the gaps
   if ! load_env 2>/dev/null; then
     setup_env
-    # Reload after setup
-    load_env
+    if ! load_env 2>/dev/null; then
+      echo "ERROR: Setup did not produce a valid configuration." >&2
+      exit 1
+    fi
     # If no game command was given, exit after setup
     if [[ $# -eq 0 ]]; then
       exit 0
