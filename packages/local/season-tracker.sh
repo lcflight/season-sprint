@@ -293,23 +293,22 @@ capture_screenshot() {
 parse_wtp() {
   local ocr_text="$1"
 
-  # Look for "WORLD TOUR POINTS" or "TOUR POINTS" header (OCR can be partial)
-  # followed by a line matching "N,NNN / N,NNN" or "NNN / NNN"
+  # Look for "WORLD TOUR POINTS" or "TOUR POINTS" header, then extract
+  # the current/max points. Supports two formats:
+  #   1. "N / N" on same or next line (tesseract style)
+  #   2. Separate lines for each number (EasyOCR style)
   local found_header=0
-  local value=""
+  local first_num=""
 
   while IFS= read -r line; do
-    # Normalize: uppercase, strip leading/trailing whitespace
     local upper
     upper=$(echo "$line" | tr '[:lower:]' '[:upper:]' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 
     if [[ "$found_header" -eq 1 ]]; then
-      # Try to match "current / max" pattern on this line
-      if [[ "$upper" =~ ([0-9][0-9,]*)[[:space:]]*[][/|][[:space:]]*([0-9][0-9,]*) ]]; then
-        local current="${BASH_REMATCH[1]}"
-        local max_val="${BASH_REMATCH[2]}"
-        current="${current//,/}"
-        max_val="${max_val//,/}"
+      # Try "current / max" on one line first
+      if [[ "$upper" =~ (^|[[:space:]])([0-9][0-9,]*)[[:space:]]*[/|][[:space:]]*([0-9][0-9,]*) ]]; then
+        local current="${BASH_REMATCH[2]//,/}"
+        local max_val="${BASH_REMATCH[3]//,/}"
         if [[ "$current" =~ ^[0-9]+$ ]] && [[ "$max_val" =~ ^[0-9]+$ ]]; then
           if (( current >= 0 && current <= 2400 && max_val >= 0 && max_val <= 2400 )); then
             echo "$current"
@@ -317,17 +316,40 @@ parse_wtp() {
           fi
         fi
       fi
-      # Header was found but next line didn't parse — reset
-      found_header=0
+
+      # EasyOCR: numbers come as separate lines after the header.
+      # Collect consecutive number pairs — return when current <= max.
+      local stripped="${upper//,/}"
+      stripped="${stripped//[_]/}"  # strip trailing underscores from OCR artifacts
+      if [[ "$stripped" =~ ^[0-9]+$ ]] && (( stripped >= 0 && stripped <= 2400 )); then
+        if [[ -z "$first_num" ]]; then
+          first_num="$stripped"
+        else
+          # Got a pair: check if first_num <= stripped (current <= max)
+          if (( first_num <= stripped )); then
+            echo "$first_num"
+            return 0
+          fi
+          # first_num > stripped — shift: this number becomes the new first
+          first_num="$stripped"
+        fi
+        continue
+      fi
+
+      # Non-numeric, non-empty line after header (e.g. "VIEW REWARDS") — stop
+      if [[ -n "$upper" ]] && ! [[ "$upper" =~ ^[/|[:space:]]*$ ]]; then
+        found_header=0
+        first_num=""
+      fi
+      continue
     fi
 
-    # Check for the header — also try to match numbers on the same line
+    # Check for the header
     if [[ "$upper" == *"TOUR POINTS"* ]]; then
-      if [[ "$upper" =~ ([0-9][0-9,]*)[[:space:]]*[][/|][[:space:]]*([0-9][0-9,]*) ]]; then
-        local current="${BASH_REMATCH[1]}"
-        local max_val="${BASH_REMATCH[2]}"
-        current="${current//,/}"
-        max_val="${max_val//,/}"
+      # Also try to match "current / max" on the same line
+      if [[ "$upper" =~ (^|[[:space:]])([0-9][0-9,]*)[[:space:]]*[/|][[:space:]]*([0-9][0-9,]*) ]]; then
+        local current="${BASH_REMATCH[2]//,/}"
+        local max_val="${BASH_REMATCH[3]//,/}"
         if [[ "$current" =~ ^[0-9]+$ ]] && [[ "$max_val" =~ ^[0-9]+$ ]]; then
           if (( current >= 0 && current <= 2400 && max_val >= 0 && max_val <= 2400 )); then
             echo "$current"
@@ -336,6 +358,7 @@ parse_wtp() {
         fi
       fi
       found_header=1
+      first_num=""
     fi
   done <<< "$ocr_text"
 
@@ -400,18 +423,20 @@ trap cleanup INT TERM
 
 run_tracker() {
   # Clear Steam's library overrides so system tools (tesseract, curl, ffmpeg) work
+  # but preserve PATH so linuxbrew/system tools remain reachable
   unset LD_PRELOAD LD_LIBRARY_PATH STEAM_RUNTIME_LIBRARY_PATH 2>/dev/null || true
 
-  if ! command -v tesseract >/dev/null 2>&1; then
-    echo "ERROR: tesseract is required. Install with: sudo apt install tesseract-ocr"
-    exit 1
-  fi
+  # Ensure linuxbrew is on PATH (Steam may launch with a minimal PATH)
+  for p in /home/linuxbrew/.linuxbrew/bin /usr/local/bin; do
+    [[ -d "$p" ]] && [[ ":$PATH:" != *":$p:"* ]] && export PATH="$p:$PATH"
+  done
+
   if ! command -v ffmpeg >/dev/null 2>&1; then
-    echo "ERROR: ffmpeg is required. Install with: sudo apt install ffmpeg"
+    log "ERROR: ffmpeg is required. Install with: sudo apt install ffmpeg"
     exit 1
   fi
-  if ! command -v convert >/dev/null 2>&1; then
-    echo "ERROR: ImageMagick is required. Install with: sudo apt install imagemagick"
+  if ! python3 -c "import easyocr" 2>&1; then
+    log "ERROR: EasyOCR is required. Install with: pip3 install easyocr"
     exit 1
   fi
 
@@ -432,31 +457,29 @@ run_tracker() {
       break
     fi
 
-    if capture_screenshot "$tmp_img" "$size" "$grab_x" "$grab_y"; then
-      local ocr_text ocr_err ocr_rc
-      ocr_err=$(mktemp)
-      # Preprocess: upscale, grayscale, invert (white text → black), threshold
-      local ocr_tmp
-      ocr_tmp=$(mktemp --suffix=.png)
-      if ! convert "$tmp_img" -resize 300% -grayscale Rec709Luminance -negate -threshold 60% "$ocr_tmp" 2>/dev/null; then
-        logq "Preprocess failed file=$(basename "$tmp_img")"
-        rm -f "$ocr_tmp" "$ocr_err" "$tmp_img"
-        if [[ "$exiting" -eq 0 ]]; then sleep "$SHOT_INTERVAL"; fi
-        continue
-      fi
+    # Save captures to a debug directory for review
+    local debug_dir="$SCRIPT_DIR/debug_captures"
+    mkdir -p "$debug_dir"
+    local ts_stamp
+    ts_stamp="$(date +%Y%m%d-%H%M%S)"
 
-      ocr_text=$(tesseract "$ocr_tmp" stdout 2>"$ocr_err") && ocr_rc=0 || ocr_rc=$?
-      rm -f "$ocr_tmp"
+    if capture_screenshot "$tmp_img" "$size" "$grab_x" "$grab_y"; then
+      cp "$tmp_img" "$debug_dir/${ts_stamp}_raw.png"
+
+      # OCR via EasyOCR (no preprocessing needed)
+      local ocr_text ocr_err
+      ocr_err=$(mktemp)
+      ocr_text=$(python3 "$SCRIPT_DIR/ocr_preprocess.py" "$tmp_img" 2>"$ocr_err")
+      local ocr_rc=$?
 
       if [[ "$ocr_rc" -ne 0 ]]; then
-        logq "Tesseract failed (exit $ocr_rc) file=$(basename "$tmp_img") err=$(cat "$ocr_err")"
+        logq "OCR failed (exit $ocr_rc) file=${ts_stamp} err=$(cat "$ocr_err")"
         rm -f "$ocr_err"
       elif [[ -n "$ocr_text" ]]; then
         rm -f "$ocr_err"
-        # Log raw OCR for debugging (single line, truncated)
         local ocr_oneline
         ocr_oneline=$(echo "$ocr_text" | tr '\n' ' ' | head -c 120)
-        logq "OCR file=$(basename "$tmp_img") raw=\"$ocr_oneline\""
+        logq "OCR file=${ts_stamp} raw=\"$ocr_oneline\""
 
         local wtp
         if wtp=$(parse_wtp "$ocr_text"); then
@@ -476,7 +499,7 @@ run_tracker() {
           logq "OCR ok | no WTP detected"
         fi
       else
-        logq "OCR empty | file=$(basename "$tmp_img") err=$(cat "$ocr_err")"
+        logq "OCR empty | file=${ts_stamp} err=$(cat "$ocr_err")"
         rm -f "$ocr_err"
       fi
     else

@@ -1,0 +1,156 @@
+Input: /home/luke/Pictures/Screenshots/Screenshot From 2026-04-02 00-03-15.png
+Image size: 820x292
+
+[01_current] tess=default
+  
+
+[01_current] tess=psm6
+  fe Ke . . i ‘ | RE a >»
+
+[01_current] tess=psm7_single_line
+  
+
+[02_grayscale_only] tess=default
+  
+
+[02_grayscale_only] tess=psm6
+  = ——_ % - ~ aed od s~ —_ ~ | S ~ e~—* GF fi = 7 ¥ | | At 7 =—s uk =e & . | Bay WORLD TOUR POINTS . | Pye VIEW REWARDS NN | a7, “ty Gm \ ; iC Se Cu | - : lon ; a . | ’ ~ HS
+
+[02_grayscale_only] tess=psm7_single_line
+  
+
+[03_otsu] tess=default
+  
+
+[03_otsu] tess=psm6
+  Nn eee ON " ane rad ~ am — - | » ~ \_ Lf o ~_ 4 * | | a , ! pet A. 7 A | so WOpumamaER POINTS . | Fy Sy ___ VIEW REWARDS YN | a 7 Ooi ; . “ o | . ; oe D ; _* ’ | ; ae
+
+[03_otsu] tess=psm7_single_line
+  
+
+[04_otsu_inverted] tess=default
+  
+
+[04_otsu_inverted] tess=psm6
+  Nn eee ON " ane rad ~ am — - | » ~ \_ Lf o _ i. * | | i , ! pet A. - A | so WOpumamaER POINTS . | Seat ___ VIEW REWARDS YN | a - Ooi ; ‘. “ o | . ; a ; _* ’ | ; ae
+
+[04_otsu_inverted] tess=psm7_single_line
+  
+
+[05_adaptive_mean] tess=default
+  ‘i Tl ATR PONTS | BI 375 |  | VIEW, REWARDS |  | ee ae) ne a |  | .- ‘ U | wt c any ~~. id . . ‘ . . * ' . | Seeks cpa eta, nd . . bed | ip os a“ st . ° tet ry ~ : _¢ |  | j |  | é
+
+[05_adaptive_mean] tess=psm6
+  \ WORLD,TOUR, POINTS Y/ An ) | - WY VIEW.REWARDS \ / |
+
+[05_adaptive_mean] tess=psm7_single_line
+  
+
+[06_adaptive_gaussian] tess=default
+  .or oo a |  | MORTOMOURIBOINTS) | THY FB |  | VIEWIREWARDS
+
+[06_adaptive_gaussian] tess=psm6
+  . Te tag ° + att Deen TR ae _ “ an me” wo Serene ne. ; | . ; if. cee . : te - " “> a ’ x 5 we ° | i fasge iat Ce, rn > . tae : ee . | AZ REWARDS | Saeeenenen ln lated eae Toe = ~ : | ’ ore re . we tS San | . SEA Oe ae 4 | "Pres ey ea we | . ae A 4s ee. ie Ts . . | Niceadeer oa ,
+
+[06_adaptive_gaussian] tess=psm7_single_line
+  | g- | = x » 4
+
+[07_blur_otsu] tess=default
+  ‘ e | i ok |  | WOBMBEEEER POIN | ! 375 |  | VIEW REWARDS
+
+[07_blur_otsu] tess=psm6
+  aan ye — y oe ,- | y ~ Se ee” i. ~ | lo No, . | Se en - | . WOpiiaeen POIN | = Sy ¢ VIEW REWARDS N | St Oh aaa. . ; | Ae rey
+
+[07_blur_otsu] tess=psm7_single_line
+  
+
+[08_blur_invert_otsu] tess=default
+  ‘ e | i ok |  | WOBMREEEER POIN | ! 375 |  | VIEW REWARDS
+
+[08_blur_invert_otsu] tess=psm6
+  aan NN ye ~— ig Te ,- | ‘y ~ Se ae” . ~ | lo No, . | St een - | = WOpiiaeen POIN | = SS + VIEW REWARDS N | St Oh wae. . : | Ae rey
+
+[08_blur_invert_otsu] tess=psm7_single_line
+  
+
+[09_clahe_otsu] tess=default
+  
+
+[09_clahe_otsu] tess=psm6
+  $ ng L Le =. .* _— a hi Lata d per = ios 7. **e "'~ . |  | 7 Shp me i eo ° 5 ae" ~ - |  | 0 Se VIEW REWARDS Co | ‘ wat ~ > ‘ 4 z
+
+[09_clahe_otsu] tess=psm7_single_line
+  Ope oa ; >
+
+[10_clahe_invert_otsu] tess=default
+  
+
+[10_clahe_invert_otsu] tess=psm6
+  $ ng L Mn 7. .* _— a “hi Latte per = a. . *e "~ . |  | 7 Shp an N eo ° 5 eer ~ - |  | 0 Se VIEW REWARDS Co | ‘ wat ~ > ‘ 4 s
+
+[10_clahe_invert_otsu] tess=psm7_single_line
+  Ope oa ; >
+
+[11_white_text_hsv] tess=default
+  WORLD TOUR POINTS | / 375 |  | MIEW REWARDS |  | *, a 5 | : ¥ °g ? | . i. |  | 7 ~.
+
+[11_white_text_hsv] tess=psm6
+  WORLD TOUR POINTS ~~ | , / 375 “Ean. | WO \ | a J VIEW REWARDS : e .
+
+[11_white_text_hsv] tess=psm7_single_line
+  © sical |
+
+[12_white_text_dilated] tess=default
+  WORLD T OUR POINTS | / 375 |  | VIEW page |  | <a
+
+[12_white_text_dilated] tess=psm6
+  WORLD TOUR POINTS a ® | JN AG VIEW pate ~ sf /® 4 3 x
+
+[12_white_text_dilated] tess=psm7_single_line
+  ® pce = 2.
+
+[13_yellow_white_hsv] tess=default
+  ~ WORLD TOUR POINTS | 3 / 375 |  | VIEW REWARDS |  | ; - ; | . i» |  | 7 ~.
+
+[13_yellow_white_hsv] tess=psm6
+  WORLD TOUR POINTS ~ | , 3 / 375 4 . | oo) /( N Y | WA LE VIEW REWARDS Yo.
+
+[13_yellow_white_hsv] tess=psm7_single_line
+  @ a : > |
+
+[14_resize5x_otsu] tess=default
+  WOBuaimmRR POINTS |  | J
+
+[14_resize5x_otsu] tess=psm6
+  \ ie , ~ | A eooO®, on EF | A | Pe US. a o
+
+[14_resize5x_otsu] tess=psm7_single_line
+  = : , >
+
+[15_resize5x_invert_otsu] tess=default
+  WOBuaiEERR POINTS |  | J
+
+[15_resize5x_invert_otsu] tess=psm6
+  \ i , ~ | A eooO®, io EE | A | Ge Oh Oe o
+
+[15_resize5x_invert_otsu] tess=psm7_single_line
+  = : . >
+
+[16_morph_cleanup] tess=default
+  
+
+[16_morph_cleanup] tess=psm6
+  NS he Bs jp | ft il oe an 7? A | oe Wopuaieasn POIN | Sy 4p SD © —__WEWREWARDS N y
+
+[16_morph_cleanup] tess=psm7_single_line
+  e- —— >
+
+[17_sharpen_otsu] tess=default
+  
+
+[17_sharpen_otsu] tess=psm6
+  eS oN ‘4, eect _ gay ae . _ a t 2. | f . ra __ ee. ll ¥ 7 | a j Ali fa fn) So aha V ta | f fi f 4 - i | re ' NX a aHE - is q . N | ne “ _ . . y i | . _ i . | Ris ay, Wel Olle Cte a wee! .. oa | Sos) ME ry © | wi ee Paadl iin
+
+[17_sharpen_otsu] tess=psm7_single_line
+  -- >
+
