@@ -13,13 +13,12 @@
 #   The script launches the game, captures the screen region every N seconds,
 #   OCRs for "WORLD TOUR POINTS", and pushes value changes to the API.
 #
-# Env overrides (all optional, defaults are sensible):
+# Env overrides (all optional):
 #   SHOT_INTERVAL    Seconds between captures (default: 15)
-#   SHOT_GEOMETRY    Monitor WxH+X+Y (default: 2560x1440+0+0)
 #   DISPLAY          X11 display (default: :0.0)
 #
 
-set -euo pipefail
+set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="$SCRIPT_DIR/.env"
@@ -29,14 +28,91 @@ LOG_FILE="$SCRIPT_DIR/tracker.log"
 SHOT_INTERVAL="${SHOT_INTERVAL:-15}"
 DISPLAY="${DISPLAY:-:0.0}"
 [[ "$DISPLAY" == ":0" ]] && DISPLAY=":0.0"
-SHOT_GEOMETRY="${SHOT_GEOMETRY:-2560x1440+0+0}"
 
 # ── Logging ──────────────────────────────────────────────────────────────────
+
+MAX_LOG_LINES=500
 
 log() {
   local ts
   ts="$(date -Iseconds)"
   echo "[$ts] $*" | tee -a "$LOG_FILE"
+  _prune_log
+}
+
+# Log only to file (no terminal output) for routine cycle info
+logq() {
+  local ts
+  ts="$(date -Iseconds)"
+  echo "[$ts] $*" >> "$LOG_FILE"
+  _prune_log
+}
+
+_prune_log() {
+  local lc
+  lc=$(wc -l < "$LOG_FILE" 2>/dev/null) || return
+  if (( lc > MAX_LOG_LINES )); then
+    local tmp
+    tmp=$(mktemp)
+    tail -n "$MAX_LOG_LINES" "$LOG_FILE" > "$tmp"
+    mv "$tmp" "$LOG_FILE"
+  fi
+}
+
+# ── Monitor detection ────────────────────────────────────────────────────────
+
+# List connected monitors. Each line: "NAME WxH+X+Y" (offsets may be negative)
+# e.g. "DP-1 2560x1440+0+0" or "HDMI-1 1920x1080+-1920+0"
+list_monitors() {
+  xrandr --query 2>/dev/null \
+    | grep ' connected' \
+    | sed -n 's/^\([^ ]*\) connected.* \([0-9]\+x[0-9]\+[+-][0-9-]\+[+-][0-9-]\+\).*/\1 \2/p'
+}
+
+# Prompt user to pick a monitor. Sets SHOT_GEOMETRY.
+# If only one monitor, auto-selects it.
+prompt_monitor() {
+  local monitors
+  monitors=$(list_monitors)
+  local count
+  count=$(echo "$monitors" | wc -l)
+
+  if [[ -z "$monitors" ]]; then
+    echo "WARNING: Could not detect monitors via xrandr."
+    echo "Falling back to full primary display."
+    read -rp "Enter monitor geometry manually (WxH+X+Y): " SHOT_GEOMETRY
+    return
+  fi
+
+  if [[ "$count" -eq 1 ]]; then
+    local name geo
+    read -r name geo <<< "$monitors"
+    echo "Detected monitor: $name ($geo)"
+    SHOT_GEOMETRY="$geo"
+    return
+  fi
+
+  echo "Detected monitors:"
+  local i=1
+  while IFS= read -r line; do
+    local name geo
+    read -r name geo <<< "$line"
+    echo "  $i) $name — $geo"
+    i=$((i + 1))
+  done <<< "$monitors"
+
+  local choice
+  read -rp "Which monitor does the game run on? [1-$count]: " choice
+  while ! [[ "$choice" =~ ^[0-9]+$ ]] || (( choice < 1 || choice > count )); do
+    read -rp "Enter a number 1-$count: " choice
+  done
+
+  local selected
+  selected=$(echo "$monitors" | sed -n "${choice}p")
+  local name geo
+  read -r name geo <<< "$selected"
+  echo "Selected: $name ($geo)"
+  SHOT_GEOMETRY="$geo"
 }
 
 # ── First-run setup ──────────────────────────────────────────────────────────
@@ -49,33 +125,61 @@ setup_env() {
   echo "This script captures your World Tour Points from the game"
   echo "and pushes them to the Season Sprint server automatically."
   echo
-  echo "You need two values:"
-  echo "  1. SERVER_URL — Your Season Sprint API URL"
-  echo "     (e.g. https://your-worker.workers.dev or http://localhost:8787)"
-  echo "  2. AUTH_TOKEN — Your personal API key (starts with sk_)"
-  echo "     Generate one from the web app: click 'API Keys' in the header."
-  echo
 
-  local server_url auth_token
+  # Load any existing values so we only prompt for what's missing
+  if [[ -f "$ENV_FILE" ]]; then
+    # shellcheck source=/dev/null
+    source "$ENV_FILE"
+  fi
 
-  read -rp "SERVER_URL: " server_url
-  while [[ -z "$server_url" ]]; do
-    echo "  Server URL cannot be empty."
+  local server_url="${SERVER_URL:-}"
+  local auth_token="${AUTH_TOKEN:-}"
+  local shot_geometry="${SHOT_GEOMETRY:-}"
+
+  # 1. Server URL
+  if [[ -z "$server_url" ]]; then
+    echo "SERVER_URL — Your Season Sprint API URL"
+    echo "  (e.g. https://your-worker.workers.dev or http://localhost:8787)"
     read -rp "SERVER_URL: " server_url
-  done
-  # Strip trailing slash
-  server_url="${server_url%/}"
+    while [[ -z "$server_url" ]]; do
+      echo "  Server URL cannot be empty."
+      read -rp "SERVER_URL: " server_url
+    done
+    server_url="${server_url%/}"
+  fi
 
-  read -rp "AUTH_TOKEN: " auth_token
-  while [[ -z "$auth_token" ]]; do
-    echo "  Auth token cannot be empty."
+  # 2. Auth token
+  if [[ -z "$auth_token" ]]; then
+    echo
+    echo "AUTH_TOKEN — Your personal API key (starts with sk_)"
+    echo "  Generate one from the web app: click 'API Keys' in the header."
     read -rp "AUTH_TOKEN: " auth_token
-  done
+    while [[ -z "$auth_token" ]]; do
+      echo "  Auth token cannot be empty."
+      read -rp "AUTH_TOKEN: " auth_token
+    done
+  fi
 
-  cat > "$ENV_FILE" <<EOF
-SERVER_URL=$server_url
-AUTH_TOKEN=$auth_token
-EOF
+  # 3. Monitor selection
+  if [[ -z "$shot_geometry" ]]; then
+    echo
+    prompt_monitor
+    shot_geometry="$SHOT_GEOMETRY"
+  fi
+
+  # Merge into existing .env (preserve any custom overrides like SHOT_INTERVAL)
+  _env_set() {
+    local key="$1" val="$2"
+    if [[ -f "$ENV_FILE" ]] && grep -q "^${key}=" "$ENV_FILE" 2>/dev/null; then
+      sed -i "s|^${key}=.*|${key}=${val}|" "$ENV_FILE"
+    else
+      echo "${key}=${val}" >> "$ENV_FILE"
+    fi
+  }
+  touch "$ENV_FILE"
+  _env_set SERVER_URL "$server_url"
+  _env_set AUTH_TOKEN "$auth_token"
+  _env_set SHOT_GEOMETRY "$shot_geometry"
   chmod 600 "$ENV_FILE"
 
   echo
@@ -109,9 +213,7 @@ load_env() {
   fi
   # shellcheck source=/dev/null
   source "$ENV_FILE"
-  if [[ -z "${SERVER_URL:-}" || -z "${AUTH_TOKEN:-}" ]]; then
-    echo "ERROR: $ENV_FILE is missing SERVER_URL or AUTH_TOKEN."
-    echo "Delete $ENV_FILE and re-run to set up again."
+  if [[ -z "${SERVER_URL:-}" || -z "${AUTH_TOKEN:-}" || -z "${SHOT_GEOMETRY:-}" ]]; then
     return 1
   fi
   return 0
@@ -120,15 +222,22 @@ load_env() {
 # ── Screen capture ───────────────────────────────────────────────────────────
 
 get_capture_geometry() {
-  local base_size="${SHOT_GEOMETRY%%+*}"
-  local base_w="${base_size%x*}"
-  local base_h="${base_size#*x}"
-
-  local offset_x=0 offset_y=0
-  if [[ "$SHOT_GEOMETRY" == *+* ]]; then
-    local rest="${SHOT_GEOMETRY#*+}"
-    offset_x="${rest%%+*}"
-    offset_y="${rest#*+}"
+  # Parse WxH+X+Y or WxH+-X+Y (offsets can be negative)
+  local base_w base_h offset_x offset_y
+  if [[ "$SHOT_GEOMETRY" =~ ^([0-9]+)x([0-9]+)([+-][0-9-]+)([+-][0-9-]+)$ ]]; then
+    base_w="${BASH_REMATCH[1]}"
+    base_h="${BASH_REMATCH[2]}"
+    offset_x="${BASH_REMATCH[3]}"
+    offset_y="${BASH_REMATCH[4]}"
+    # Strip leading + for arithmetic (bash handles - fine, but not +-)
+    offset_x="${offset_x#+}"
+    offset_y="${offset_y#+}"
+  else
+    # Fallback: treat as WxH with no offset
+    base_w="${SHOT_GEOMETRY%x*}"
+    base_h="${SHOT_GEOMETRY#*x}"
+    offset_x=0
+    offset_y=0
   fi
 
   # Bottom center: middle third width, bottom fifth height
@@ -196,15 +305,11 @@ parse_wtp() {
 
     if [[ "$found_header" -eq 1 ]]; then
       # Try to match "current / max" pattern on this line
-      # Handle commas, spaces, OCR artifacts around the numbers
-      # Pattern: optional junk, digits with optional commas, slash, digits with optional commas
-      if [[ "$upper" =~ ([0-9][0-9,]*)[[:space:]]*/[[:space:]]*([0-9][0-9,]*) ]]; then
+      if [[ "$upper" =~ ([0-9][0-9,]*)[[:space:]]*[][/|][[:space:]]*([0-9][0-9,]*) ]]; then
         local current="${BASH_REMATCH[1]}"
         local max_val="${BASH_REMATCH[2]}"
-        # Strip commas
         current="${current//,/}"
         max_val="${max_val//,/}"
-        # Validate: both must be integers, current 0-2400, max 0-2400
         if [[ "$current" =~ ^[0-9]+$ ]] && [[ "$max_val" =~ ^[0-9]+$ ]]; then
           if (( current >= 0 && current <= 2400 && max_val >= 0 && max_val <= 2400 )); then
             echo "$current"
@@ -216,8 +321,20 @@ parse_wtp() {
       found_header=0
     fi
 
-    # Check for the header
+    # Check for the header — also try to match numbers on the same line
     if [[ "$upper" == *"TOUR POINTS"* ]]; then
+      if [[ "$upper" =~ ([0-9][0-9,]*)[[:space:]]*[][/|][[:space:]]*([0-9][0-9,]*) ]]; then
+        local current="${BASH_REMATCH[1]}"
+        local max_val="${BASH_REMATCH[2]}"
+        current="${current//,/}"
+        max_val="${max_val//,/}"
+        if [[ "$current" =~ ^[0-9]+$ ]] && [[ "$max_val" =~ ^[0-9]+$ ]]; then
+          if (( current >= 0 && current <= 2400 && max_val >= 0 && max_val <= 2400 )); then
+            echo "$current"
+            return 0
+          fi
+        fi
+      fi
       found_header=1
     fi
   done <<< "$ocr_text"
@@ -278,18 +395,23 @@ game_pid=""
 cleanup() {
   exiting=1
   log "Shutting down tracker."
-  # Clean up temp screenshot if it exists
-  rm -f "$SCRIPT_DIR/.capture-tmp.png"
 }
 trap cleanup INT TERM
 
 run_tracker() {
+  # Clear Steam's library overrides so system tools (tesseract, curl, ffmpeg) work
+  unset LD_PRELOAD LD_LIBRARY_PATH STEAM_RUNTIME_LIBRARY_PATH 2>/dev/null || true
+
   if ! command -v tesseract >/dev/null 2>&1; then
     echo "ERROR: tesseract is required. Install with: sudo apt install tesseract-ocr"
     exit 1
   fi
   if ! command -v ffmpeg >/dev/null 2>&1; then
     echo "ERROR: ffmpeg is required. Install with: sudo apt install ffmpeg"
+    exit 1
+  fi
+  if ! command -v convert >/dev/null 2>&1; then
+    echo "ERROR: ImageMagick is required. Install with: sudo apt install imagemagick"
     exit 1
   fi
 
@@ -299,10 +421,11 @@ run_tracker() {
   log "Tracker started: capture=${size} offset=${grab_x},${grab_y} interval=${SHOT_INTERVAL}s"
   log "Server: $SERVER_URL"
 
-  local tmp_img="$SCRIPT_DIR/.capture-tmp.png"
   local consecutive_failures=0
 
   while [[ "$exiting" -eq 0 ]]; do
+    local tmp_img
+    tmp_img=$(mktemp --suffix=.png)
     # If launched with a game and the game has exited, stop
     if [[ -n "$game_pid" ]] && ! kill -0 "$game_pid" 2>/dev/null; then
       log "Game process exited. Stopping tracker."
@@ -310,10 +433,31 @@ run_tracker() {
     fi
 
     if capture_screenshot "$tmp_img" "$size" "$grab_x" "$grab_y"; then
-      local ocr_text
-      ocr_text=$(tesseract "$tmp_img" stdout 2>/dev/null || true)
+      local ocr_text ocr_err ocr_rc
+      ocr_err=$(mktemp)
+      # Preprocess: upscale, grayscale, invert (white text → black), threshold
+      local ocr_tmp
+      ocr_tmp=$(mktemp --suffix=.png)
+      if ! convert "$tmp_img" -resize 300% -grayscale Rec709Luminance -negate -threshold 60% "$ocr_tmp" 2>/dev/null; then
+        logq "Preprocess failed file=$(basename "$tmp_img")"
+        rm -f "$ocr_tmp" "$ocr_err" "$tmp_img"
+        if [[ "$exiting" -eq 0 ]]; then sleep "$SHOT_INTERVAL"; fi
+        continue
+      fi
 
-      if [[ -n "$ocr_text" ]]; then
+      ocr_text=$(tesseract "$ocr_tmp" stdout 2>"$ocr_err") && ocr_rc=0 || ocr_rc=$?
+      rm -f "$ocr_tmp"
+
+      if [[ "$ocr_rc" -ne 0 ]]; then
+        logq "Tesseract failed (exit $ocr_rc) file=$(basename "$tmp_img") err=$(cat "$ocr_err")"
+        rm -f "$ocr_err"
+      elif [[ -n "$ocr_text" ]]; then
+        rm -f "$ocr_err"
+        # Log raw OCR for debugging (single line, truncated)
+        local ocr_oneline
+        ocr_oneline=$(echo "$ocr_text" | tr '\n' ' ' | head -c 120)
+        logq "OCR file=$(basename "$tmp_img") raw=\"$ocr_oneline\""
+
         local wtp
         if wtp=$(parse_wtp "$ocr_text"); then
           consecutive_failures=0
@@ -325,13 +469,22 @@ run_tracker() {
             if push_record "$wtp"; then
               set_last_value "$wtp"
             fi
+          else
+            logq "OCR ok | wtp=$wtp (unchanged)"
           fi
+        else
+          logq "OCR ok | no WTP detected"
         fi
+      else
+        logq "OCR empty | file=$(basename "$tmp_img") err=$(cat "$ocr_err")"
+        rm -f "$ocr_err"
       fi
     else
       consecutive_failures=$((consecutive_failures + 1))
       if (( consecutive_failures % 10 == 1 )); then
         log "Screen capture failed (attempt $consecutive_failures)"
+      else
+        logq "Capture failed (attempt $consecutive_failures)"
       fi
     fi
 
@@ -346,15 +499,17 @@ run_tracker() {
 # ── Entry point ──────────────────────────────────────────────────────────────
 
 main() {
-  # If .env doesn't exist, run interactive setup
+  # If any config is missing, run interactive setup to fill in the gaps
   if ! load_env 2>/dev/null; then
     setup_env
-    # After setup, if no game command was given, exit
+    if ! load_env 2>/dev/null; then
+      echo "ERROR: Setup did not produce a valid configuration." >&2
+      exit 1
+    fi
+    # If no game command was given, exit after setup
     if [[ $# -eq 0 ]]; then
       exit 0
     fi
-    # Reload after setup
-    load_env
   fi
 
   # If game command was passed (Steam %command%), launch it
