@@ -10,11 +10,10 @@
 #   Steam launch option (after setup):
 #     /full/path/to/season-tracker.sh %command%
 #
-#   The script launches the game, captures the screen region every N seconds,
+#   The script launches the game, continuously captures the screen region,
 #   OCRs for "WORLD TOUR POINTS", and pushes value changes to the API.
 #
 # Env overrides (all optional):
-#   SHOT_INTERVAL    Seconds between captures (default: 15)
 #   DISPLAY          X11 display (default: :0.0)
 #
 
@@ -25,19 +24,20 @@ ENV_FILE="$SCRIPT_DIR/.env"
 STATE_FILE="$SCRIPT_DIR/.last-wtp"
 LOG_FILE="$SCRIPT_DIR/tracker.log"
 
-SHOT_INTERVAL="${SHOT_INTERVAL:-15}"
 DISPLAY="${DISPLAY:-:0.0}"
 [[ "$DISPLAY" == ":0" ]] && DISPLAY=":0.0"
 
 # ── Logging ──────────────────────────────────────────────────────────────────
 
 MAX_LOG_LINES=500
+_log_count=0
+_LOG_PRUNE_EVERY=50
 
 log() {
   local ts
   ts="$(date -Iseconds)"
   echo "[$ts] $*" | tee -a "$LOG_FILE"
-  _prune_log
+  _maybe_prune_log
 }
 
 # Log only to file (no terminal output) for routine cycle info
@@ -45,10 +45,12 @@ logq() {
   local ts
   ts="$(date -Iseconds)"
   echo "[$ts] $*" >> "$LOG_FILE"
-  _prune_log
+  _maybe_prune_log
 }
 
-_prune_log() {
+_maybe_prune_log() {
+  _log_count=$((_log_count + 1))
+  (( _log_count % _LOG_PRUNE_EVERY == 0 )) || return 0
   local lc
   lc=$(wc -l < "$LOG_FILE" 2>/dev/null) || return
   if (( lc > MAX_LOG_LINES )); then
@@ -219,55 +221,82 @@ load_env() {
   return 0
 }
 
+# ── Timing ──────────────────────────────────────────────────────────────────
+
+# Return current time in milliseconds using bash built-in (no subprocess fork)
+now_ms() {
+  local rt="${EPOCHREALTIME}"
+  local secs="${rt%%.*}"
+  local frac="${rt#*.}"
+  # Pad/truncate fractional part to 3 digits (milliseconds)
+  frac="${frac}000"
+  echo "${secs}${frac:0:3}"
+}
+
 # ── Screen capture ───────────────────────────────────────────────────────────
 
-get_capture_geometry() {
+parse_geometry() {
   # Parse WxH+X+Y or WxH+-X+Y (offsets can be negative)
-  local base_w base_h offset_x offset_y
+  # Sets: _pw _ph _px _py
   if [[ "$SHOT_GEOMETRY" =~ ^([0-9]+)x([0-9]+)([+-][0-9-]+)([+-][0-9-]+)$ ]]; then
-    base_w="${BASH_REMATCH[1]}"
-    base_h="${BASH_REMATCH[2]}"
-    offset_x="${BASH_REMATCH[3]}"
-    offset_y="${BASH_REMATCH[4]}"
-    # Strip leading + for arithmetic (bash handles - fine, but not +-)
-    offset_x="${offset_x#+}"
-    offset_y="${offset_y#+}"
+    _pw="${BASH_REMATCH[1]}"
+    _ph="${BASH_REMATCH[2]}"
+    _px="${BASH_REMATCH[3]}"
+    _py="${BASH_REMATCH[4]}"
+    _px="${_px#+}"
+    _py="${_py#+}"
   else
-    # Fallback: treat as WxH with no offset
-    base_w="${SHOT_GEOMETRY%x*}"
-    base_h="${SHOT_GEOMETRY#*x}"
-    offset_x=0
-    offset_y=0
+    _pw="${SHOT_GEOMETRY%x*}"
+    _ph="${SHOT_GEOMETRY#*x}"
+    _px=0
+    _py=0
   fi
+}
+
+get_capture_geometry() {
+  local _pw _ph _px _py
+  parse_geometry
 
   # Bottom center: middle third width, bottom fifth height
-  local crop_w=$((base_w / 3))
-  local crop_h=$((base_h / 5))
-  local grab_x=$((offset_x + (base_w - crop_w) / 2))
-  local grab_y=$((offset_y + (base_h - crop_h)))
+  local crop_w=$((_pw / 3))
+  local crop_h=$((_ph / 5))
+  local grab_x=$((_px + (_pw - crop_w) / 2))
+  local grab_y=$((_py + (_ph - crop_h)))
 
   echo "${crop_w}x${crop_h}" "$grab_x" "$grab_y"
 }
+
+# Top-left capture region for the "WORLD TOUR" header text.
+# Covers roughly the left quarter, top tenth of the screen.
+get_gate_geometry() {
+  local _pw _ph _px _py
+  parse_geometry
+
+  local crop_w=$((_pw / 4))
+  local crop_h=$((_ph / 10))
+
+  echo "${crop_w}x${crop_h}" "$_px" "$_py"
+}
+
+FF_ERR_FILE=""
 
 capture_screenshot() {
   local outfile="$1"
   local size="$2" grab_x="$3" grab_y="$4"
 
-  local ff_err
-  ff_err=$(mktemp)
+  # Reuse a single temp file for ffmpeg stderr across all calls
+  [[ -z "$FF_ERR_FILE" ]] && FF_ERR_FILE=$(mktemp)
 
   # Try ffmpeg x11grab first
   if ffmpeg -y -loglevel error \
     -f x11grab -video_size "$size" \
     -grab_x "$grab_x" -grab_y "$grab_y" \
-    -i "$DISPLAY" -frames:v 1 "$outfile" 2>"$ff_err"; then
-    rm -f "$ff_err"
+    -i "$DISPLAY" -frames:v 1 "$outfile" 2>"$FF_ERR_FILE"; then
     return 0
   fi
 
   # Fallback: xwd + ffmpeg crop
-  if grep -q "Protocol not found\|Error opening input" "$ff_err" 2>/dev/null; then
-    rm -f "$ff_err"
+  if grep -q "Protocol not found\|Error opening input" "$FF_ERR_FILE" 2>/dev/null; then
     local xwd_tmp
     xwd_tmp=$(mktemp --suffix=.xwd)
     if xwd -silent -screen -display "$DISPLAY" -out "$xwd_tmp" 2>/dev/null; then
@@ -279,8 +308,6 @@ capture_screenshot() {
       fi
     fi
     rm -f "$xwd_tmp"
-  else
-    rm -f "$ff_err"
   fi
 
   return 1
@@ -414,12 +441,36 @@ set_last_value() {
 
 exiting=0
 game_pid=""
+ocr_pid=""
 
 cleanup() {
   exiting=1
   log "Shutting down tracker."
+  # Kill the OCR daemon if running
+  if [[ -n "$ocr_pid" ]] && kill -0 "$ocr_pid" 2>/dev/null; then
+    kill "$ocr_pid" 2>/dev/null
+    wait "$ocr_pid" 2>/dev/null || true
+  fi
 }
 trap cleanup INT TERM
+
+# Send an image path to the OCR daemon and read back the response.
+# Globals: OCR_IN_FD, OCR_OUT_FD
+ocr_daemon_query() {
+  local img_path="$1"
+  echo "$img_path" >&"$OCR_IN_FD"
+
+  local line result=""
+  while IFS= read -r line <&"$OCR_OUT_FD"; do
+    [[ "$line" == "---END---" ]] && break
+    if [[ -n "$result" ]]; then
+      result+=$'\n'"$line"
+    else
+      result="$line"
+    fi
+  done
+  echo "$result"
+}
 
 run_tracker() {
   # Clear Steam's library overrides so system tools (tesseract, curl, ffmpeg) work
@@ -435,88 +486,169 @@ run_tracker() {
     log "ERROR: ffmpeg is required. Install with: sudo apt install ffmpeg"
     exit 1
   fi
+  if ! command -v tesseract >/dev/null 2>&1; then
+    log "ERROR: tesseract is required for gate checks. Install with: sudo apt install tesseract-ocr"
+    exit 1
+  fi
   if ! python3 -c "import easyocr" 2>&1; then
     log "ERROR: EasyOCR is required. Install with: pip3 install easyocr"
     exit 1
   fi
 
+  # Start the OCR daemon (loads model once, then processes images via stdin)
+  log "Starting OCR daemon (loading model)..."
+  local ocr_in ocr_out
+  ocr_in=$(mktemp -u)
+  ocr_out=$(mktemp -u)
+  mkfifo "$ocr_in" "$ocr_out"
+
+  python3 "$SCRIPT_DIR/ocr_preprocess.py" --daemon < "$ocr_in" > "$ocr_out" 2>"$LOG_FILE.ocr_err" &
+  ocr_pid=$!
+
+  # Open file descriptors for the pipes
+  exec {OCR_IN_FD}>"$ocr_in"
+  exec {OCR_OUT_FD}<"$ocr_out"
+
+  # Wait for the READY signal
+  local ready_line
+  IFS= read -r ready_line <&"$OCR_OUT_FD"
+  if [[ "$ready_line" != "READY" ]]; then
+    log "ERROR: OCR daemon failed to start (got: $ready_line)"
+    kill "$ocr_pid" 2>/dev/null || true
+    rm -f "$ocr_in" "$ocr_out"
+    exit 1
+  fi
+  log "OCR daemon ready (PID $ocr_pid)"
+  rm -f "$ocr_in" "$ocr_out"  # FIFOs no longer needed after opening FDs
+
   local capture_args
   read -r size grab_x grab_y <<< "$(get_capture_geometry)"
+  local gate_size gate_x gate_y
+  read -r gate_size gate_x gate_y <<< "$(get_gate_geometry)"
 
-  log "Tracker started: capture=${size} offset=${grab_x},${grab_y} interval=${SHOT_INTERVAL}s"
+  log "Tracker started: gate=${gate_size}+${gate_x}+${gate_y} capture=${size}+${grab_x}+${grab_y} interval=3s"
   log "Server: $SERVER_URL"
 
   local consecutive_failures=0
+  local cycle_count=0
+  local unchanged_count=0
+  local sleep_interval=3
 
   while [[ "$exiting" -eq 0 ]]; do
-    local tmp_img
-    tmp_img=$(mktemp --suffix=.png)
+    cycle_count=$((cycle_count + 1))
     # If launched with a game and the game has exited, stop
     if [[ -n "$game_pid" ]] && ! kill -0 "$game_pid" 2>/dev/null; then
       log "Game process exited. Stopping tracker."
       break
     fi
 
-    # Save captures to a debug directory for review
-    local debug_dir="$SCRIPT_DIR/debug_captures"
-    mkdir -p "$debug_dir"
-    local ts_stamp
-    ts_stamp="$(date +%Y%m%d-%H%M%S)"
+    local t_start t_gate t_capture t_ocr
+    t_start=$(now_ms)
 
-    if capture_screenshot "$tmp_img" "$size" "$grab_x" "$grab_y"; then
-      cp "$tmp_img" "$debug_dir/${ts_stamp}_raw.png"
+    # ── Stage 1: Cheap Tesseract gate on top-left corner ──
+    local gate_img
+    gate_img=$(mktemp --suffix=.bmp)
 
-      # OCR via EasyOCR (no preprocessing needed)
-      local ocr_text ocr_err
-      ocr_err=$(mktemp)
-      ocr_text=$(python3 "$SCRIPT_DIR/ocr_preprocess.py" "$tmp_img" 2>"$ocr_err")
-      local ocr_rc=$?
-
-      if [[ "$ocr_rc" -ne 0 ]]; then
-        logq "OCR failed (exit $ocr_rc) file=${ts_stamp} err=$(cat "$ocr_err")"
-        rm -f "$ocr_err"
-      elif [[ -n "$ocr_text" ]]; then
-        rm -f "$ocr_err"
-        local ocr_oneline
-        ocr_oneline=$(echo "$ocr_text" | tr '\n' ' ' | head -c 120)
-        logq "OCR file=${ts_stamp} raw=\"$ocr_oneline\""
-
-        local wtp
-        if wtp=$(parse_wtp "$ocr_text"); then
-          consecutive_failures=0
-          local last
-          last=$(get_last_value)
-
-          if [[ "$wtp" != "$last" ]]; then
-            log "World Tour Points changed: ${last:-"(none)"} → $wtp"
-            if push_record "$wtp"; then
-              set_last_value "$wtp"
-            fi
-          else
-            logq "OCR ok | wtp=$wtp (unchanged)"
-          fi
-        else
-          logq "OCR ok | no WTP detected"
-        fi
+    if ! capture_screenshot "$gate_img" "$gate_size" "$gate_x" "$gate_y"; then
+      rm -f "$gate_img"
+      consecutive_failures=$((consecutive_failures + 1))
+      if (( consecutive_failures % 10 == 1 )); then
+        log "Gate capture failed (attempt $consecutive_failures)"
       else
-        logq "OCR empty | file=${ts_stamp} err=$(cat "$ocr_err")"
-        rm -f "$ocr_err"
+        logq "Gate capture failed (attempt $consecutive_failures)"
       fi
-    else
+      [[ "$exiting" -eq 0 ]] && sleep "$sleep_interval"
+      continue
+    fi
+
+    local gate_result
+    gate_result=$(ocr_daemon_query "GATE:$gate_img")
+    rm -f "$gate_img"
+    t_gate=$(now_ms)
+    local ms_gate=$(( t_gate - t_start ))
+
+    if [[ "$gate_result" != "WORLD_TOUR" ]]; then
+      logq "Gate: not World Tour screen | ${ms_gate}ms"
+      unchanged_count=0
+      sleep_interval=3
+      [[ "$exiting" -eq 0 ]] && sleep "$sleep_interval"
+      continue
+    fi
+
+    # ── Stage 2: Full EasyOCR on bottom-center for points value ──
+    local tmp_img
+    tmp_img=$(mktemp --suffix=.bmp)
+
+    if ! capture_screenshot "$tmp_img" "$size" "$grab_x" "$grab_y"; then
+      rm -f "$tmp_img"
       consecutive_failures=$((consecutive_failures + 1))
       if (( consecutive_failures % 10 == 1 )); then
         log "Screen capture failed (attempt $consecutive_failures)"
       else
         logq "Capture failed (attempt $consecutive_failures)"
       fi
+      [[ "$exiting" -eq 0 ]] && sleep "$sleep_interval"
+      continue
     fi
 
+    t_capture=$(now_ms)
+    local ocr_text
+    ocr_text=$(ocr_daemon_query "$tmp_img")
     rm -f "$tmp_img"
+    t_ocr=$(now_ms)
+
+    local ms_capture=$(( t_capture - t_gate ))
+    local ms_ocr=$(( t_ocr - t_capture ))
+    local ms_total=$(( t_ocr - t_start ))
+    local cpu_ocr="-" cpu_load="-"
+    if (( cycle_count % 10 == 0 )); then
+      cpu_ocr=$(ps -p "$ocr_pid" -o %cpu= 2>/dev/null | tr -d ' ')
+      cpu_load=$(cut -d' ' -f1-3 /proc/loadavg 2>/dev/null)
+    fi
+
+    if [[ -n "$ocr_text" ]]; then
+      local ocr_oneline
+      ocr_oneline=$(echo "$ocr_text" | tr '\n' ' ' | head -c 120)
+      logq "OCR raw=\"$ocr_oneline\" | gate=${ms_gate}ms capture=${ms_capture}ms ocr=${ms_ocr}ms total=${ms_total}ms | ocr_cpu=${cpu_ocr}% load=${cpu_load}"
+
+      local wtp
+      if wtp=$(parse_wtp "$ocr_text"); then
+        consecutive_failures=0
+        local last
+        last=$(get_last_value)
+
+        if [[ "$wtp" != "$last" ]]; then
+          log "World Tour Points changed: ${last:-"(none)"} → $wtp"
+          if push_record "$wtp"; then
+            set_last_value "$wtp"
+          fi
+          unchanged_count=0
+          sleep_interval=3
+        else
+          unchanged_count=$((unchanged_count + 1))
+          # Back off: 3s -> 5s -> 10s after consecutive unchanged reads
+          if (( unchanged_count >= 10 )); then
+            sleep_interval=10
+          elif (( unchanged_count >= 5 )); then
+            sleep_interval=5
+          fi
+          logq "OCR ok | wtp=$wtp (unchanged x${unchanged_count}) | gate=${ms_gate}ms capture=${ms_capture}ms ocr=${ms_ocr}ms total=${ms_total}ms interval=${sleep_interval}s | ocr_cpu=${cpu_ocr}% load=${cpu_load}"
+        fi
+      else
+        logq "OCR ok | no WTP detected | gate=${ms_gate}ms capture=${ms_capture}ms ocr=${ms_ocr}ms total=${ms_total}ms | ocr_cpu=${cpu_ocr}% load=${cpu_load}"
+      fi
+    else
+      logq "OCR empty | gate=${ms_gate}ms total=${ms_total}ms | ocr_cpu=${cpu_ocr}% load=${cpu_load}"
+    fi
 
     if [[ "$exiting" -eq 0 ]]; then
-      sleep "$SHOT_INTERVAL"
+      sleep "$sleep_interval"
     fi
   done
+
+  # Clean up OCR daemon
+  exec {OCR_IN_FD}>&-
+  exec {OCR_OUT_FD}<&-
 }
 
 # ── Entry point ──────────────────────────────────────────────────────────────
