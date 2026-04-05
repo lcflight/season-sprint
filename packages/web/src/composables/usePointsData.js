@@ -107,8 +107,12 @@ export function usePointsData({ isSeasonValid, seasonStart, seasonEnd, autoSetSe
         y: r.winPoints,
       }))
       points.splice(0, points.length, ...mapped)
-      // Delay SSE until after page load to avoid Firefox aborting during render
-      setTimeout(openSSE, 1000)
+      // Delay SSE until after page is fully loaded to avoid Firefox aborting
+      if (document.readyState === 'complete') {
+        openSSE()
+      } else {
+        window.addEventListener('load', () => setTimeout(openSSE, 500), { once: true })
+      }
     } catch (e) {
       loadError.value = 'Failed to load data. Please refresh to try again.'
       console.error('Failed to load points from API', e)

@@ -50,14 +50,14 @@ describe('buildRankBands', () => {
 
   it('sets correct floor and ceil for each band', () => {
     const bands = buildRankBands(WORLD_TOUR_SAMPLE)
-    // Bronze: floor 0 (first tier starts at 0), ceil 100 (Bronze 1)
+    // Bronze: floor 0, ceil 150 (where Silver starts)
     expect(bands[0].floor).toBe(0)
-    expect(bands[0].ceil).toBe(100)
-    // Silver: floor 100 (end of Bronze), ceil 300 (Silver 1)
-    expect(bands[1].floor).toBe(100)
-    expect(bands[1].ceil).toBe(300)
-    // Gold: floor 300 (end of Silver), ceil 600 (Gold 1)
-    expect(bands[2].floor).toBe(300)
+    expect(bands[0].ceil).toBe(150)
+    // Silver: floor 150, ceil 375 (where Gold starts)
+    expect(bands[1].floor).toBe(150)
+    expect(bands[1].ceil).toBe(375)
+    // Gold: floor 375, ceil 600 (last entry, no next tier)
+    expect(bands[2].floor).toBe(375)
     expect(bands[2].ceil).toBe(600)
   })
 
@@ -97,7 +97,7 @@ describe('buildRankBands', () => {
     ]
     const bands = buildRankBands(ranked)
     expect(bands).toHaveLength(2)
-    expect(bands[0]).toMatchObject({ tier: 'Bronze', floor: 0, ceil: 7500 })
-    expect(bands[1]).toMatchObject({ tier: 'Silver', floor: 7500, ceil: 17500 })
+    expect(bands[0]).toMatchObject({ tier: 'Bronze', floor: 0, ceil: 10000 })
+    expect(bands[1]).toMatchObject({ tier: 'Silver', floor: 10000, ceil: 17500 })
   })
 })
