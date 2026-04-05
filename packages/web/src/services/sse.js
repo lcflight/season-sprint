@@ -20,6 +20,8 @@ const BASE =
  * @returns {Promise<{close: () => void}>}
  */
 export async function connectSSE(handlers) {
+  if (!BASE) return { close() {} };
+
   let es = null;
   let closed = false;
   let refreshTimer = null;
