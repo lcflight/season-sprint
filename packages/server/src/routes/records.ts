@@ -24,7 +24,7 @@ records.post("/", async (c) => {
 
   const record = await db.upsertRecord(userId, email, date, winPoints);
 
-  broadcastToUser(c.env.USER_STREAM, userId, "record:upsert", record);
+  void broadcastToUser(c.env.USER_STREAM, userId, "record:upsert", record);
 
   return c.json({
     message: "Record upserted",
@@ -64,7 +64,7 @@ records.put("/:id", async (c) => {
     return c.text("Not found", 404);
   }
 
-  broadcastToUser(c.env.USER_STREAM, userId, "record:upsert", updated);
+  void broadcastToUser(c.env.USER_STREAM, userId, "record:upsert", updated);
 
   return c.json(updated);
 });
@@ -79,7 +79,7 @@ records.delete("/:id", async (c) => {
     return c.text("Not found", 404);
   }
 
-  broadcastToUser(c.env.USER_STREAM, userId, "record:delete", { id });
+  void broadcastToUser(c.env.USER_STREAM, userId, "record:delete", { id });
 
   return c.json({ deleted: true });
 });
@@ -90,7 +90,7 @@ records.delete("/", async (c) => {
 
   const count = await db.deleteAllUserRecords(userId);
 
-  broadcastToUser(c.env.USER_STREAM, userId, "record:delete-all", {});
+  void broadcastToUser(c.env.USER_STREAM, userId, "record:delete-all", {});
 
   return c.json({ deleted: count });
 });
@@ -110,7 +110,7 @@ records.post("/bulk", async (c) => {
     input.map((r) => ({ date: new Date(r.date), winPoints: r.winPoints }))
   );
 
-  broadcastToUser(c.env.USER_STREAM, userId, "record:bulk-upsert", {
+  void broadcastToUser(c.env.USER_STREAM, userId, "record:bulk-upsert", {
     records: result,
   });
 

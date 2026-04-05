@@ -17,7 +17,7 @@ export class UserStream implements DurableObject {
     const url = new URL(request.url);
 
     if (request.method === "GET" && url.pathname === "/connect") {
-      return this.handleConnect(request);
+      return this.handleConnect();
     }
 
     if (request.method === "POST" && url.pathname === "/broadcast") {
@@ -27,18 +27,18 @@ export class UserStream implements DurableObject {
     return new Response("Not found", { status: 404 });
   }
 
-  private handleConnect(_request: Request): Response {
+  private handleConnect(): Response {
     const { readable, writable } = new TransformStream();
     const writer = writable.getWriter();
     this.connections.add(writer);
 
     // Schedule keepalive if this is the first connection
     if (this.connections.size === 1) {
-      this.state.storage.setAlarm(Date.now() + 30_000);
+      void this.state.storage.setAlarm(Date.now() + 30_000);
     }
 
     // Clean up when the client disconnects
-    writer.closed
+    void writer.closed
       .then(() => this.connections.delete(writer))
       .catch(() => this.connections.delete(writer));
 
@@ -70,7 +70,7 @@ export class UserStream implements DurableObject {
 
     // Reschedule if there are still active connections
     if (this.connections.size > 0) {
-      this.state.storage.setAlarm(Date.now() + 30_000);
+      void this.state.storage.setAlarm(Date.now() + 30_000);
     }
   }
 
@@ -89,7 +89,7 @@ export class UserStream implements DurableObject {
     for (const writer of dead) {
       this.connections.delete(writer);
       try {
-        writer.close();
+        void writer.close();
       } catch {
         // already closed
       }

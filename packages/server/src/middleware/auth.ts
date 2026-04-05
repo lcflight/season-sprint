@@ -1,4 +1,5 @@
 import { clerkMiddleware, getAuth } from "@hono/clerk-auth";
+import { verifyToken } from "@clerk/backend";
 import type { Env } from "../index";
 import type { MiddlewareHandler } from "hono";
 import { hashApiKey, isApiKey } from "../utils/apiKey";
@@ -78,15 +79,15 @@ export const resolveStreamAuth: MiddlewareHandler<Env> = async (c, next) => {
     return next();
   }
 
-  // 3. Clerk JWT — dynamic import to avoid transitive dep resolution issues
+  // 3. Clerk JWT
   try {
-    const { verifyToken } = await import("@clerk/backend" as string);
     const payload = await verifyToken(token, {
       secretKey: c.env.CLERK_SECRET_KEY,
     });
-    if (!payload?.sub) return c.text("Unauthorized", 401);
-    c.set("auth", { userId: payload.sub as string });
-    return next();
+    if (!payload.sub) return c.text("Unauthorized", 401);
+    c.set("auth", { userId: payload.sub });
+    await next();
+    return;
   } catch {
     return c.text("Unauthorized", 401);
   }

@@ -1,12 +1,15 @@
 /**
  * Send an SSE event to all of a user's connected clients via their Durable Object.
+ * Silently no-ops if the DO binding is unavailable (e.g., in tests).
  */
 export async function broadcastToUser(
-  userStream: DurableObjectNamespace,
+  userStream: DurableObjectNamespace | undefined,
   userId: string,
   event: string,
   data: unknown
 ): Promise<void> {
+  if (!userStream) return;
+
   const id = userStream.idFromName(userId);
   const stub = userStream.get(id);
 
