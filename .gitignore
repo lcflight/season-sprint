@@ -29,5 +29,12 @@ pnpm-debug.log*
 packages/local/.last-wtp
 packages/local/.capture-tmp.png
 packages/local/tracker.log
+packages/local/tracker.log.ocr_err
 packages/local/screenshots/
 packages/local/debug_captures/
+
+# Local tracker build artifacts
+packages/local/season-tracker
+packages/local/bench_c
+packages/local/bench_ocr.py
+packages/local/bench_pipeline.py

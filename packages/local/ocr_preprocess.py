@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-OCR a screenshot using EasyOCR. Finds the "WORLD TOUR POINTS" header
+OCR daemon using EasyOCR. Finds the "WORLD TOUR POINTS" header
 and returns the "current / max" numbers spatially located below it.
 
 Modes:
@@ -8,36 +8,15 @@ Modes:
   Daemon:       python3 ocr_preprocess.py --daemon
                 Then send image paths on stdin, one per line.
                 Each response is terminated by a "---END---" sentinel line.
+
+The C binary (season-tracker) handles screen capture and Tesseract gate
+checks directly. This daemon is only called for EasyOCR points reading.
 """
 
-import os
-import subprocess
 import sys
-import tempfile
-
 import easyocr
-from PIL import Image, ImageOps
 
 SENTINEL = "---END---"
-
-
-def gate_check(path):
-    """Quick Tesseract check for 'WORLD TOUR' text with preprocessing."""
-    try:
-        img = Image.open(path)
-        gray = ImageOps.grayscale(img)
-        thresh = gray.point(lambda x: 255 if x > 180 else 0)
-        tmp = tempfile.mktemp(suffix=".bmp")
-        thresh.save(tmp)
-        result = subprocess.run(
-            ["tesseract", tmp, "-", "--psm", "7"],
-            capture_output=True, text=True, timeout=5,
-        )
-        os.unlink(tmp)
-        return "WORLD TOUR" in result.stdout.upper()
-    except Exception as e:
-        print(f"GATE ERROR: {e}", file=sys.stderr)
-        return False
 
 
 def process_image(reader, path):
@@ -57,7 +36,7 @@ def process_image(reader, path):
             break
 
     if header_bbox is None:
-        # No header found — dump all text for the bash parser to handle
+        # No header found — dump all text for the parser to handle
         for (bbox, text, conf) in results:
             print(text)
         return
@@ -67,7 +46,6 @@ def process_image(reader, path):
     header_bottom = max(pt[1] for pt in header_bbox)
     header_left = min(pt[0] for pt in header_bbox)
     header_right = max(pt[0] for pt in header_bbox)
-    header_center_x = (header_left + header_right) / 2
     header_height = header_bottom - header_top
 
     # Collect numbers spatially near the header (below or overlapping) and
@@ -125,19 +103,10 @@ def main():
         # Signal readiness
         print("READY", flush=True)
         for line in sys.stdin:
-            line = line.strip()
-            if not line:
+            path = line.strip()
+            if not path:
                 continue
-            if line.startswith("GATE:"):
-                # Cheap Tesseract gate check — no EasyOCR needed
-                path = line[5:]
-                if gate_check(path):
-                    print("WORLD_TOUR")
-                else:
-                    print("NO_MATCH")
-            else:
-                # Full EasyOCR processing
-                process_image(reader, line)
+            process_image(reader, path)
             print(SENTINEL, flush=True)
     else:
         process_image(reader, sys.argv[1])
