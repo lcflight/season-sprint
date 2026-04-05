@@ -1,4 +1,4 @@
-import { getAuthToken } from "./clerk.js";
+import { getAuthorizationHeader } from "./api.js";
 
 const isLocalDevHost =
   typeof window !== "undefined" &&
@@ -8,6 +8,22 @@ const isLocalDevHost =
 const BASE =
   process.env.VUE_APP_API_BASE_URL ||
   (isLocalDevHost ? "http://localhost:8787" : "");
+
+/**
+ * Fetch a short-lived stream token (5 min TTL) from the server.
+ * Uses the normal Clerk auth header.
+ */
+async function getStreamToken() {
+  const authHeader = await getAuthorizationHeader();
+  if (!authHeader) return null;
+  const res = await fetch(`${BASE}/me/stream/token`, {
+    method: "POST",
+    headers: { Authorization: authHeader },
+  });
+  if (!res.ok) return null;
+  const data = await res.json();
+  return data.token;
+}
 
 /**
  * Opens an SSE connection to /me/stream for real-time record updates.
@@ -29,9 +45,8 @@ export async function connectSSE(handlers) {
   async function open() {
     if (closed) return;
 
-    const token = await getAuthToken();
+    const token = await getStreamToken();
     if (!token) {
-      // Retry in 5s — user may not be signed in yet
       setTimeout(open, 5000);
       return;
     }
@@ -68,9 +83,6 @@ export async function connectSSE(handlers) {
     });
 
     es.onerror = () => {
-      // EventSource auto-reconnects on transient errors, but if the server
-      // returned 401 (expired token), readyState goes to CLOSED and it won't
-      // retry. Reopen with a fresh token.
       if (es.readyState === EventSource.CLOSED) {
         es = null;
         setTimeout(open, 2000);
@@ -80,15 +92,14 @@ export async function connectSSE(handlers) {
 
   await open();
 
-  // Clerk JWTs are short-lived (~60s). Periodically close and reopen with
-  // a fresh token so the connection stays authenticated.
+  // Refresh token every 4 minutes (token TTL is 5 min)
   refreshTimer = setInterval(() => {
     if (es && !closed) {
       es.close();
       es = null;
       open();
     }
-  }, 45_000);
+  }, 4 * 60 * 1000);
 
   return {
     close() {

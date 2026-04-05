@@ -81,6 +81,29 @@ app.use("*", resolveAuth);
 app.route("/me/records", records);
 app.route("/me/api-keys", apiKeys);
 
+// Stream token exchange — uses normal Clerk auth to issue a stream token
+app.post("/me/stream/token", async (c) => {
+  const { userId } = c.get("auth");
+  const exp = Math.floor(Date.now() / 1000) + 300; // 5 min TTL
+  const payload = `${userId}:${String(exp)}`;
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(c.env.CLERK_SECRET_KEY),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const sig = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(payload)
+  );
+  const sigHex = Array.from(new Uint8Array(sig))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  return c.json({ token: `${payload}:${sigHex}`, expiresIn: 300 });
+});
+
 export { app };
 export { UserStream } from "./durable-objects/UserStream";
 
