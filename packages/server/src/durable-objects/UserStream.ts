@@ -32,6 +32,9 @@ export class UserStream implements DurableObject {
     const writer = writable.getWriter();
     this.connections.add(writer);
 
+    // Send an initial comment to flush response headers through the edge
+    void writer.write(new TextEncoder().encode(":connected\n\n"));
+
     // Schedule keepalive if this is the first connection
     if (this.connections.size === 1) {
       void this.state.storage.setAlarm(Date.now() + 30_000);
