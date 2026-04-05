@@ -21,32 +21,31 @@ export function getRankColor(badge) {
  */
 export function buildRankBands(thresholds) {
   if (!thresholds.length) return []
-  const bands = []
+
+  // Collect each tier's first-entry points value
+  const tiers = []
   let currentTier = null
-  let floor = 0
-
-  for (let i = 0; i < thresholds.length; i++) {
-    const tier = thresholds[i].badge.split(' ')[0]
-    const nextTier = i + 1 < thresholds.length ? thresholds[i + 1].badge.split(' ')[0] : null
-
-    if (currentTier === null) currentTier = tier
+  for (const t of thresholds) {
+    const tier = t.badge.split(' ')[0]
     if (tier !== currentTier) {
-      // Previous tier ended at last threshold
-      floor = thresholds[i - 1].points
+      tiers.push({ tier, firstPoints: t.points })
       currentTier = tier
     }
+  }
 
-    // If this is the last entry for this tier, emit a band
-    if (nextTier !== tier) {
-      const colors = getRankColor(thresholds[i].badge)
-      bands.push({
-        tier: currentTier,
-        floor,
-        ceil: thresholds[i].points,
-        fill: colors.fill,
-        stroke: colors.stroke,
-      })
-    }
+  const lastPoints = thresholds[thresholds.length - 1].points
+  const bands = []
+  for (let i = 0; i < tiers.length; i++) {
+    const floor = i === 0 ? 0 : tiers[i].firstPoints
+    const ceil = i + 1 < tiers.length ? tiers[i + 1].firstPoints : lastPoints
+    const colors = getRankColor(tiers[i].tier)
+    bands.push({
+      tier: tiers[i].tier,
+      floor,
+      ceil,
+      fill: colors.fill,
+      stroke: colors.stroke,
+    })
   }
   return bands
 }
