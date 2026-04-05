@@ -3,7 +3,7 @@ import type { Env } from "../index";
 import type { Record } from "../types";
 import getEmail from "../getEmail";
 import { parseDate } from "../utils/parseDate";
-import { broadcastToUser } from "../utils/broadcast";
+import { broadcast } from "../utils/broadcast";
 
 const records = new Hono<Env>();
 
@@ -24,7 +24,7 @@ records.post("/", async (c) => {
 
   const record = await db.upsertRecord(userId, email, date, winPoints);
 
-  await broadcastToUser(c.env.USER_STREAM, userId, "record:upsert", record);
+  broadcast(c, userId, "record:upsert", record);
 
   return c.json({
     message: "Record upserted",
@@ -64,7 +64,7 @@ records.put("/:id", async (c) => {
     return c.text("Not found", 404);
   }
 
-  await broadcastToUser(c.env.USER_STREAM, userId, "record:upsert", updated);
+  broadcast(c, userId, "record:upsert", updated);
 
   return c.json(updated);
 });
@@ -79,7 +79,7 @@ records.delete("/:id", async (c) => {
     return c.text("Not found", 404);
   }
 
-  await broadcastToUser(c.env.USER_STREAM, userId, "record:delete", { id });
+  broadcast(c, userId, "record:delete", { id });
 
   return c.json({ deleted: true });
 });
@@ -90,7 +90,7 @@ records.delete("/", async (c) => {
 
   const count = await db.deleteAllUserRecords(userId);
 
-  await broadcastToUser(c.env.USER_STREAM, userId, "record:delete-all", {});
+  broadcast(c, userId, "record:delete-all", {});
 
   return c.json({ deleted: count });
 });
@@ -110,9 +110,7 @@ records.post("/bulk", async (c) => {
     input.map((r) => ({ date: new Date(r.date), winPoints: r.winPoints }))
   );
 
-  await broadcastToUser(c.env.USER_STREAM, userId, "record:bulk-upsert", {
-    records: result,
-  });
+  broadcast(c, userId, "record:bulk-upsert", { records: result });
 
   return c.json({ records: result });
 });
