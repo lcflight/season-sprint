@@ -6,9 +6,11 @@ import { getCachedSeasons, scrapeAndStore } from "./services/seasonScraper";
 import { clerkOrDevToken, resolveAuth } from "./middleware/auth";
 import records from "./routes/records";
 import apiKeys from "./routes/apiKeys";
+import stream from "./routes/stream";
 
 interface Bindings {
   D1: D1Database;
+  USER_STREAM: DurableObjectNamespace;
   DEV_AUTH_TOKEN: string;
   DEV_USER_ID: string;
   CLERK_PUBLISHABLE_KEY: string;
@@ -68,6 +70,9 @@ app.get("/seasons", async (c) => {
   }
 });
 
+// SSE stream — has its own auth via query param (must be before global auth)
+app.route("/me/stream", stream);
+
 // Auth middleware (Clerk + dev-token)
 app.use("*", clerkOrDevToken);
 app.use("*", resolveAuth);
@@ -77,6 +82,7 @@ app.route("/me/records", records);
 app.route("/me/api-keys", apiKeys);
 
 export { app };
+export { UserStream } from "./durable-objects/UserStream";
 
 export default {
   fetch: (req: Request, env: Bindings, ctx: ExecutionContext) =>

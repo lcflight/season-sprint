@@ -10,6 +10,20 @@
       "database_id": "932dddd1-4215-46f0-a697-fcf6fa537dd2"
     }
   ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "USER_STREAM",
+        "class_name": "UserStream"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_classes": ["UserStream"]
+    }
+  ],
   "compatibility_flags": ["nodejs_compat"],
   "vars": {
     "DATABASE_URL": "file:./dev.db",

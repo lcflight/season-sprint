@@ -1,4 +1,4 @@
-import { computed, reactive, ref } from 'vue'
+import { computed, reactive, ref, onScopeDispose } from 'vue'
 import { dateToMs, formatDate, isValidDateStr, msToDateInput } from '@/utils/date'
 import {
   getRecords,
@@ -8,6 +8,7 @@ import {
   bulkUpsertRecords,
   getAuthorizationHeader,
 } from '@/services/api'
+import { connectSSE } from '@/services/sse'
 
 /**
  * Manages the points array and all API-backed CRUD operations.
@@ -50,6 +51,45 @@ export function usePointsData({ isSeasonValid, seasonStart, seasonEnd, autoSetSe
     return Math.round((todayPoint.value.y - prevY) * 100) / 100
   })
 
+  let sseConnection = null
+
+  function upsertPoint(record) {
+    const dateStr = typeof record.date === 'string' ? record.date.slice(0, 10) : ''
+    const idx = points.findIndex((p) => p.remoteId === record.id || p.date === dateStr)
+    const point = { remoteId: record.id, date: dateStr, y: record.winPoints }
+    if (idx !== -1) {
+      points[idx] = point
+    } else {
+      points.push(point)
+    }
+  }
+
+  async function openSSE() {
+    if (sseConnection) sseConnection.close()
+    try {
+      sseConnection = await connectSSE({
+        onUpsert: upsertPoint,
+        onDelete({ id }) {
+          const idx = points.findIndex((p) => p.remoteId === id)
+          if (idx !== -1) points.splice(idx, 1)
+        },
+        onDeleteAll() {
+          points.splice(0, points.length)
+        },
+        onBulkUpsert({ records }) {
+          if (Array.isArray(records)) records.forEach(upsertPoint)
+        },
+      })
+    } catch {
+      // SSE is optional — REST still works
+    }
+  }
+
+  onScopeDispose(() => {
+    sseConnection?.close()
+    sseConnection = null
+  })
+
   async function loadPointsFromAPI() {
     isLoading.value = true
     loadError.value = ''
@@ -67,6 +107,7 @@ export function usePointsData({ isSeasonValid, seasonStart, seasonEnd, autoSetSe
         y: r.winPoints,
       }))
       points.splice(0, points.length, ...mapped)
+      openSSE()
     } catch (e) {
       loadError.value = 'Failed to load data. Please refresh to try again.'
       console.error('Failed to load points from API', e)
