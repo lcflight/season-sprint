@@ -21,7 +21,7 @@
   "migrations": [
     {
       "tag": "v1",
-      "new_classes": ["UserStream"]
+      "new_sqlite_classes": ["UserStream"]
     }
   ],
   "compatibility_flags": ["nodejs_compat"],
