@@ -609,8 +609,6 @@ const scaledPaceEarned = computed(() =>
 const paceRequiredPath = computed(() => buildPathD(scaledPaceRequired.value));
 const paceEarnedPath = computed(() => buildPathD(scaledPaceEarned.value));
 
-const hasPaceData = computed(() => sortedPointsInSeason.value.length > 0);
-
 // Pace stats
 const daysInSeason = computed(() => {
   if (!isSeasonValid.value) return 1;
