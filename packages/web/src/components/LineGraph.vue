@@ -58,12 +58,14 @@
       :show-rank-overlay="showRankOverlay"
       :show-average-pace="showAveragePace"
       :show-deviation-wedge="showDeviationWedge"
+      :show-pace-graph="showPaceGraph"
       :has-goal-options="goalOptions.length > 0"
       @update:nav-sensitivity="navSensitivity = $event"
       @update:enable-navigation="enableNavigation = $event"
       @update:show-rank-overlay="showRankOverlay = $event"
       @update:show-average-pace="showAveragePace = $event"
       @update:show-deviation-wedge="showDeviationWedge = $event"
+      @update:show-pace-graph="showPaceGraph = $event"
       @close="closeSettingsModal"
     />
 
@@ -100,9 +102,9 @@
       </button>
       <svg
         ref="svgRef"
-        :viewBox="`0 0 ${width} ${height}`"
+        :viewBox="`0 0 ${width} ${svgHeight}`"
         :width="width"
-        :height="height"
+        :height="svgHeight"
         role="img"
         aria-label="Line chart"
         :class="{ 'nav-disabled': !enableNavigation, 'chart-blurred': isLoading || loadError }"
@@ -230,20 +232,62 @@
             <circle :cx="p.x" :cy="p.y" r="3" />
           </g>
 
-          <!-- X tick labels -->
-          <g class="labels-ticks">
-            <template v-for="(tick, i) in xTicks" :key="`lbl-${i}`">
-              <text
-                :x="tick.x"
-                :y="height - padding + 28"
-                text-anchor="end"
-                :transform="`rotate(-35 ${tick.x} ${height - padding + 28})`"
-              >
-                {{ tick.label }}
-              </text>
+        </g>
+        </g>
+
+        <!-- Pace graph area -->
+        <g v-if="showPaceGraph" class="pace-area">
+          <!-- Pace axes -->
+          <line class="pace-axis"
+            :x1="padding" :y1="paceBottom"
+            :x2="width - padding" :y2="paceBottom"
+          />
+          <line class="pace-axis"
+            :x1="padding" :y1="paceTop"
+            :x2="padding" :y2="paceBottom"
+          />
+          <!-- Pace grid (single midline + vertical ticks) -->
+          <g class="grid">
+            <line
+              :x1="padding" :x2="width - padding"
+              :y1="paceTop + paceHeight / 2" :y2="paceTop + paceHeight / 2"
+            />
+            <template v-for="(tick, i) in xTicks" :key="`pv-${i}`">
+              <line :x1="tick.x" :x2="tick.x" :y1="paceTop" :y2="paceBottom" />
             </template>
           </g>
-        </g>
+          <!-- Required pace line -->
+          <path v-if="paceRequiredPath" :d="paceRequiredPath" class="pace-line pace-line-required" />
+          <line v-if="scaledPaceRequired.length"
+            class="pace-line pace-line-required"
+            :x1="scaledPaceRequired[scaledPaceRequired.length - 1].x"
+            :y1="scaledPaceRequired[scaledPaceRequired.length - 1].y"
+            :x2="width - padding"
+            :y2="scaledPaceRequired[scaledPaceRequired.length - 1].y"
+          />
+          <g v-for="(p, i) in scaledPaceRequired" :key="'prp-' + i" class="pace-point pace-point-required">
+            <circle :cx="p.x" :cy="p.y" r="2.5" />
+          </g>
+          <!-- Points earned line -->
+          <path v-if="paceEarnedPath" :d="paceEarnedPath" class="pace-line pace-line-earned" />
+          <g v-for="(p, i) in scaledPaceEarned" :key="'ppe-' + i" class="pace-point pace-point-earned">
+            <circle :cx="p.x" :cy="p.y" r="2.5" />
+          </g>
+          <!-- Pace Y axis label -->
+          <text
+            class="axis-label"
+            :x="22"
+            :y="paceTop + paceHeight / 2"
+            text-anchor="middle"
+            :transform="`rotate(-90 22 ${paceTop + paceHeight / 2})`"
+          >Pts / Day</text>
+          <!-- Pace legend -->
+          <text class="pace-legend" :x="width - padding - 4" :y="paceTop + 10" text-anchor="end">
+            <tspan class="pace-legend-required">-- required</tspan>
+          </text>
+          <text class="pace-legend" :x="width - padding - 4" :y="paceTop + 22" text-anchor="end">
+            <tspan class="pace-legend-earned">-- earned</tspan>
+          </text>
         </g>
 
         <!-- Axis labels -->
@@ -257,7 +301,7 @@
         <text
           class="axis-label"
           :x="width / 2"
-          :y="height - 10"
+          :y="svgHeight - 4"
           text-anchor="middle"
         >Season Timeline</text>
 
@@ -312,6 +356,8 @@ import {
   buildXTicks,
   buildAveragePacePath,
   buildDeviationWedgePath,
+  buildRequiredPaceData,
+  buildPointsEarnedData,
 } from "@/utils/chart";
 import { loadSeasonJson } from "@/utils/season";
 import { buildRankBands } from "@/utils/rankColors";
@@ -345,6 +391,14 @@ const height = 400;
 const padding = 40;
 const plotHeight = height - padding * 2;
 
+// Pace graph area (below main plot, above x-tick labels)
+const paceGap = 12;
+const paceTop = height - padding + paceGap; // 412
+const paceHeight = 70;
+const paceBottom = paceTop + paceHeight; // 482
+const pacePadY = 6;
+const svgHeightPace = paceBottom + 22; // room for "Season Timeline" label
+
 const today = new Date();
 
 // Settings (persisted to localStorage)
@@ -361,8 +415,11 @@ const {
   showRankOverlay,
   showAveragePace,
   showDeviationWedge,
+  showPaceGraph,
   loadSettings,
 } = useGraphSettings(props.storageKey);
+
+const svgHeight = computed(() => showPaceGraph.value ? svgHeightPace : height);
 
 // Domains
 const isSeasonValid = computed(
@@ -516,6 +573,41 @@ const pathDeviationWedge = computed(() => {
 });
 
 const xTicks = computed(() => buildXTicks(xDomain.value, width, padding, 4));
+
+// Pace graph data
+const paceRequiredData = computed(() => {
+  if (!isSeasonValid.value) return [];
+  return buildRequiredPaceData(sortedPointsInSeason.value, goalWinPoints.value, xDomain.value[1]);
+});
+
+const paceEarnedData = computed(() =>
+  buildPointsEarnedData(sortedPointsInSeason.value)
+);
+
+const paceYDomain = computed(() => {
+  const allY = [
+    ...paceRequiredData.value.map(p => p.y),
+    ...paceEarnedData.value.map(p => p.y),
+  ];
+  const max = allY.length ? Math.max(0, ...allY) : 1;
+  return [0, max || 1];
+});
+
+const paceScaleY = (y) => {
+  const [min, max] = paceYDomain.value;
+  return (paceTop + pacePadY) + (1 - (y - min) / (max - min)) * (paceHeight - pacePadY * 2);
+};
+
+const scaledPaceRequired = computed(() =>
+  paceRequiredData.value.map(p => ({ x: scaleX(p.date), y: paceScaleY(p.y) }))
+);
+
+const scaledPaceEarned = computed(() =>
+  paceEarnedData.value.map(p => ({ x: scaleX(p.date), y: paceScaleY(p.y) }))
+);
+
+const paceRequiredPath = computed(() => buildPathD(scaledPaceRequired.value));
+const paceEarnedPath = computed(() => buildPathD(scaledPaceEarned.value));
 
 // Pace stats
 const daysInSeason = computed(() => {
@@ -986,6 +1078,50 @@ svg.nav-disabled {
 .point circle {
   fill: var(--danger);
   filter: drop-shadow(0 0 4px rgba(255, 61, 127, 0.65));
+}
+
+/* Pace graph */
+.pace-axis {
+  stroke: color-mix(in oklab, var(--primary) 35%, #1f2937);
+  stroke-width: 1.25;
+}
+
+.pace-line {
+  fill: none;
+  stroke-width: 2;
+}
+
+.pace-line-required {
+  stroke: color-mix(in oklab, var(--primary) 45%, #9ca3af);
+  stroke-dasharray: 5 5;
+}
+
+.pace-line-earned {
+  stroke: var(--accent);
+  filter: drop-shadow(0 0 4px color-mix(in oklab, var(--accent) 50%, transparent));
+}
+
+.pace-point-required circle {
+  fill: color-mix(in oklab, var(--primary) 55%, #9ca3af);
+}
+
+.pace-point-earned circle {
+  fill: var(--accent);
+  filter: drop-shadow(0 0 3px color-mix(in oklab, var(--accent) 50%, transparent));
+}
+
+.pace-legend {
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.pace-legend-required {
+  fill: color-mix(in oklab, var(--primary) 55%, #9ca3af);
+}
+
+.pace-legend-earned {
+  fill: var(--accent);
 }
 
 .labels text {

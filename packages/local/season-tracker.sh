@@ -203,8 +203,17 @@ main() {
     fi
   fi
 
-  # Clear Steam's library overrides so system libs work
-  unset LD_PRELOAD LD_LIBRARY_PATH STEAM_RUNTIME_LIBRARY_PATH 2>/dev/null || true
+  # Clear Steam's library overrides so system libs work (keep compatible overlay only)
+  filtered_preload=""
+  while IFS= read -r entry; do
+    [[ -z "$entry" ]] && continue
+    [[ "$entry" != *gameoverlay* ]] && continue
+    [[ "$entry" == *ubuntu12_32* ]] && continue
+    [[ -f "$entry" ]] || continue
+    filtered_preload+="${filtered_preload:+:}$entry"
+  done < <(tr ':' '\n' <<< "${LD_PRELOAD:-}")
+  export LD_PRELOAD="$filtered_preload"
+  unset LD_LIBRARY_PATH STEAM_RUNTIME_LIBRARY_PATH 2>/dev/null || true
 
   # Ensure linuxbrew is on PATH (Steam may launch with a minimal PATH)
   for p in /home/linuxbrew/.linuxbrew/bin /usr/local/bin; do
