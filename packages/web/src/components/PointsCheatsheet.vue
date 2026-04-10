@@ -1,31 +1,30 @@
 <template>
   <aside class="points-cheatsheet" aria-label="World Tour win points cheatsheet">
     <div class="sheet-card">
-      <h3 class="sheet-title">World Tour Win Points</h3>
-      <ul class="sheet-list">
-        <li>
-          <span class="label">Knocked out of round one</span>
-          <span class="value">+{{ values.round1 }}</span>
-        </li>
-        <li>
-          <span class="label">Knocked out of round two</span>
-          <span class="value">+{{ values.round2 }}</span>
-        </li>
-        <li>
-          <span class="label">Lose the final round</span>
-          <span class="value">+{{ values.finalLose }}</span>
-        </li>
-        <li>
-          <span class="label">Win the final round</span>
-          <span class="value">+{{ values.finalWin }}</span>
-        </li>
-      </ul>
-      <div class="sheet-note">Quick reference for THE FINALS World Tour placement points.</div>
-      <div class="quick-add">
-        <button class="qa-btn btn-primary" @click="$emit('quick-add', values.round1)">Add R1 KO (+{{ values.round1 }})</button>
-        <button class="qa-btn btn-primary" @click="$emit('quick-add', values.round2)">Add R2 KO (+{{ values.round2 }})</button>
-        <button class="qa-btn btn-primary" @click="$emit('quick-add', values.finalLose)">Add Final Loss (+{{ values.finalLose }})</button>
-        <button class="qa-btn btn-primary" @click="$emit('quick-add', values.finalWin)">Add Final Win (+{{ values.finalWin }})</button>
+      <button class="sheet-header" @click="open = !open" :aria-expanded="open">
+        <h3 class="sheet-title">World Tour Win Points</h3>
+        <span class="chevron" :class="{ rotated: open }">&#9650;</span>
+      </button>
+      <div v-show="open" class="sheet-body">
+        <div class="sheet-list">
+          <button class="sheet-item" @click="$emit('quick-add', values.round1)">
+            <span class="label">Knocked out of round one</span>
+            <span class="value">+{{ values.round1 }}</span>
+          </button>
+          <button class="sheet-item" @click="$emit('quick-add', values.round2)">
+            <span class="label">Knocked out of round two</span>
+            <span class="value">+{{ values.round2 }}</span>
+          </button>
+          <button class="sheet-item" @click="$emit('quick-add', values.finalLose)">
+            <span class="label">Lose the final round</span>
+            <span class="value">+{{ values.finalLose }}</span>
+          </button>
+          <button class="sheet-item" @click="$emit('quick-add', values.finalWin)">
+            <span class="label">Win the final round</span>
+            <span class="value">+{{ values.finalWin }}</span>
+          </button>
+        </div>
+        <div class="sheet-note">Tap to quick-add points.</div>
       </div>
     </div>
   </aside>
@@ -39,6 +38,11 @@ export default {
     values: {
       type: Object,
       default: () => ({ round1: 2, round2: 6, finalLose: 14, finalWin: 25 })
+    }
+  },
+  data() {
+    return {
+      open: window.innerWidth > 768
     }
   }
 }
@@ -56,8 +60,21 @@ export default {
   padding: 12px;
 }
 
+.sheet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0 8px;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+
 .sheet-title {
-  margin: 0 0 8px 0;
+  margin: 0;
   font-size: 14px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -65,16 +82,28 @@ export default {
   color: var(--text-strong);
 }
 
+.chevron {
+  font-size: 10px;
+  color: var(--muted);
+  transition: transform 0.2s ease;
+  transform: rotate(180deg);
+}
+
+.chevron.rotated {
+  transform: rotate(0deg);
+}
+
+.sheet-body {
+  margin-top: 8px;
+}
+
 .sheet-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
 
-.sheet-list li {
+.sheet-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -83,7 +112,19 @@ export default {
   border-radius: 10px;
   background: color-mix(in oklab, var(--surface) 90%, #000);
   border: 1px solid color-mix(in oklab, var(--primary) 12%, var(--surface));
-  cursor: default; /* make it clear these are informational */
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.sheet-item:hover {
+  border-color: color-mix(in oklab, var(--primary) 40%, var(--surface));
+  background: color-mix(in oklab, var(--surface) 85%, #000);
+}
+
+.sheet-item:active {
+  background: color-mix(in oklab, var(--primary) 15%, var(--surface));
 }
 
 .label {
@@ -100,33 +141,4 @@ export default {
   font-size: 12px;
   color: var(--muted);
 }
-
-.quick-add {
-  margin-top: 10px;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  position: relative;
-}
-.quick-add::before {
-  content: 'Quick add';
-  position: absolute;
-  top: -18px;
-  left: 2px;
-  font-size: 11px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-
-.qa-btn {
-  width: 100%;
-}
-
-@media (max-width: 480px) {
-  .quick-add {
-    grid-template-columns: 1fr;
-  }
-}
 </style>
-

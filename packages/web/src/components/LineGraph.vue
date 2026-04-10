@@ -265,9 +265,6 @@
             :x2="width - padding"
             :y2="scaledPaceRequired[scaledPaceRequired.length - 1].y"
           />
-          <g v-for="(p, i) in scaledPaceRequired" :key="'prp-' + i" class="pace-point pace-point-required">
-            <circle :cx="p.x" :cy="p.y" r="2.5" />
-          </g>
           <!-- Points earned line -->
           <path v-if="paceEarnedPath" :d="paceEarnedPath" class="pace-line pace-line-earned" />
           <g v-for="(p, i) in scaledPaceEarned" :key="'ppe-' + i" class="pace-point pace-point-earned">
