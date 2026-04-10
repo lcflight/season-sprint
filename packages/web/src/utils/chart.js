@@ -149,6 +149,25 @@ export function buildDeviationWedgePath(pointsInSeason, seasonStartMs, seasonEnd
   return `M${x1},${y0} L${x2},${yU} L${x2},${yL} L${x1},${y0} Z`
 }
 
+export function buildRequiredPaceData(sortedPoints, goalWinPoints, seasonEndMs) {
+  const out = []
+  for (const p of sortedPoints) {
+    const daysRemaining = (seasonEndMs - dateToMs(p.date)) / MS_PER_DAY
+    if (daysRemaining <= 0) continue
+    out.push({ date: p.date, y: (goalWinPoints - p.y) / daysRemaining })
+  }
+  return out
+}
+
+export function buildPointsEarnedData(sortedPoints) {
+  let prev = 0
+  return sortedPoints.map(p => {
+    const delta = p.y - prev
+    prev = p.y
+    return { date: p.date, y: delta }
+  })
+}
+
 export function buildXTicks(xDomain, width, padding, n = 4) {
   const plotWidth = width - padding * 2
   const [min, max] = xDomain

@@ -24,6 +24,7 @@ export function useGraphSettings(storageKey) {
   const showRankOverlay = ref(true)
   const showAveragePace = ref(false)
   const showDeviationWedge = ref(false)
+  const showPaceGraph = ref(true)
 
   function buildKey() {
     return storageKey
@@ -43,6 +44,7 @@ export function useGraphSettings(storageKey) {
       showRankOverlay: showRankOverlay.value,
       showAveragePace: showAveragePace.value,
       showDeviationWedge: showDeviationWedge.value,
+      showPaceGraph: showPaceGraph.value,
     }
     saveStateWithKey(buildKey(), state)
   }
@@ -70,6 +72,8 @@ export function useGraphSettings(storageKey) {
       showAveragePace.value = parsed.showAveragePace
     if (typeof parsed.showDeviationWedge === 'boolean')
       showDeviationWedge.value = parsed.showDeviationWedge
+    if (typeof parsed.showPaceGraph === 'boolean')
+      showPaceGraph.value = parsed.showPaceGraph
   }
 
   // Auto-persist on changes
@@ -77,7 +81,7 @@ export function useGraphSettings(storageKey) {
     [seasonStart, seasonEnd, goalWinPoints, autoSetSeasonFromImport, simplifyImport],
     saveSettings
   )
-  watch([navSensitivity, enableNavigation, showRankOverlay, showAveragePace, showDeviationWedge], saveSettings)
+  watch([navSensitivity, enableNavigation, showRankOverlay, showAveragePace, showDeviationWedge, showPaceGraph], saveSettings)
 
   return {
     seasonStart,
@@ -92,6 +96,7 @@ export function useGraphSettings(storageKey) {
     showRankOverlay,
     showAveragePace,
     showDeviationWedge,
+    showPaceGraph,
     saveSettings,
     loadSettings,
   }

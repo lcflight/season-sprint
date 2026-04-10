@@ -203,8 +203,9 @@ main() {
     fi
   fi
 
-  # Clear Steam's library overrides so system libs work
-  unset LD_PRELOAD LD_LIBRARY_PATH STEAM_RUNTIME_LIBRARY_PATH 2>/dev/null || true
+  # Clear Steam's library overrides so system libs work (keep overlay)
+  LD_PRELOAD=$(echo "${LD_PRELOAD:-}" | tr ':' '\n' | grep gameoverlay | paste -sd:)
+  unset LD_LIBRARY_PATH STEAM_RUNTIME_LIBRARY_PATH 2>/dev/null || true
 
   # Ensure linuxbrew is on PATH (Steam may launch with a minimal PATH)
   for p in /home/linuxbrew/.linuxbrew/bin /usr/local/bin; do

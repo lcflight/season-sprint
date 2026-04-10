@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { calcXDomain, calcYDomain, scaleXFactory, scaleYFactory, buildPathD, buildXTicks, buildAveragePacePath, buildDeviationWedgePath } from '@/utils/chart'
+import { calcXDomain, calcYDomain, scaleXFactory, scaleYFactory, buildPathD, buildXTicks, buildAveragePacePath, buildDeviationWedgePath, buildPointsEarnedData, buildRequiredPaceData } from '@/utils/chart'
 import { dateToMs } from '@/utils/date'
 
 const width = 600
@@ -211,6 +211,102 @@ describe('buildDeviationWedgePath', () => {
       const pixelY = parseFloat(coord.split(',')[1])
       expect(pixelY).toBeLessThanOrEqual(maxPixelY + 0.01)
     }
+  })
+})
+
+describe('buildPointsEarnedData', () => {
+  it('returns empty array for empty input', () => {
+    expect(buildPointsEarnedData([])).toEqual([])
+  })
+
+  it('single point has delta from implicit 0', () => {
+    const points = [{ date: '2025-01-05', y: 30 }]
+    const result = buildPointsEarnedData(points)
+    expect(result).toEqual([{ date: '2025-01-05', y: 30 }])
+  })
+
+  it('computes deltas for multiple ascending points', () => {
+    const points = [
+      { date: '2025-01-01', y: 10 },
+      { date: '2025-01-03', y: 25 },
+      { date: '2025-01-05', y: 50 },
+    ]
+    const result = buildPointsEarnedData(points)
+    expect(result).toEqual([
+      { date: '2025-01-01', y: 10 },
+      { date: '2025-01-03', y: 15 },
+      { date: '2025-01-05', y: 25 },
+    ])
+  })
+
+  it('handles flat segments (zero delta)', () => {
+    const points = [
+      { date: '2025-01-01', y: 10 },
+      { date: '2025-01-02', y: 10 },
+    ]
+    const result = buildPointsEarnedData(points)
+    expect(result).toEqual([
+      { date: '2025-01-01', y: 10 },
+      { date: '2025-01-02', y: 0 },
+    ])
+  })
+
+  it('handles decrease (negative delta)', () => {
+    const points = [
+      { date: '2025-01-01', y: 50 },
+      { date: '2025-01-02', y: 40 },
+    ]
+    const result = buildPointsEarnedData(points)
+    expect(result).toEqual([
+      { date: '2025-01-01', y: 50 },
+      { date: '2025-01-02', y: -10 },
+    ])
+  })
+})
+
+describe('buildRequiredPaceData', () => {
+  // Season: 2025-01-01 to 2025-04-11 (100 days)
+  const seasonEnd = '2025-04-11'
+  const seasonEndMs = dateToMs(seasonEnd)
+
+  it('returns empty array for empty input', () => {
+    expect(buildRequiredPaceData([], 1000, seasonEndMs)).toEqual([])
+  })
+
+  it('matches the example: 100 days left, cumulative=10, goal=1000 => 9.9', () => {
+    // 2025-01-01 is 100 days before 2025-04-11
+    const points = [{ date: '2025-01-01', y: 10 }]
+    const result = buildRequiredPaceData(points, 1000, seasonEndMs)
+    expect(result.length).toBe(1)
+    expect(result[0].date).toBe('2025-01-01')
+    expect(result[0].y).toBeCloseTo(9.9, 1)
+  })
+
+  it('required pace decreases as player catches up', () => {
+    const points = [
+      { date: '2025-01-01', y: 10 },   // 100 days left, need 990 => 9.9/day
+      { date: '2025-01-11', y: 200 },  // 90 days left, need 800 => ~8.89/day
+    ]
+    const result = buildRequiredPaceData(points, 1000, seasonEndMs)
+    expect(result.length).toBe(2)
+    expect(result[1].y).toBeLessThan(result[0].y)
+  })
+
+  it('excludes points at or past season end (daysRemaining <= 0)', () => {
+    const points = [
+      { date: '2025-01-01', y: 10 },
+      { date: '2025-04-11', y: 500 },  // exactly season end
+    ]
+    const result = buildRequiredPaceData(points, 1000, seasonEndMs)
+    expect(result.length).toBe(1)
+    expect(result[0].date).toBe('2025-01-01')
+  })
+
+  it('returns negative pace when goal is already exceeded', () => {
+    const points = [{ date: '2025-01-01', y: 1500 }]
+    const result = buildRequiredPaceData(points, 1000, seasonEndMs)
+    expect(result.length).toBe(1)
+    expect(result[0].y).toBeLessThan(0)
   })
 })
 

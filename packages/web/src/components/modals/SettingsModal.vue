@@ -115,6 +115,26 @@
             </div>
           </div>
         </Transition>
+        <div class="setting-group">
+          <div class="setting-info">
+            <div class="setting-title">Pace graph</div>
+            <div class="setting-desc">
+              Show a secondary graph tracking required daily pace and points earned per day.
+            </div>
+          </div>
+          <div class="setting-control">
+            <label class="toggle-row" for="showPaceGraph">
+              <input
+                id="showPaceGraph"
+                class="toggle"
+                type="checkbox"
+                :checked="showPaceGraph"
+                @change="$emit('update:showPaceGraph', $event.target.checked)"
+              />
+              <span class="toggle-text">Show pace graph</span>
+            </label>
+          </div>
+        </div>
       </section>
       <footer class="modal-footer">
         <button @click="$emit('close')">Close</button>
@@ -131,6 +151,7 @@ defineProps({
   showRankOverlay: { type: Boolean, required: true },
   showAveragePace: { type: Boolean, required: true },
   showDeviationWedge: { type: Boolean, required: true },
+  showPaceGraph: { type: Boolean, required: true },
   hasGoalOptions: { type: Boolean, default: false },
 })
 
@@ -142,5 +163,6 @@ defineEmits([
   'update:showRankOverlay',
   'update:showAveragePace',
   'update:showDeviationWedge',
+  'update:showPaceGraph',
 ])
 </script>
