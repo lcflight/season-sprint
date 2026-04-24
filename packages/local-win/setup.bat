@@ -112,5 +112,9 @@ echo Starting tracker. Press Ctrl+C to stop.
 echo.
 "%VENV_PY%" season_tracker.py
 
+echo.
+echo Tracker exited. Press any key to close this window.
+pause >nul
+
 popd
 endlocal

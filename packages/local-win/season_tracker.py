@@ -352,13 +352,17 @@ def main() -> int:
 
     try:
         cfg = load_or_prompt_config()
+        main_loop(cfg)
+        print("[exit] clean shutdown")
+        return 0
     except (KeyboardInterrupt, EOFError):
-        print("\n[abort] setup cancelled")
+        print("\n[abort] cancelled")
         return 1
-
-    main_loop(cfg)
-    print("[exit] clean shutdown")
-    return 0
+    except Exception as e:
+        import traceback
+        print(f"\n[FATAL] {type(e).__name__}: {e}")
+        traceback.print_exc()
+        return 2
 
 
 if __name__ == "__main__":
