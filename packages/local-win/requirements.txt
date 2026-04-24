@@ -1,0 +1,5 @@
+easyocr
+mss
+requests
+numpy
+Pillow
