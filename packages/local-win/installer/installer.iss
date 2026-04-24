@@ -63,7 +63,7 @@ Filename: "{app}\install-deps.bat"; WorkingDir: "{app}"; Flags: runhidden waitun
 ; Phase 2 — interactive first-run config (prompts for SERVER_URL + AUTH_TOKEN).
 ; Runs in a visible cmd window because the user has to type into it.
 ; Quick — finishes as soon as the user fills in the three prompts.
-Filename: "{userprofile}\.season-sprint\venv\Scripts\python.exe"; Parameters: """{app}\season_tracker.py"" --setup-only"; WorkingDir: "{app}"; Flags: runascurrentuser waituntilterminated; StatusMsg: "Configuring your Season Sprint account..."
+Filename: "{%USERPROFILE}\.season-sprint\venv\Scripts\python.exe"; Parameters: """{app}\season_tracker.py"" --setup-only"; WorkingDir: "{app}"; Flags: runascurrentuser waituntilterminated; StatusMsg: "Configuring your Season Sprint account..."
 
 [UninstallDelete]
 ; Tidy up venv + state + config on uninstall.
