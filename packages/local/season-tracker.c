@@ -437,7 +437,14 @@ static int daemon_start(OcrDaemon *d, const Config *cfg) {
         FILE *ef = fopen(err_file, "w");
         if (ef) { dup2(fileno(ef), STDERR_FILENO); fclose(ef); }
 
-        execlp("python3", "python3", cfg->ocr_script, "--daemon", NULL);
+        /* Prefer the installer-created venv (has EasyOCR); fall back to system python3 */
+        char venv_py[PATH_MAX];
+        snprintf(venv_py, PATH_MAX, "%s/.venv/bin/python3", cfg->script_dir);
+        if (access(venv_py, X_OK) == 0) {
+            execl(venv_py, "python3", cfg->ocr_script, "--daemon", (char *)NULL);
+            /* fall through on exec failure */
+        }
+        execlp("python3", "python3", cfg->ocr_script, "--daemon", (char *)NULL);
         _exit(1);
     }
 

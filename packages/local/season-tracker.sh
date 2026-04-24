@@ -1,16 +1,12 @@
 #!/usr/bin/env bash
 #
-# season-tracker.sh — Setup and launcher for the Season Sprint tracker.
+# season-tracker.sh — One-shot installer + Steam launcher for Season Sprint.
 #
-# Usage:
-#   First run (interactive setup):
-#     ./season-tracker.sh
+# First-time (interactive setup: deps, venv, build, config):
+#   ./season-tracker.sh
 #
-#   Steam launch option (after setup):
-#     /full/path/to/season-tracker.sh %command%
-#
-#   The C binary handles the actual tracking loop (X11 SHM capture,
-#   Tesseract gate check, EasyOCR daemon for points reading).
+# After setup, set as a Steam launch option on the game:
+#   /full/path/to/season-tracker.sh %command%
 #
 
 set -uo pipefail
@@ -18,26 +14,117 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="$SCRIPT_DIR/.env"
 BINARY="$SCRIPT_DIR/season-tracker"
+SOURCE="$SCRIPT_DIR/season-tracker.c"
+VENV="$SCRIPT_DIR/.venv"
+
+# ── System dependencies ──────────────────────────────────────────────────────
+#
+# Linux-only (tracker uses X11 SHM). Covers the common package managers.
+
+APT_PKGS=(build-essential pkg-config tesseract-ocr tesseract-ocr-eng
+          libtesseract-dev libleptonica-dev libcurl4-openssl-dev
+          libx11-dev libxext-dev python3 python3-venv python3-pip)
+
+DNF_PKGS=(gcc make pkgconf-pkg-config tesseract tesseract-langpack-eng
+          tesseract-devel leptonica-devel libcurl-devel libX11-devel
+          libXext-devel python3 python3-pip)
+
+PACMAN_PKGS=(base-devel pkgconf tesseract tesseract-data-eng leptonica
+             curl libx11 libxext python python-pip)
+
+detect_pkg_mgr() {
+  for cmd in apt-get dnf pacman zypper; do
+    command -v "$cmd" >/dev/null 2>&1 && { echo "$cmd"; return; }
+  done
+}
+
+have_build_deps() {
+  command -v gcc >/dev/null 2>&1 \
+    && command -v make >/dev/null 2>&1 \
+    && command -v pkg-config >/dev/null 2>&1 \
+    && pkg-config --exists tesseract libcurl x11 xext 2>/dev/null
+}
+
+install_system_deps() {
+  if have_build_deps; then
+    echo "Build dependencies already satisfied."
+    return 0
+  fi
+
+  local mgr
+  mgr=$(detect_pkg_mgr)
+  if [[ -z "$mgr" ]]; then
+    echo "WARNING: No supported package manager found (apt/dnf/pacman/zypper)."
+    echo "Install manually: tesseract + dev headers, libcurl-dev, libx11-dev,"
+    echo "libxext-dev, gcc, make, pkg-config, python3, python3-venv."
+    return 1
+  fi
+
+  echo
+  echo "System packages need to be installed via $mgr (sudo required)."
+  local ans
+  read -rp "Proceed? [Y/n] " ans
+  case "${ans,,}" in n|no) echo "Skipping — build will likely fail."; return 1;; esac
+
+  case "$mgr" in
+    apt-get) sudo apt-get update && sudo apt-get install -y "${APT_PKGS[@]}" ;;
+    dnf)     sudo dnf install -y "${DNF_PKGS[@]}" ;;
+    pacman)  sudo pacman -S --needed --noconfirm "${PACMAN_PKGS[@]}" ;;
+    zypper)  sudo zypper --non-interactive install gcc make pkg-config \
+               tesseract-ocr tesseract-ocr-devel libcurl-devel \
+               libX11-devel libXext-devel python3 python3-pip ;;
+  esac
+}
+
+# ── Python / EasyOCR ─────────────────────────────────────────────────────────
+
+python_has_easyocr() {
+  [[ -x "$1" ]] && "$1" -c 'import easyocr' >/dev/null 2>&1
+}
+
+ensure_python_deps() {
+  # System python3 already has it? Nothing to do.
+  if python_has_easyocr "$(command -v python3 2>/dev/null || true)"; then
+    echo "EasyOCR already available on system python3."
+    return 0
+  fi
+
+  # Otherwise use a venv alongside the binary.
+  if [[ ! -x "$VENV/bin/python3" ]]; then
+    echo "Creating Python virtual environment at $VENV ..."
+    if ! python3 -m venv "$VENV"; then
+      echo "ERROR: 'python3 -m venv' failed. Install python3-venv and retry." >&2
+      return 1
+    fi
+  fi
+
+  if python_has_easyocr "$VENV/bin/python3"; then
+    echo "EasyOCR already installed in venv."
+    return 0
+  fi
+
+  echo "Installing EasyOCR into venv (downloads ~1GB of PyTorch, takes a few minutes)..."
+  "$VENV/bin/pip" install --quiet --upgrade pip \
+    && "$VENV/bin/pip" install --quiet easyocr \
+    || { echo "ERROR: pip install failed." >&2; return 1; }
+  echo "EasyOCR ready."
+}
 
 # ── Monitor detection ────────────────────────────────────────────────────────
 
-# List connected monitors. Each line: "NAME WxH+X+Y" (offsets may be negative)
 list_monitors() {
   xrandr --query 2>/dev/null \
     | grep ' connected' \
     | sed -n 's/^\([^ ]*\) connected.* \([0-9]\+x[0-9]\+[+-][0-9-]\+[+-][0-9-]\+\).*/\1 \2/p'
 }
 
-# Prompt user to pick a monitor. Sets SHOT_GEOMETRY.
 prompt_monitor() {
-  local monitors
+  local monitors count
   monitors=$(list_monitors)
-  local count
-  count=$(echo "$monitors" | wc -l)
+  count=$(echo "$monitors" | grep -c .)
 
-  if [[ -z "$monitors" ]]; then
+  if [[ "$count" -eq 0 ]]; then
     echo "WARNING: Could not detect monitors via xrandr."
-    echo "Falling back to full primary display."
     read -rp "Enter monitor geometry manually (WxH+X+Y): " SHOT_GEOMETRY
     return
   fi
@@ -65,26 +152,25 @@ prompt_monitor() {
     read -rp "Enter a number 1-$count: " choice
   done
 
-  local selected
+  local selected name geo
   selected=$(echo "$monitors" | sed -n "${choice}p")
-  local name geo
   read -r name geo <<< "$selected"
   echo "Selected: $name ($geo)"
   SHOT_GEOMETRY="$geo"
 }
 
-# ── First-run setup ──────────────────────────────────────────────────────────
+# ── Config prompts + .env ────────────────────────────────────────────────────
 
-setup_env() {
-  echo "╔══════════════════════════════════════════════════════════╗"
-  echo "║          Season Sprint Tracker — First-Time Setup       ║"
-  echo "╚══════════════════════════════════════════════════════════╝"
-  echo
-  echo "This script captures your World Tour Points from the game"
-  echo "and pushes them to the Season Sprint server automatically."
-  echo
+_env_set() {
+  local key="$1" val="$2"
+  if [[ -f "$ENV_FILE" ]] && grep -q "^${key}=" "$ENV_FILE" 2>/dev/null; then
+    sed -i "s|^${key}=.*|${key}=${val}|" "$ENV_FILE"
+  else
+    echo "${key}=${val}" >> "$ENV_FILE"
+  fi
+}
 
-  # Load any existing values so we only prompt for what's missing
+prompt_config() {
   if [[ -f "$ENV_FILE" ]]; then
     # shellcheck source=/dev/null
     source "$ENV_FILE"
@@ -94,117 +180,71 @@ setup_env() {
   local auth_token="${AUTH_TOKEN:-}"
   local shot_geometry="${SHOT_GEOMETRY:-}"
 
-  # 1. Server URL
   if [[ -z "$server_url" ]]; then
-    echo "SERVER_URL — Your Season Sprint API URL"
-    echo "  (e.g. https://your-worker.workers.dev or http://localhost:8787)"
+    echo
+    echo "SERVER_URL — your Season Sprint API URL"
+    echo "  (e.g. https://your-worker.workers.dev)"
     read -rp "SERVER_URL: " server_url
     while [[ -z "$server_url" ]]; do
-      echo "  Server URL cannot be empty."
-      read -rp "SERVER_URL: " server_url
+      read -rp "SERVER_URL (required): " server_url
     done
     server_url="${server_url%/}"
   fi
 
-  # 2. Auth token
   if [[ -z "$auth_token" ]]; then
     echo
-    echo "AUTH_TOKEN — Your personal API key (starts with sk_)"
+    echo "AUTH_TOKEN — your personal API key (starts with sk_)"
     echo "  Generate one from the web app: click 'API Keys' in the header."
     read -rp "AUTH_TOKEN: " auth_token
     while [[ -z "$auth_token" ]]; do
-      echo "  Auth token cannot be empty."
-      read -rp "AUTH_TOKEN: " auth_token
+      read -rp "AUTH_TOKEN (required): " auth_token
     done
   fi
 
-  # 3. Monitor selection
   if [[ -z "$shot_geometry" ]]; then
     echo
     prompt_monitor
     shot_geometry="$SHOT_GEOMETRY"
   fi
 
-  # Merge into existing .env (preserve any custom overrides)
-  _env_set() {
-    local key="$1" val="$2"
-    if [[ -f "$ENV_FILE" ]] && grep -q "^${key}=" "$ENV_FILE" 2>/dev/null; then
-      sed -i "s|^${key}=.*|${key}=${val}|" "$ENV_FILE"
-    else
-      echo "${key}=${val}" >> "$ENV_FILE"
-    fi
-  }
   touch "$ENV_FILE"
-  _env_set SERVER_URL "$server_url"
-  _env_set AUTH_TOKEN "$auth_token"
+  _env_set SERVER_URL    "$server_url"
+  _env_set AUTH_TOKEN    "$auth_token"
   _env_set SHOT_GEOMETRY "$shot_geometry"
   chmod 600 "$ENV_FILE"
 
   echo
-  echo "Config saved to $ENV_FILE"
-  echo
-
-  # Verify connectivity
-  echo "Testing connection..."
+  echo "Testing connection to $server_url ..."
   local http_code
   http_code=$(curl -s -o /dev/null -w "%{http_code}" \
     -H "Authorization: $auth_token" \
     "$server_url/me/records" 2>/dev/null || echo "000")
-
-  if [[ "$http_code" == "200" ]]; then
-    echo "Connected successfully."
-  elif [[ "$http_code" == "000" ]]; then
-    echo "WARNING: Could not reach $server_url — check the URL and try again later."
-  else
-    echo "WARNING: Server returned HTTP $http_code — check your URL and token."
-  fi
-
-  echo
-  echo "Setup complete. To use as a Steam launch option, set:"
-  echo "  $SCRIPT_DIR/season-tracker.sh %command%"
-  echo
+  case "$http_code" in
+    200) echo "  OK — connected successfully." ;;
+    000) echo "  WARNING: couldn't reach $server_url. Check URL / network." ;;
+    *)   echo "  WARNING: server returned HTTP $http_code. Check URL + token." ;;
+  esac
 }
 
-load_env() {
-  if [[ ! -f "$ENV_FILE" ]]; then
+# ── Build ────────────────────────────────────────────────────────────────────
+
+build_binary() {
+  if [[ -x "$BINARY" && "$BINARY" -nt "$SOURCE" ]]; then
+    return 0
+  fi
+  echo "Building season-tracker binary..."
+  if ! make -C "$SCRIPT_DIR" season-tracker; then
+    echo "ERROR: Build failed. See errors above." >&2
     return 1
   fi
-  # shellcheck source=/dev/null
-  source "$ENV_FILE"
-  if [[ -z "${SERVER_URL:-}" || -z "${AUTH_TOKEN:-}" || -z "${SHOT_GEOMETRY:-}" ]]; then
-    return 1
-  fi
-  return 0
 }
 
-# ── Entry point ──────────────────────────────────────────────────────────────
+# ── Steam launcher env prep ──────────────────────────────────────────────────
 
-main() {
-  # If any config is missing, run interactive setup to fill in the gaps
-  if ! load_env 2>/dev/null; then
-    setup_env
-    if ! load_env 2>/dev/null; then
-      echo "ERROR: Setup did not produce a valid configuration." >&2
-      exit 1
-    fi
-    # If no game command was given, exit after setup
-    if [[ $# -eq 0 ]]; then
-      exit 0
-    fi
-  fi
-
-  # Build the C binary if it doesn't exist
-  if [[ ! -x "$BINARY" ]]; then
-    echo "Building tracker binary..."
-    if ! make -C "$SCRIPT_DIR" season-tracker 2>&1; then
-      echo "ERROR: Build failed. Install build deps:" >&2
-      echo "  sudo apt install gcc libtesseract-dev libcurl4-openssl-dev libx11-dev libxext-dev pkg-config" >&2
-      exit 1
-    fi
-  fi
-
-  # Clear Steam's library overrides so system libs work (keep compatible overlay only)
-  filtered_preload=""
+prep_launcher_env() {
+  # Strip Steam's library overrides (keep only the gameoverlay overlay so the
+  # Steam overlay still works) so system libcurl/tesseract/X11 load cleanly.
+  local filtered_preload="" entry
   while IFS= read -r entry; do
     [[ -z "$entry" ]] && continue
     [[ "$entry" != *gameoverlay* ]] && continue
@@ -215,12 +255,72 @@ main() {
   export LD_PRELOAD="$filtered_preload"
   unset LD_LIBRARY_PATH STEAM_RUNTIME_LIBRARY_PATH 2>/dev/null || true
 
-  # Ensure linuxbrew is on PATH (Steam may launch with a minimal PATH)
+  # Steam launches with a minimal PATH — restore common tool locations.
+  local p
   for p in /home/linuxbrew/.linuxbrew/bin /usr/local/bin; do
     [[ -d "$p" ]] && [[ ":$PATH:" != *":$p:"* ]] && export PATH="$p:$PATH"
   done
+}
 
-  # Hand off to the C binary
+# ── Install orchestration ────────────────────────────────────────────────────
+
+is_installed() {
+  [[ -f "$ENV_FILE" ]] || return 1
+  # shellcheck source=/dev/null
+  source "$ENV_FILE"
+  [[ -n "${SERVER_URL:-}"    ]] || return 1
+  [[ -n "${AUTH_TOKEN:-}"    ]] || return 1
+  [[ -n "${SHOT_GEOMETRY:-}" ]] || return 1
+  [[ -x "$BINARY"            ]] || return 1
+  return 0
+}
+
+run_install() {
+  echo "╔══════════════════════════════════════════════════════════╗"
+  echo "║          Season Sprint Tracker — Setup                  ║"
+  echo "╚══════════════════════════════════════════════════════════╝"
+  echo
+  echo "This will:"
+  echo "  1. Install system packages (via your package manager, sudo)"
+  echo "  2. Set up a local Python venv with EasyOCR (~1GB)"
+  echo "  3. Build the tracker binary"
+  echo "  4. Prompt for your server URL, API token, and monitor"
+  echo
+
+  install_system_deps || echo "(continuing; some steps may fail)"
+  ensure_python_deps  || exit 1
+  build_binary        || exit 1
+  prompt_config
+
+  echo
+  echo "──────────────────────────────────────────────────────────"
+  echo "Setup complete."
+  echo
+  echo "In Steam: right-click your game → Properties → Launch Options"
+  echo "and paste this line:"
+  echo
+  echo "  $SCRIPT_DIR/season-tracker.sh %command%"
+  echo
+  echo "──────────────────────────────────────────────────────────"
+}
+
+# ── Entry point ──────────────────────────────────────────────────────────────
+
+main() {
+  # Invoked with no args and not yet set up → run installer and stop.
+  if [[ $# -eq 0 ]] && ! is_installed; then
+    run_install
+    exit 0
+  fi
+
+  # Invoked by Steam (or manually) but setup is incomplete → finish install,
+  # then continue to launch if a game command was passed through.
+  if ! is_installed; then
+    run_install
+    [[ $# -eq 0 ]] && exit 0
+  fi
+
+  prep_launcher_env
   exec "$BINARY" "$@"
 }
 
