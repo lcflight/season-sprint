@@ -84,6 +84,15 @@ pause & popd & endlocal & exit /b 1
 :have_python
 echo Using Python: %PY_EXE%
 
+REM ── 3b. Ensure MS Visual C++ Redistributable (PyTorch needs vcruntime140*)
+REM winget is a no-op if the package is already installed, so this is safe to
+REM run every time.
+where winget >nul 2>&1
+if not errorlevel 1 (
+    echo Ensuring Microsoft Visual C++ Redistributable ^(PyTorch dependency^)...
+    winget install --silent --accept-source-agreements --accept-package-agreements --id Microsoft.VCRedist.2015+.x64
+)
+
 REM ── 4. Create venv (short path outside repo) if missing ──────────────────
 if not exist "%VENV_PY%" (
     echo Creating virtual environment at %VENV_DIR% ...
