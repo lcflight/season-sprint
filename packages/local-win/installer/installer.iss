@@ -11,7 +11,7 @@
 ; Output: dist\SeasonSprintSetup.exe (relative to this file).
 
 #define AppName       "Season Sprint Tracker"
-#define AppVersion    "0.1.1"
+#define AppVersion    "0.1.2"
 #define AppPublisher  "lcflight"
 #define AppURL        "https://github.com/lcflight/season-sprint"
 
@@ -48,6 +48,7 @@ Source: "..\test_ocr.py";       DestDir: "{app}"; Flags: ignoreversion
 Source: "..\setup.bat";         DestDir: "{app}"; Flags: ignoreversion
 Source: "..\install-deps.bat";  DestDir: "{app}"; Flags: ignoreversion
 Source: "..\launch.bat";        DestDir: "{app}"; Flags: ignoreversion
+Source: "..\watch-tracker.bat"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\Reconfigure tracker";  Filename: "{app}\setup.bat"; Parameters: "--install-only"; WorkingDir: "{app}"

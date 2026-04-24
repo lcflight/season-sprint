@@ -56,7 +56,7 @@ jobs:
         working-directory: packages/local-win
         run: |
           Compress-Archive `
-            -Path setup.bat, install-deps.bat, launch.bat, season_tracker.py, test_ocr.py, requirements.txt, .env.example `
+            -Path setup.bat, install-deps.bat, launch.bat, watch-tracker.bat, season_tracker.py, test_ocr.py, requirements.txt, .env.example `
             -DestinationPath dist/SeasonSprintTracker-source.zip `
             -CompressionLevel Optimal `
             -Force

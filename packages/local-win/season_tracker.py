@@ -49,11 +49,50 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 ENV_FILE = SCRIPT_DIR / ".env"
 STATE_FILE = SCRIPT_DIR / ".last-wtp"
 PID_FILE = SCRIPT_DIR / ".tracker-pid"
+LOG_FILE = SCRIPT_DIR / "tracker.log"
 
 POLL_INTERVAL_SECS = 3
 COOLDOWN_SECS = 300  # 5 min after a confirmed read
 CONFIRM_READS = 2    # how many identical reads in a row count as "confirmed"
 HTTP_TIMEOUT = 10
+
+
+# ── Tee stdout/stderr to a log file ───────────────────────────────────────────
+#
+# When launched headlessly via pythonw.exe (no console window), all print()
+# output would otherwise vanish. Tee'ing to tracker.log gives testers a way
+# to verify the tracker is working — they can live-tail it from
+# watch-tracker.bat while the game runs.
+
+class _Tee:
+    def __init__(self, *streams):
+        # pythonw.exe sets sys.__stdout__ to None; filter those out.
+        self.streams = [s for s in streams if s is not None]
+
+    def write(self, data):
+        for s in self.streams:
+            try:
+                s.write(data)
+            except Exception:
+                pass
+        self.flush()
+
+    def flush(self):
+        for s in self.streams:
+            try:
+                s.flush()
+            except Exception:
+                pass
+
+try:
+    _log_handle = open(LOG_FILE, "a", buffering=1, encoding="utf-8")
+    sys.stdout = _Tee(sys.__stdout__, _log_handle)
+    sys.stderr = _Tee(sys.__stderr__, _log_handle)
+    print(f"\n=== Tracker started {dt.datetime.now().isoformat(timespec='seconds')} ===")
+except OSError:
+    # Couldn't open the log file (read-only install dir, etc.) — fall back to
+    # whatever stdout the runtime gave us.
+    pass
 
 
 # ── Config ────────────────────────────────────────────────────────────────────
