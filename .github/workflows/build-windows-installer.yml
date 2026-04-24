@@ -47,13 +47,28 @@ jobs:
         run: |
           Compress-Archive -Path SeasonSprintSetup.exe -DestinationPath SeasonSprintSetup.zip -CompressionLevel Optimal -Force
 
-      - name: Upload installer artifacts
+      - name: Build focused tracker source zip
+        # GitHub's auto-generated source zip ships the whole monorepo (web,
+        # server, Linux tracker, ~5MB+). Testers only need ~25KB of files.
+        # Stage just the Windows tracker files flat at the zip root so the
+        # user double-clicks setup.bat with no folder navigation.
+        shell: pwsh
+        working-directory: packages/local-win
+        run: |
+          Compress-Archive `
+            -Path setup.bat, install-deps.bat, launch.bat, season_tracker.py, test_ocr.py, requirements.txt, .env.example `
+            -DestinationPath dist/SeasonSprintTracker-source.zip `
+            -CompressionLevel Optimal `
+            -Force
+
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: SeasonSprintSetup
           path: |
             packages/local-win/dist/SeasonSprintSetup.exe
             packages/local-win/dist/SeasonSprintSetup.zip
+            packages/local-win/dist/SeasonSprintTracker-source.zip
           if-no-files-found: error
 
       - name: Publish GitHub Release (on v* tag only)
@@ -63,5 +78,6 @@ jobs:
           files: |
             packages/local-win/dist/SeasonSprintSetup.exe
             packages/local-win/dist/SeasonSprintSetup.zip
+            packages/local-win/dist/SeasonSprintTracker-source.zip
           draft: false
           generate_release_notes: true
