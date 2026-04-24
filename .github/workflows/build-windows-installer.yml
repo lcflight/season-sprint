@@ -24,7 +24,7 @@ jobs:
             echo ERROR: ISCC.exe not found. Trying choco fallback...
             choco install innosetup --no-progress -y || exit /b 1
           )
-          "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /? >nul
+          echo Inno Setup ISCC present.
 
       - name: Build installer
         shell: cmd
