@@ -2,21 +2,26 @@
 REM Steam launch wrapper for the Season Sprint tracker.
 REM
 REM Steam invokes this as: "launch.bat" %command%
-REM Effect: start the tracker in the background as pythonw.exe (no console
-REM window), run the game synchronously, then stop the tracker when the
-REM game exits.
+REM Effect: start the tracker headless (pythonw.exe, no console window),
+REM run the game synchronously, then stop the tracker by PID when the game
+REM exits. The tracker writes .tracker-pid on startup; we consume it here.
 
 setlocal
 pushd "%~dp0"
 
-REM Start tracker headless. pythonw.exe = GUI subsystem, no cmd window.
-start "" /B ".venv\Scripts\pythonw.exe" "%~dp0season_tracker.py"
+set "VENV_PYW=%USERPROFILE%\.season-sprint\venv\Scripts\pythonw.exe"
 
-REM Run the game and wait for it. %* is "gamepath.exe" + any Steam-provided args.
+REM Start the tracker headless in the background.
+start "" /B "%VENV_PYW%" "%~dp0season_tracker.py"
+
+REM Run the game and wait for it to exit. %* is the game exe + its args.
 %*
 
-REM Game exited — stop the tracker by matching its command line.
-powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name='pythonw.exe'\" | Where-Object { $_.CommandLine -like '*season_tracker.py*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }" >nul 2>&1
+REM Game exited — stop the tracker by its PID if the file is present.
+if exist "%~dp0.tracker-pid" (
+    for /f %%P in (%~dp0.tracker-pid) do taskkill /F /PID %%P >nul 2>&1
+    del "%~dp0.tracker-pid" >nul 2>&1
+)
 
 popd
 endlocal

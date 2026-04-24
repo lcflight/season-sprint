@@ -48,6 +48,7 @@ import requests
 SCRIPT_DIR = Path(__file__).resolve().parent
 ENV_FILE = SCRIPT_DIR / ".env"
 STATE_FILE = SCRIPT_DIR / ".last-wtp"
+PID_FILE = SCRIPT_DIR / ".tracker-pid"
 
 POLL_INTERVAL_SECS = 3
 COOLDOWN_SECS = 300  # 5 min after a confirmed read
@@ -380,7 +381,23 @@ def main() -> int:
         if setup_only:
             print("[setup] config saved; exiting without starting tracker.")
             return 0
-        main_loop(cfg)
+
+        # Write our PID so launch.bat can kill us cleanly when the game exits
+        # (no PowerShell/WMI round-trip). Best-effort — a missing file just
+        # means the Steam wrapper skips the kill, which is harmless.
+        try:
+            PID_FILE.write_text(str(os.getpid()))
+        except OSError as e:
+            print(f"[warn] could not write PID file: {e}")
+
+        try:
+            main_loop(cfg)
+        finally:
+            try:
+                PID_FILE.unlink(missing_ok=True)
+            except OSError:
+                pass
+
         print("[exit] clean shutdown")
         return 0
     except (KeyboardInterrupt, EOFError):

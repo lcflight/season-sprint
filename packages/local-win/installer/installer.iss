@@ -46,6 +46,7 @@ Source: "..\season_tracker.py"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\requirements.txt";  DestDir: "{app}"; Flags: ignoreversion
 Source: "..\test_ocr.py";       DestDir: "{app}"; Flags: ignoreversion
 Source: "..\setup.bat";         DestDir: "{app}"; Flags: ignoreversion
+Source: "..\install-deps.bat";  DestDir: "{app}"; Flags: ignoreversion
 Source: "launch.bat";           DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
@@ -53,9 +54,16 @@ Name: "{group}\Reconfigure tracker";  Filename: "{app}\setup.bat"; Parameters: "
 Name: "{group}\Uninstall {#AppName}"; Filename: "{uninstallexe}"
 
 [Run]
-; Runs inside a visible cmd window so the user can fill in the prompts
-; (server URL, API token, monitor). Blocks the wizard until the bat exits.
-Filename: "{app}\setup.bat"; Parameters: "--install-only"; WorkingDir: "{app}"; Flags: runascurrentuser; StatusMsg: "Installing Python, deps, and configuring..."
+; Phase 1 — heavy lifting (Python + VCRedist + venv + pip).
+; Runs hidden so the user sees Inno's progress bar with our StatusMsg
+; instead of a raw cmd window. Takes 1-2 minutes on a cold install
+; (PyTorch download dominates).
+Filename: "{app}\install-deps.bat"; WorkingDir: "{app}"; Flags: runhidden waituntilterminated; StatusMsg: "Installing Python, PyTorch, and EasyOCR (this takes 1-2 minutes on first install)..."
+
+; Phase 2 — interactive first-run config (prompts for SERVER_URL + AUTH_TOKEN).
+; Runs in a visible cmd window because the user has to type into it.
+; Quick — finishes as soon as the user fills in the three prompts.
+Filename: "{userprofile}\.season-sprint\venv\Scripts\python.exe"; Parameters: """{app}\season_tracker.py"" --setup-only"; WorkingDir: "{app}"; Flags: runascurrentuser waituntilterminated; StatusMsg: "Configuring your Season Sprint account..."
 
 [UninstallDelete]
 ; Tidy up venv + state + config on uninstall.
