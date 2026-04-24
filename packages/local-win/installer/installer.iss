@@ -47,7 +47,7 @@ Source: "..\requirements.txt";  DestDir: "{app}"; Flags: ignoreversion
 Source: "..\test_ocr.py";       DestDir: "{app}"; Flags: ignoreversion
 Source: "..\setup.bat";         DestDir: "{app}"; Flags: ignoreversion
 Source: "..\install-deps.bat";  DestDir: "{app}"; Flags: ignoreversion
-Source: "launch.bat";           DestDir: "{app}"; Flags: ignoreversion
+Source: "..\launch.bat";        DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\Reconfigure tracker";  Filename: "{app}\setup.bat"; Parameters: "--install-only"; WorkingDir: "{app}"
