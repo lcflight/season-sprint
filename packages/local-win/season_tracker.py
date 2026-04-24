@@ -28,6 +28,19 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+# Force OpenSSL to use certifi's CA bundle. A fresh Windows install's cert
+# store can miss modern roots/intermediates (Let's Encrypt, etc.) until
+# Windows Update has run, which makes EasyOCR's model download and HTTPS
+# probes fail with SSL: CERTIFICATE_VERIFY_FAILED. certifi ships a current
+# Mozilla bundle and is a transitive dependency of requests, so it's
+# always present in the venv.
+try:
+    import certifi
+    os.environ.setdefault("SSL_CERT_FILE", certifi.where())
+    os.environ.setdefault("REQUESTS_CA_BUNDLE", certifi.where())
+except ImportError:
+    pass
+
 import mss
 import numpy as np
 import requests
@@ -50,6 +63,16 @@ class Config:
     server_url: str
     auth_token: str
     monitor_index: int  # mss convention: 0 = all, 1 = primary, 2+ = others
+
+
+def _normalize_server_url(raw: str) -> str:
+    """Strip whitespace / trailing slash, and add https:// if no scheme was
+    supplied. Users routinely paste bare hostnames like
+    `my-worker.workers.dev`, which `requests` rejects with MissingSchema."""
+    raw = raw.strip().rstrip("/")
+    if raw and not raw.startswith(("http://", "https://")):
+        raw = "https://" + raw
+    return raw
 
 
 def _parse_env_file(path: Path) -> dict[str, str]:
@@ -89,12 +112,12 @@ def _prompt_config() -> Config:
 
     print("═══ Season Sprint Tracker — Setup ═══\n")
 
-    server_url = existing.get("SERVER_URL", "").rstrip("/")
+    server_url = _normalize_server_url(existing.get("SERVER_URL", ""))
     if not server_url:
         print("SERVER_URL — your Season Sprint API URL")
         print("  (e.g. https://your-worker.workers.dev)")
         while not server_url:
-            server_url = input("SERVER_URL: ").strip().rstrip("/")
+            server_url = _normalize_server_url(input("SERVER_URL: "))
 
     auth_token = existing.get("AUTH_TOKEN", "")
     if not auth_token:
@@ -159,7 +182,7 @@ def load_or_prompt_config() -> Config:
     if not needed.issubset(env) or not env["MONITOR_INDEX"].isdigit():
         return _prompt_config()
     return Config(
-        server_url=env["SERVER_URL"].rstrip("/"),
+        server_url=_normalize_server_url(env["SERVER_URL"]),
         auth_token=env["AUTH_TOKEN"],
         monitor_index=int(env["MONITOR_INDEX"]),
     )
