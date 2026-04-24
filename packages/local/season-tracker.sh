@@ -160,11 +160,11 @@ prompt_monitor() {
 
 _env_set() {
   local key="$1" val="$2"
-  if [[ -f "$ENV_FILE" ]] && grep -q "^${key}=" "$ENV_FILE" 2>/dev/null; then
-    sed -i "s|^${key}=.*|${key}=${val}|" "$ENV_FILE"
-  else
-    echo "${key}=${val}" >> "$ENV_FILE"
-  fi
+  # Delete any existing line, then append verbatim. Avoids sed-replacement
+  # corruption when $val contains sed metacharacters (|, &, \) — AUTH_TOKEN
+  # is arbitrary user input so this is a realistic failure mode.
+  [[ -f "$ENV_FILE" ]] && sed -i "/^${key}=/d" "$ENV_FILE"
+  printf '%s=%s\n' "$key" "$val" >> "$ENV_FILE"
 }
 
 prompt_config() {
@@ -192,9 +192,9 @@ prompt_config() {
     echo
     echo "AUTH_TOKEN — your personal API key (starts with sk_)"
     echo "  Generate one from the web app: click 'API Keys' in the header."
-    read -rp "AUTH_TOKEN: " auth_token
+    read -rsp "AUTH_TOKEN: " auth_token; echo
     while [[ -z "$auth_token" ]]; do
-      read -rp "AUTH_TOKEN (required): " auth_token
+      read -rsp "AUTH_TOKEN (required): " auth_token; echo
     done
   fi
 
@@ -204,11 +204,12 @@ prompt_config() {
     shot_geometry="$SHOT_GEOMETRY"
   fi
 
+  # Create .env with restrictive perms *before* writing the token.
   touch "$ENV_FILE"
+  chmod 600 "$ENV_FILE"
   _env_set SERVER_URL    "$server_url"
   _env_set AUTH_TOKEN    "$auth_token"
   _env_set SHOT_GEOMETRY "$shot_geometry"
-  chmod 600 "$ENV_FILE"
 
   echo
   echo "Testing connection to $server_url ..."
