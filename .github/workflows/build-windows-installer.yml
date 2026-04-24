@@ -1,0 +1,40 @@
+name: Build Windows installer
+
+# Builds the Inno Setup .exe whenever files under packages/local-win/ change
+# on any branch, or on manual dispatch. Uploads SeasonSprintSetup.exe as a
+# downloadable artifact on every run.
+
+on:
+  push:
+    paths:
+      - "packages/local-win/**"
+      - ".github/workflows/build-windows-installer.yml"
+  workflow_dispatch:
+
+jobs:
+  build-installer:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify Inno Setup is present (preinstalled on windows-latest)
+        shell: cmd
+        run: |
+          if not exist "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" (
+            echo ERROR: ISCC.exe not found. Trying choco fallback...
+            choco install innosetup --no-progress -y || exit /b 1
+          )
+          "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /? >nul
+
+      - name: Build installer
+        shell: cmd
+        working-directory: packages/local-win/installer
+        run: |
+          "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SeasonSprintSetup
+          path: packages/local-win/dist/SeasonSprintSetup.exe
+          if-no-files-found: error

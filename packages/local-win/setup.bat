@@ -115,15 +115,24 @@ if errorlevel 1 (
     pause & popd & endlocal & exit /b 1
 )
 
-REM ── 6. Run the tracker ────────────────────────────────────────────────────
-echo.
-echo Starting tracker. Press Ctrl+C to stop.
-echo.
-"%VENV_PY%" season_tracker.py
+REM ── 6. Run the tracker (or just config, if --install-only) ───────────────
+if /i "%~1"=="--install-only" (
+    echo.
+    echo Running first-time config ^(prompts only; no polling loop^)...
+    echo.
+    "%VENV_PY%" season_tracker.py --setup-only
+    echo.
+    echo Setup complete.
+) else (
+    echo.
+    echo Starting tracker. Press Ctrl+C to stop.
+    echo.
+    "%VENV_PY%" season_tracker.py
 
-echo.
-echo Tracker exited. Press any key to close this window.
-pause >nul
+    echo.
+    echo Tracker exited. Press any key to close this window.
+    pause >nul
+)
 
 popd
 endlocal

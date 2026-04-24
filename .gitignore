@@ -39,8 +39,9 @@ packages/local/bench_c
 packages/local/bench_ocr.py
 packages/local/bench_pipeline.py
 
-# Windows tracker (Python) — venv, state, bytecode
+# Windows tracker (Python) — venv, state, bytecode, installer output
 packages/local-win/.venv/
 packages/local-win/.last-wtp
 packages/local-win/__pycache__/
 packages/local-win/**/__pycache__/
+packages/local-win/dist/

@@ -373,8 +373,13 @@ def main() -> int:
     if hasattr(signal, "SIGTERM"):
         signal.signal(signal.SIGTERM, _handle_signal)
 
+    setup_only = "--setup-only" in sys.argv[1:]
+
     try:
         cfg = load_or_prompt_config()
+        if setup_only:
+            print("[setup] config saved; exiting without starting tracker.")
+            return 0
         main_loop(cfg)
         print("[exit] clean shutdown")
         return 0
