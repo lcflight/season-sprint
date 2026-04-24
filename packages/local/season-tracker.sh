@@ -83,13 +83,11 @@ python_has_easyocr() {
 }
 
 ensure_python_deps() {
-  # System python3 already has it? Nothing to do.
-  if python_has_easyocr "$(command -v python3 2>/dev/null || true)"; then
-    echo "EasyOCR already available on system python3."
-    return 0
-  fi
-
-  # Otherwise use a venv alongside the binary.
+  # Always provision a local venv. Trusting system Python is fragile: Steam
+  # strips LD_LIBRARY_PATH / STEAM_RUNTIME_LIBRARY_PATH before exec'ing the
+  # binary, and a Linuxbrew / conda / distro Python that imports EasyOCR in a
+  # normal shell may fail once those vars are gone. The venv keeps the OCR
+  # daemon's runtime environment identical to install time.
   if [[ ! -x "$VENV/bin/python3" ]]; then
     echo "Creating Python virtual environment at $VENV ..."
     if ! python3 -m venv "$VENV"; then
@@ -99,14 +97,13 @@ ensure_python_deps() {
   fi
 
   if python_has_easyocr "$VENV/bin/python3"; then
-    echo "EasyOCR already installed in venv."
     return 0
   fi
 
   echo "Installing EasyOCR into venv (downloads ~1GB of PyTorch, takes a few minutes)..."
-  "$VENV/bin/pip" install --quiet --upgrade pip \
-    && "$VENV/bin/pip" install --quiet easyocr \
-    || { echo "ERROR: pip install failed." >&2; return 1; }
+  "$VENV/bin/pip" install --upgrade pip >/dev/null \
+    && "$VENV/bin/pip" install easyocr \
+    || { echo "ERROR: pip install failed. See output above." >&2; return 1; }
   echo "EasyOCR ready."
 }
 
