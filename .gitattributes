@@ -1,0 +1,10 @@
+# Windows shell scripts must ship with CRLF line endings — the cmd.exe
+# parser reads scripts in 512-byte chunks and can mis-split LF-only lines
+# at the boundary, occasionally truncating commands or labels in ways
+# that are hard to reproduce.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Inno Setup scripts are compiled by ISCC.exe on Windows; treat them the
+# same way for consistency.
+*.iss text eol=crlf
