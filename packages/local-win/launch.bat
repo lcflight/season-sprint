@@ -54,8 +54,10 @@ REM Run the game and wait for it to exit. %* is the game exe + its args.
 %*
 
 REM Game exited — stop the tracker by its PID if the file is present.
+REM Filter on IMAGENAME=pythonw.exe so a stale .tracker-pid pointing at a
+REM reused PID can't accidentally kill an unrelated process the user owns.
 if exist "%~dp0.tracker-pid" (
-    for /f "usebackq" %%P in ("%~dp0.tracker-pid") do taskkill /F /PID %%P >nul 2>&1
+    for /f "usebackq" %%P in ("%~dp0.tracker-pid") do taskkill /F /FI "IMAGENAME eq pythonw.exe" /FI "PID eq %%P" >nul 2>&1
     del "%~dp0.tracker-pid" >nul 2>&1
 )
 
