@@ -55,7 +55,7 @@ REM Run the game and wait for it to exit. %* is the game exe + its args.
 
 REM Game exited — stop the tracker by its PID if the file is present.
 if exist "%~dp0.tracker-pid" (
-    for /f %%P in (%~dp0.tracker-pid) do taskkill /F /PID %%P >nul 2>&1
+    for /f "usebackq" %%P in ("%~dp0.tracker-pid") do taskkill /F /PID %%P >nul 2>&1
     del "%~dp0.tracker-pid" >nul 2>&1
 )
 
