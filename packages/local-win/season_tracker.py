@@ -98,19 +98,44 @@ except OSError:
 # ── Config ────────────────────────────────────────────────────────────────────
 
 
-@dataclass
+@dataclass(repr=False)
 class Config:
     server_url: str
     auth_token: str
     monitor_index: int  # mss convention: 0 = all, 1 = primary, 2+ = others
 
+    def __repr__(self) -> str:
+        # Redact auth_token. Everything printed by this script is tee'd to
+        # tracker.log (see _Tee below), which watch-tracker.bat happily
+        # tails — a stray `print(cfg)` or an exception whose repr includes
+        # the Config would otherwise leak the token to a file the user can
+        # easily share. Never log self.auth_token directly anywhere else.
+        t = self.auth_token
+        masked = (t[:5] + "…" + t[-4:]) if len(t) > 12 else "<redacted>"
+        return (
+            f"Config(server_url={self.server_url!r}, "
+            f"auth_token={masked!r}, monitor_index={self.monitor_index})"
+        )
+
 
 def _normalize_server_url(raw: str) -> str:
     """Strip whitespace / trailing slash, and add https:// if no scheme was
     supplied. Users routinely paste bare hostnames like
-    `my-worker.workers.dev`, which `requests` rejects with MissingSchema."""
+    `my-worker.workers.dev`, which `requests` rejects with MissingSchema.
+
+    Rejects http:// outright — every request from this script carries the
+    AUTH_TOKEN in the Authorization header, so plain HTTP would expose it
+    on the wire."""
     raw = raw.strip().rstrip("/")
-    if raw and not raw.startswith(("http://", "https://")):
+    if not raw:
+        return raw
+    if raw.startswith("http://"):
+        raise ValueError(
+            "SERVER_URL must use https:// — sending your AUTH_TOKEN over "
+            "plain HTTP would expose it on the network. For a local dev "
+            "server, front it with cloudflared / ngrok or use https://localhost."
+        )
+    if not raw.startswith("https://"):
         raw = "https://" + raw
     return raw
 
@@ -152,12 +177,19 @@ def _prompt_config() -> Config:
 
     print("═══ Season Sprint Tracker — Setup ═══\n")
 
-    server_url = _normalize_server_url(existing.get("SERVER_URL", ""))
+    try:
+        server_url = _normalize_server_url(existing.get("SERVER_URL", ""))
+    except ValueError as e:
+        print(f"  Existing SERVER_URL rejected: {e}\n")
+        server_url = ""
     if not server_url:
         print("SERVER_URL — your Season Sprint API URL")
         print("  (e.g. https://your-worker.workers.dev)")
         while not server_url:
-            server_url = _normalize_server_url(input("SERVER_URL: "))
+            try:
+                server_url = _normalize_server_url(input("SERVER_URL: "))
+            except ValueError as e:
+                print(f"  ERROR: {e}\n")
 
     auth_token = existing.get("AUTH_TOKEN", "")
     if not auth_token:
@@ -221,8 +253,14 @@ def load_or_prompt_config() -> Config:
     needed = {"SERVER_URL", "AUTH_TOKEN", "MONITOR_INDEX"}
     if not needed.issubset(env) or not env["MONITOR_INDEX"].isdigit():
         return _prompt_config()
+    try:
+        server_url = _normalize_server_url(env["SERVER_URL"])
+    except ValueError as e:
+        print(f"[config] {e}")
+        print("[config] re-running setup to fix SERVER_URL ...\n")
+        return _prompt_config()
     return Config(
-        server_url=_normalize_server_url(env["SERVER_URL"]),
+        server_url=server_url,
         auth_token=env["AUTH_TOKEN"],
         monitor_index=int(env["MONITOR_INDEX"]),
     )
