@@ -367,6 +367,13 @@ def push_record(cfg: Config, win_points: int) -> bool:
         return False
     ok = r.status_code in (200, 201)
     print(f"[push] winPoints={win_points} date={today} HTTP {r.status_code} {'OK' if ok else 'FAIL'}")
+    if not ok:
+        # Include the response body (truncated) so the user can see why.
+        # 4xx usually carries a server message; 5xx is often empty or a
+        # generic Cloudflare page. Strip newlines so it stays one log line.
+        body = (r.text or "").strip().replace("\n", " ")[:500]
+        if body:
+            print(f"[push]   response body: {body}")
     return ok
 
 
