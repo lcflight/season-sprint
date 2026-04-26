@@ -51,6 +51,13 @@ STATE_FILE = SCRIPT_DIR / ".last-wtp"
 PID_FILE = SCRIPT_DIR / ".tracker-pid"
 LOG_FILE = SCRIPT_DIR / "tracker.log"
 
+# Hardcoded: there's exactly one production deployment of the Season Sprint
+# server, so making this user-configurable just opened a class of typo bugs
+# (e.g. .workers.dev → .werkers.dev) that silently leaked the AUTH_TOKEN to
+# whatever host the user typo'd into. If you self-host, change this constant
+# in your fork.
+SERVER_URL = "https://season-sprint-server.lcarthur747.workers.dev"
+
 POLL_INTERVAL_SECS = 3
 COOLDOWN_SECS = 300  # 5 min after a confirmed read
 CONFIRM_READS = 2    # how many identical reads in a row count as "confirmed"
@@ -100,7 +107,6 @@ except OSError:
 
 @dataclass(repr=False)
 class Config:
-    server_url: str
     auth_token: str
     monitor_index: int  # mss convention: 0 = all, 1 = primary, 2+ = others
 
@@ -112,32 +118,7 @@ class Config:
         # easily share. Never log self.auth_token directly anywhere else.
         t = self.auth_token
         masked = (t[:5] + "…" + t[-4:]) if len(t) > 12 else "<redacted>"
-        return (
-            f"Config(server_url={self.server_url!r}, "
-            f"auth_token={masked!r}, monitor_index={self.monitor_index})"
-        )
-
-
-def _normalize_server_url(raw: str) -> str:
-    """Strip whitespace / trailing slash, and add https:// if no scheme was
-    supplied. Users routinely paste bare hostnames like
-    `my-worker.workers.dev`, which `requests` rejects with MissingSchema.
-
-    Rejects http:// outright — every request from this script carries the
-    AUTH_TOKEN in the Authorization header, so plain HTTP would expose it
-    on the wire."""
-    raw = raw.strip().rstrip("/")
-    if not raw:
-        return raw
-    if raw.startswith("http://"):
-        raise ValueError(
-            "SERVER_URL must use https:// — sending your AUTH_TOKEN over "
-            "plain HTTP would expose it on the network. For a local dev "
-            "server, front it with cloudflared / ngrok or use https://localhost."
-        )
-    if not raw.startswith("https://"):
-        raw = "https://" + raw
-    return raw
+        return f"Config(auth_token={masked!r}, monitor_index={self.monitor_index})"
 
 
 def _parse_env_file(path: Path) -> dict[str, str]:
@@ -176,24 +157,11 @@ def _prompt_config() -> Config:
     existing = _parse_env_file(ENV_FILE)
 
     print("═══ Season Sprint Tracker — Setup ═══\n")
-
-    try:
-        server_url = _normalize_server_url(existing.get("SERVER_URL", ""))
-    except ValueError as e:
-        print(f"  Existing SERVER_URL rejected: {e}\n")
-        server_url = ""
-    if not server_url:
-        print("SERVER_URL — your Season Sprint API URL")
-        print("  (e.g. https://your-worker.workers.dev)")
-        while not server_url:
-            try:
-                server_url = _normalize_server_url(input("SERVER_URL: "))
-            except ValueError as e:
-                print(f"  ERROR: {e}\n")
+    print(f"Server: {SERVER_URL}\n")
 
     auth_token = existing.get("AUTH_TOKEN", "")
     if not auth_token:
-        print("\nAUTH_TOKEN — your personal API key (starts with sk_)")
+        print("AUTH_TOKEN — your personal API key (starts with sk_)")
         print("  Generate one from the web app: click 'API Keys' in the header.")
         while not auth_token:
             auth_token = getpass.getpass("AUTH_TOKEN (hidden): ").strip()
@@ -217,10 +185,9 @@ def _prompt_config() -> Config:
                     monitor_index = int(raw)
                     break
 
-    cfg = Config(server_url=server_url, auth_token=auth_token, monitor_index=monitor_index)
+    cfg = Config(auth_token=auth_token, monitor_index=monitor_index)
 
     _write_env_file(ENV_FILE, {
-        "SERVER_URL": cfg.server_url,
         "AUTH_TOKEN": cfg.auth_token,
         "MONITOR_INDEX": str(cfg.monitor_index),
     })
@@ -239,7 +206,7 @@ def _prompt_config() -> Config:
 def _probe_server(cfg: Config) -> tuple[bool, int]:
     try:
         r = requests.get(
-            f"{cfg.server_url}/me/records",
+            f"{SERVER_URL}/me/records",
             headers={"Authorization": cfg.auth_token},
             timeout=HTTP_TIMEOUT,
         )
@@ -250,17 +217,10 @@ def _probe_server(cfg: Config) -> tuple[bool, int]:
 
 def load_or_prompt_config() -> Config:
     env = _parse_env_file(ENV_FILE)
-    needed = {"SERVER_URL", "AUTH_TOKEN", "MONITOR_INDEX"}
+    needed = {"AUTH_TOKEN", "MONITOR_INDEX"}
     if not needed.issubset(env) or not env["MONITOR_INDEX"].isdigit():
         return _prompt_config()
-    try:
-        server_url = _normalize_server_url(env["SERVER_URL"])
-    except ValueError as e:
-        print(f"[config] {e}")
-        print("[config] re-running setup to fix SERVER_URL ...\n")
-        return _prompt_config()
     return Config(
-        server_url=server_url,
         auth_token=env["AUTH_TOKEN"],
         monitor_index=int(env["MONITOR_INDEX"]),
     )
@@ -354,7 +314,7 @@ def push_record(cfg: Config, win_points: int) -> bool:
     today = dt.date.today().isoformat()
     try:
         r = requests.post(
-            f"{cfg.server_url}/me/records",
+            f"{SERVER_URL}/me/records",
             json={"date": today, "winPoints": win_points},
             headers={
                 "Authorization": cfg.auth_token,
@@ -394,7 +354,7 @@ def main_loop(cfg: Config) -> None:
     import easyocr  # imported lazily so --setup doesn't pay the cost
 
     reader = easyocr.Reader(["en"], gpu=False, verbose=False)
-    print(f"[boot] tracker started. monitor={cfg.monitor_index} server={cfg.server_url}")
+    print(f"[boot] tracker started. monitor={cfg.monitor_index} server={SERVER_URL}")
     print(f"[boot] polling every {POLL_INTERVAL_SECS}s; Ctrl+C to quit.")
 
     consecutive_reads = 0
