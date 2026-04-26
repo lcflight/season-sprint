@@ -116,9 +116,13 @@ class Config:
         # tails — a stray `print(cfg)` or an exception whose repr includes
         # the Config would otherwise leak the token to a file the user can
         # easily share. Never log self.auth_token directly anywhere else.
-        t = self.auth_token
-        masked = (t[:5] + "…" + t[-4:]) if len(t) > 12 else "<redacted>"
-        return f"Config(auth_token={masked!r}, monitor_index={self.monitor_index})"
+        return f"Config(auth_token={_mask_token(self.auth_token)!r}, monitor_index={self.monitor_index})"
+
+
+def _mask_token(t: str) -> str:
+    """Display-safe form of an AUTH_TOKEN. Used by Config.__repr__ and the
+    push-request dump so the raw token never lands in tracker.log."""
+    return (t[:5] + "…" + t[-4:]) if len(t) > 12 else "<redacted>"
 
 
 def _parse_env_file(path: Path) -> dict[str, str]:
@@ -311,17 +315,27 @@ def write_state(wtp: int) -> None:
 
 
 def push_record(cfg: Config, win_points: int) -> bool:
+    import json
+
     today = dt.date.today().isoformat()
+    url = f"{SERVER_URL}/me/records"
+    body = {"date": today, "winPoints": win_points}
+    headers = {
+        "Authorization": cfg.auth_token,
+        "Content-Type": "application/json",
+    }
+
+    # Dump the full request before sending so the user can see exactly what
+    # left their machine when something goes wrong. Auth header is masked
+    # via _mask_token — never log the raw token, since this all goes to
+    # tracker.log which watch-tracker.bat tails.
+    safe_headers = {**headers, "Authorization": _mask_token(cfg.auth_token)}
+    print(f"[push] -> POST {url}")
+    print(f"[push]    headers: {safe_headers}")
+    print(f"[push]    body:    {json.dumps(body)}")
+
     try:
-        r = requests.post(
-            f"{SERVER_URL}/me/records",
-            json={"date": today, "winPoints": win_points},
-            headers={
-                "Authorization": cfg.auth_token,
-                "Content-Type": "application/json",
-            },
-            timeout=HTTP_TIMEOUT,
-        )
+        r = requests.post(url, json=body, headers=headers, timeout=HTTP_TIMEOUT)
     except requests.RequestException as e:
         print(f"[push] FAILED: {e}")
         return False
@@ -331,9 +345,15 @@ def push_record(cfg: Config, win_points: int) -> bool:
         # Include the response body (truncated) so the user can see why.
         # 4xx usually carries a server message; 5xx is often empty or a
         # generic Cloudflare page. Strip newlines so it stays one log line.
-        body = (r.text or "").strip().replace("\n", " ")[:500]
-        if body:
-            print(f"[push]   response body: {body}")
+        resp_body = (r.text or "").strip().replace("\n", " ")[:500]
+        if resp_body:
+            print(f"[push]   response body: {resp_body}")
+        # Also surface a couple of CF-specific headers that pinpoint
+        # whether the response came from our worker or CF's edge layer.
+        cf_ray = r.headers.get("CF-Ray") or r.headers.get("cf-ray")
+        server_hdr = r.headers.get("Server")
+        if cf_ray or server_hdr:
+            print(f"[push]   response server={server_hdr!r} cf-ray={cf_ray!r}")
     return ok
 
 
