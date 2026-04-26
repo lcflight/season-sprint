@@ -39,7 +39,13 @@ export const resolveAuth: MiddlewareHandler<Env> = async (c, next) => {
     if (!user) {
       return c.text("Unauthorized", 401);
     }
-    c.set("auth", { userId: user.clerkUserId, email: user.email });
+    // Coerce empty/null email to undefined so getEmail's `if (cachedEmail)`
+    // check is unambiguous. We deliberately do NOT fall through to a Clerk
+    // lookup here — see getEmail.ts for the fallback chain.
+    c.set("auth", {
+      userId: user.clerkUserId,
+      email: user.email || undefined,
+    });
     return next();
   }
 
