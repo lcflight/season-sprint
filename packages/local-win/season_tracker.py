@@ -222,11 +222,24 @@ def _probe_server(cfg: Config) -> tuple[bool, int]:
 def load_or_prompt_config() -> Config:
     env = _parse_env_file(ENV_FILE)
     needed = {"AUTH_TOKEN", "MONITOR_INDEX"}
-    if not needed.issubset(env) or not env["MONITOR_INDEX"].isdigit():
+    # Re-prompt if any field is missing OR present-but-empty/invalid.
+    # An `AUTH_TOKEN=` line in .env (empty value) used to pass issubset()
+    # and silently propagate an empty token to push_record, which sent
+    # `Authorization: ` and got bounced at Cloudflare's edge with an empty
+    # 400 — invisible in wrangler tail and impossible to diagnose without
+    # the request dump.
+    auth_token = env.get("AUTH_TOKEN", "").strip()
+    monitor_raw = env.get("MONITOR_INDEX", "").strip()
+    if (
+        not needed.issubset(env)
+        or not auth_token
+        or not monitor_raw.isdigit()
+        or int(monitor_raw) <= 0
+    ):
         return _prompt_config()
     return Config(
-        auth_token=env["AUTH_TOKEN"],
-        monitor_index=int(env["MONITOR_INDEX"]),
+        auth_token=auth_token,
+        monitor_index=int(monitor_raw),
     )
 
 
