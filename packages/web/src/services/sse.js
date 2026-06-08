@@ -26,7 +26,8 @@ async function getStreamToken() {
 }
 
 /**
- * Opens an SSE connection to /me/stream for real-time record updates.
+ * Opens a WebSocket connection to /me/stream for real-time record updates and
+ * reconnects with backoff on drop. Messages are JSON `{ event, data }`.
  *
  * @param {Object} handlers
  * @param {(record: object) => void} handlers.onUpsert
@@ -38,76 +39,94 @@ async function getStreamToken() {
 export async function connectSSE(handlers) {
   if (!BASE) return { close() {} };
 
-  let es = null;
+  // http -> ws, https -> wss
+  const wsBase = BASE.replace(/^http/, "ws");
+
+  let ws = null;
   let closed = false;
-  let refreshTimer = null;
+  let pingTimer = null;
+  let reconnectTimer = null;
+
+  function dispatch(message) {
+    let parsed;
+    try {
+      parsed = JSON.parse(message);
+    } catch {
+      return; // e.g. "pong" keepalive
+    }
+    const { event, data } = parsed || {};
+    switch (event) {
+      case "record:upsert":
+        handlers.onUpsert?.(data);
+        break;
+      case "record:delete":
+        handlers.onDelete?.(data);
+        break;
+      case "record:delete-all":
+        handlers.onDeleteAll?.();
+        break;
+      case "record:bulk-upsert":
+        handlers.onBulkUpsert?.(data);
+        break;
+    }
+  }
+
+  function scheduleReconnect() {
+    if (pingTimer) {
+      clearInterval(pingTimer);
+      pingTimer = null;
+    }
+    ws = null;
+    if (!closed) reconnectTimer = setTimeout(open, 2000);
+  }
 
   async function open() {
     if (closed) return;
 
     const token = await getStreamToken();
     if (!token) {
-      setTimeout(open, 5000);
+      reconnectTimer = setTimeout(open, 5000);
       return;
     }
 
-    const url = `${BASE}/me/stream?token=${encodeURIComponent(token)}`;
-    es = new EventSource(url);
+    ws = new WebSocket(`${wsBase}/me/stream?token=${encodeURIComponent(token)}`);
 
-    es.addEventListener("record:upsert", (e) => {
+    ws.onopen = () => {
+      // Keep the socket warm; the server auto-responds "pong".
+      pingTimer = setInterval(() => {
+        try {
+          ws?.send("ping");
+        } catch {
+          // ignore
+        }
+      }, 25000);
+    };
+
+    ws.onmessage = (e) => dispatch(e.data);
+    ws.onclose = scheduleReconnect;
+    ws.onerror = () => {
       try {
-        handlers.onUpsert?.(JSON.parse(e.data));
+        ws?.close();
       } catch {
-        // ignore malformed events
-      }
-    });
-
-    es.addEventListener("record:delete", (e) => {
-      try {
-        handlers.onDelete?.(JSON.parse(e.data));
-      } catch {
-        // ignore
-      }
-    });
-
-    es.addEventListener("record:delete-all", () => {
-      handlers.onDeleteAll?.();
-    });
-
-    es.addEventListener("record:bulk-upsert", (e) => {
-      try {
-        handlers.onBulkUpsert?.(JSON.parse(e.data));
-      } catch {
-        // ignore
-      }
-    });
-
-    es.onerror = () => {
-      if (es.readyState === EventSource.CLOSED) {
-        es = null;
-        setTimeout(open, 2000);
+        // onclose will handle reconnect
       }
     };
   }
 
   await open();
 
-  // Refresh token every 4 minutes (token TTL is 5 min)
-  refreshTimer = setInterval(() => {
-    if (es && !closed) {
-      es.close();
-      es = null;
-      open();
-    }
-  }, 4 * 60 * 1000);
-
   return {
     close() {
       closed = true;
-      clearInterval(refreshTimer);
-      if (es) {
-        es.close();
-        es = null;
+      if (pingTimer) clearInterval(pingTimer);
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (ws) {
+        try {
+          ws.close();
+        } catch {
+          // ignore
+        }
+        ws = null;
       }
     },
   };

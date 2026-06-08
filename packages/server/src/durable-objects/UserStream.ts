@@ -1,25 +1,28 @@
 /**
- * Durable Object that manages SSE connections for a single user.
+ * Durable Object that manages live connections for a single user via WebSockets,
+ * using the Hibernation API so connections survive DO eviction.
  *
  * Routes (internal, called by the Worker):
- *   GET  /connect   — Establishes an SSE stream (returned to the client)
- *   POST /broadcast — Sends an event to all connected clients
+ *   GET  (Upgrade: websocket) — establishes a hibernatable WebSocket for a client
+ *   POST /broadcast           — sends an event to all of the user's connected sockets
  */
 export class UserStream implements DurableObject {
-  private connections: Set<WritableStreamDefaultWriter> = new Set();
   private state: DurableObjectState;
 
   constructor(state: DurableObjectState) {
     this.state = state;
+    // Answer client "ping" messages with "pong" without waking the DO from hibernation.
+    this.state.setWebSocketAutoResponse(
+      new WebSocketRequestResponsePair("ping", "pong")
+    );
   }
 
   async fetch(request: Request): Promise<Response> {
-    const url = new URL(request.url);
-
-    if (request.method === "GET" && url.pathname === "/connect") {
-      return this.handleConnect();
+    if (request.headers.get("Upgrade") === "websocket") {
+      return this.handleUpgrade();
     }
 
+    const url = new URL(request.url);
     if (request.method === "POST" && url.pathname === "/broadcast") {
       return this.handleBroadcast(request);
     }
@@ -27,32 +30,13 @@ export class UserStream implements DurableObject {
     return new Response("Not found", { status: 404 });
   }
 
-  private handleConnect(): Response {
-    const { readable, writable } = new TransformStream();
-    const writer = writable.getWriter();
-    this.connections.add(writer);
-
-    // Send an initial comment to flush response headers through the edge
-    void writer.write(new TextEncoder().encode(":connected\n\n"));
-
-    // Schedule keepalive if this is the first connection
-    if (this.connections.size === 1) {
-      void this.state.storage.setAlarm(Date.now() + 30_000);
-    }
-
-    // Clean up when the client disconnects
-    void writer.closed
-      .then(() => this.connections.delete(writer))
-      .catch(() => this.connections.delete(writer));
-
-    return new Response(readable, {
-      headers: {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
-        Connection: "keep-alive",
-        "Access-Control-Allow-Origin": "*",
-      },
-    });
+  private handleUpgrade(): Response {
+    const pair = new WebSocketPair();
+    const client = pair[0];
+    const server = pair[1];
+    // Hibernation API: register the socket with the runtime (do NOT call server.accept()).
+    this.state.acceptWebSocket(server);
+    return new Response(null, { status: 101, webSocket: client });
   }
 
   private async handleBroadcast(request: Request): Promise<Response> {
@@ -61,41 +45,18 @@ export class UserStream implements DurableObject {
       data: unknown;
     }>();
 
-    const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-    await this.send(payload);
+    const message = JSON.stringify({ event, data });
+    for (const ws of this.state.getWebSockets()) {
+      try {
+        ws.send(message);
+      } catch {
+        // Dead socket; the runtime removes it from getWebSockets() automatically.
+      }
+    }
 
     return new Response("ok");
   }
 
-  async alarm(): Promise<void> {
-    // Send keepalive comment to prevent proxy timeouts
-    await this.send(":keepalive\n\n");
-
-    // Reschedule if there are still active connections
-    if (this.connections.size > 0) {
-      void this.state.storage.setAlarm(Date.now() + 30_000);
-    }
-  }
-
-  private async send(message: string): Promise<void> {
-    const encoded = new TextEncoder().encode(message);
-    const dead: WritableStreamDefaultWriter[] = [];
-
-    for (const writer of this.connections) {
-      try {
-        await writer.write(encoded);
-      } catch {
-        dead.push(writer);
-      }
-    }
-
-    for (const writer of dead) {
-      this.connections.delete(writer);
-      try {
-        void writer.close();
-      } catch {
-        // already closed
-      }
-    }
-  }
+  // No webSocketClose/webSocketError handlers are needed: with the Hibernation API,
+  // closed/errored sockets are removed from getWebSockets() automatically.
 }

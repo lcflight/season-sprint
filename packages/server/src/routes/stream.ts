@@ -49,7 +49,8 @@ async function verifyStreamToken(
   return valid ? userId : null;
 }
 
-/** SSE stream — authenticates via stream token or API key in query param */
+/** Live stream — authenticates via stream token or API key in query param, then
+ *  forwards the WebSocket upgrade to the user's Durable Object. */
 stream.get("/", async (c) => {
   const token = c.req.query("token");
   if (!token) return c.text("Unauthorized", 401);
@@ -72,13 +73,15 @@ stream.get("/", async (c) => {
 
   if (!userId) return c.text("Unauthorized", 401);
 
+  if (c.req.header("Upgrade") !== "websocket") {
+    return c.text("Expected WebSocket upgrade", 426);
+  }
+
   const id = c.env.USER_STREAM.idFromName(userId);
   const stub = c.env.USER_STREAM.get(id);
 
-  const url = new URL(c.req.url);
-  url.pathname = "/connect";
-  url.search = "";
-  return stub.fetch(url.toString());
+  // Forward the raw upgrade request so the WebSocket handshake reaches the DO.
+  return stub.fetch(c.req.raw);
 });
 
 export default stream;
