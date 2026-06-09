@@ -26,6 +26,17 @@ struct SeasonsResponse: Codable, Sendable {
     let currentSeason: Season?
 }
 
+/// Request body for creating/updating a record.
+struct RecordWrite: Encodable, Sendable {
+    let date: String
+    let winPoints: Int
+}
+
+/// Response from `POST /me/records`.
+struct UpsertResponse: Decodable, Sendable {
+    let record: APIRecord
+}
+
 /// A normalized point for the dashboard: one cumulative win-points value per day.
 /// Mirrors the `{ remoteId, date, y }` shape used in the web app's usePointsData.js.
 struct Point: Identifiable, Sendable, Equatable {
@@ -63,10 +74,24 @@ enum DateKey {
 
     /// Today's local day key (matches the web app, which keys "today" by local date).
     static func today() -> String {
-        let local = DateFormatter()
-        local.calendar = Calendar(identifier: .gregorian)
-        local.locale = Locale(identifier: "en_US_POSIX")
-        local.dateFormat = "yyyy-MM-dd"
-        return local.string(from: Date())
+        dayString(from: Date())
+    }
+
+    private static let localDayFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.calendar = Calendar(identifier: .gregorian)
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
+
+    /// Local `yyyy-MM-dd` day key for an arbitrary date (for the entry DatePicker).
+    static func dayString(from date: Date) -> String {
+        localDayFormatter.string(from: date)
+    }
+
+    /// Parse a `yyyy-MM-dd` day key into a local-midnight Date (to seed a DatePicker).
+    static func localDate(from day: String) -> Date? {
+        localDayFormatter.date(from: day)
     }
 }

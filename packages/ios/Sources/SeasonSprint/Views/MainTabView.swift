@@ -13,6 +13,8 @@ struct MainTabView: View {
         TabView {
             GraphTabView(store: store, showSettings: $showSettings)
                 .tabItem { Label("Graph", systemImage: "chart.xyaxis.line") }
+            LogTabView(store: store, showSettings: $showSettings)
+                .tabItem { Label("Log", systemImage: "square.and.pencil") }
             DetailsTabView(store: store, showSettings: $showSettings)
                 .tabItem { Label("Details", systemImage: "list.bullet") }
         }

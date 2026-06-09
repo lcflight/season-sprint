@@ -19,6 +19,7 @@ struct GraphTabView: View {
                         goal: store.goal,
                         rank: store.rank,
                         pace: store.pace,
+                        todayGain: store.todayGain,
                         showRankOverlay: settings.showRankOverlay,
                         showAveragePace: settings.showAveragePace,
                         showDeviationWedge: settings.showDeviationWedge
@@ -50,14 +51,16 @@ private struct CompactSummary: View {
     var body: some View {
         let accent = tierColor(rank.badge)
         VStack(spacing: 8) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(rank.badge)
-                    .font(.title3.bold())
-                    .foregroundStyle(accent)
-                if isLive {
-                    Image(systemName: "dot.radiowaves.left.and.right")
-                        .font(.caption2)
-                        .foregroundStyle(.green)
+            HStack(alignment: .center) {
+                HStack(alignment: .center, spacing: 6) {
+                    Text(rank.badge)
+                        .font(.title3.bold())
+                        .foregroundStyle(accent)
+                    if isLive {
+                        Image(systemName: "dot.radiowaves.left.and.right")
+                            .font(.caption)
+                            .foregroundStyle(.green)
+                    }
                 }
                 Spacer()
                 Text("\(rank.points)")
