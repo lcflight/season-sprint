@@ -29,6 +29,45 @@ enum APIClient {
         return try JSONDecoder().decode([APIRecord].self, from: data)
     }
 
+    /// `POST /me/records` — upsert a record by date; returns the saved record.
+    @MainActor
+    static func upsertRecord(date: String, winPoints: Int) async throws -> APIRecord {
+        guard let auth = await authorizationHeader() else { throw APIError.notAuthenticated }
+        var req = URLRequest(url: Config.serverURL.appendingPathComponent("me/records"))
+        req.httpMethod = "POST"
+        req.setValue(auth, forHTTPHeaderField: "Authorization")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONEncoder().encode(RecordWrite(date: date, winPoints: winPoints))
+        let (data, response) = try await URLSession.shared.data(for: req)
+        try check(response)
+        return try JSONDecoder().decode(UpsertResponse.self, from: data).record
+    }
+
+    /// `PUT /me/records/:id` — edit a record in place; returns the updated record.
+    @MainActor
+    static func updateRecord(id: String, date: String, winPoints: Int) async throws -> APIRecord {
+        guard let auth = await authorizationHeader() else { throw APIError.notAuthenticated }
+        var req = URLRequest(url: Config.serverURL.appendingPathComponent("me/records/\(id)"))
+        req.httpMethod = "PUT"
+        req.setValue(auth, forHTTPHeaderField: "Authorization")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONEncoder().encode(RecordWrite(date: date, winPoints: winPoints))
+        let (data, response) = try await URLSession.shared.data(for: req)
+        try check(response)
+        return try JSONDecoder().decode(APIRecord.self, from: data)
+    }
+
+    /// `DELETE /me/records/:id`
+    @MainActor
+    static func deleteRecord(id: String) async throws {
+        guard let auth = await authorizationHeader() else { throw APIError.notAuthenticated }
+        var req = URLRequest(url: Config.serverURL.appendingPathComponent("me/records/\(id)"))
+        req.httpMethod = "DELETE"
+        req.setValue(auth, forHTTPHeaderField: "Authorization")
+        let (_, response) = try await URLSession.shared.data(for: req)
+        try check(response)
+    }
+
     /// `GET /seasons` — public (no auth); returns the current season window, or nil.
     static func getSeasons() async throws -> Season? {
         let req = URLRequest(url: Config.serverURL.appendingPathComponent("seasons"))

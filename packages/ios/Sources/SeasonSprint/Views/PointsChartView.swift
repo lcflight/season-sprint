@@ -33,6 +33,7 @@ struct PointsChartView: View {
     let goal: Int
     let rank: RankInfo
     let pace: PaceStats?
+    var todayGain: Int? = nil
     var showRankOverlay = false
     var showAveragePace = false
     var showDeviationWedge = false
@@ -123,6 +124,22 @@ struct PointsChartView: View {
         .modifier(XScale(domain: xDomain))
         .frame(height: 300)
         .clipped()
+        .overlay(alignment: .topLeading) { todayBadge }
+    }
+
+    @ViewBuilder private var todayBadge: some View {
+        if let todayGain {
+            VStack(alignment: .leading, spacing: 0) {
+                Text("Today")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Text("\(todayGain >= 0 ? "+" : "")\(todayGain)")
+                    .font(.headline.bold())
+                    .monospacedDigit()
+                    .foregroundStyle(todayGain >= 0 ? .green : .red)
+            }
+            .padding(6)
+        }
     }
 
     private var legend: some View {

@@ -139,6 +139,50 @@ final class DashboardStore {
         }
     }
 
+    // MARK: Writes
+
+    private(set) var isWriting = false
+
+    /// Add or overwrite the record for a day (`POST /me/records`).
+    func addOrSet(date: String, winPoints: Int) async {
+        isWriting = true
+        defer { isWriting = false }
+        do {
+            let record = try await APIClient.upsertRecord(date: date, winPoints: winPoints)
+            upsert(record)
+        } catch {
+            errorMessage = "Couldn't save that point."
+        }
+    }
+
+    /// Edit an existing record in place (`PUT /me/records/:id`). Handles a date change by
+    /// dropping the old day entry once the server confirms.
+    func updatePoint(_ point: Point, date: String, winPoints: Int) async {
+        isWriting = true
+        defer { isWriting = false }
+        do {
+            let updated = try await APIClient.updateRecord(id: point.remoteId, date: date, winPoints: winPoints)
+            if point.day != String(updated.date.prefix(10)) {
+                points.removeAll { $0.remoteId == point.remoteId }
+            }
+            upsert(updated)
+        } catch {
+            errorMessage = "Couldn't update that point."
+            await load()
+        }
+    }
+
+    /// Delete a record (`DELETE /me/records/:id`), optimistically removing it locally.
+    func deletePoint(_ point: Point) async {
+        points.removeAll { $0.remoteId == point.remoteId }
+        do {
+            try await APIClient.deleteRecord(id: point.remoteId)
+        } catch {
+            errorMessage = "Couldn't delete that point."
+            await load()
+        }
+    }
+
     private func upsert(_ record: APIRecord) {
         let point = Point(record: record)
         if let idx = points.firstIndex(where: { $0.remoteId == point.remoteId || $0.day == point.day }) {
