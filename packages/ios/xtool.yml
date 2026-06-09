@@ -1,3 +1,4 @@
 version: 1
 bundleID: com.lcarthur.seasonsprint
 product: SeasonSprint
+iconPath: Resources/AppIcon.png

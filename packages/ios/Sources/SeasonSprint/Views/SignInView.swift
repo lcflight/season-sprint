@@ -41,6 +41,8 @@ struct SignInView: View {
                     Button(action: { Task { await sendCode() } }) {
                         Label("Send code", systemImage: "paperplane")
                             .frame(maxWidth: .infinity)
+                            .opacity(isWorking ? 0 : 1)
+                            .overlay { if isWorking { ProgressView().tint(.white) } }
                     }
                     .buttonStyle(.borderedProminent)
                     .disabled(email.isEmpty || isWorking)
@@ -57,6 +59,8 @@ struct SignInView: View {
                     Button(action: { Task { await verify() } }) {
                         Label("Verify", systemImage: "checkmark.shield")
                             .frame(maxWidth: .infinity)
+                            .opacity(isWorking ? 0 : 1)
+                            .overlay { if isWorking { ProgressView().tint(.white) } }
                     }
                     .buttonStyle(.borderedProminent)
                     .disabled(code.isEmpty || isWorking)
@@ -71,15 +75,15 @@ struct SignInView: View {
             }
             .padding(.horizontal)
 
-            if let errorMessage {
-                Text(errorMessage)
-                    .font(.footnote)
-                    .foregroundStyle(.red)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal)
-            }
+            // Reserve a stable slot so showing an error doesn't reflow the form.
+            Text(errorMessage ?? " ")
+                .font(.footnote)
+                .foregroundStyle(.red)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal)
+                .frame(minHeight: 36)
+                .opacity(errorMessage == nil ? 0 : 1)
 
-            if isWorking { ProgressView() }
             Spacer()
         }
         .padding()

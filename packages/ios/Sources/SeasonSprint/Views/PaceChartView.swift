@@ -13,8 +13,8 @@ struct PaceChartView: View {
             Text("Daily pace")
                 .font(.headline)
 
-            if let end = season?.end {
-                let required = requiredPaceSeries(seasonPoints: points, goal: goal, end: end)
+            if let season {
+                let required = requiredPaceSeries(seasonPoints: points, goal: goal, end: season.end)
                 let earned = earnedPaceSeries(seasonPoints: points)
 
                 if required.isEmpty && earned.isEmpty {
@@ -32,6 +32,10 @@ struct PaceChartView: View {
                                 .interpolationMethod(.monotone)
                         }
                     }
+                    // Match the main chart so the timelines line up: same season x-domain,
+                    // and hide the y-axis so the plot's leading inset matches too.
+                    .chartXScale(domain: season.start...season.end)
+                    .chartYAxis(.hidden)
                     .frame(height: 130)
 
                     HStack(spacing: 14) {

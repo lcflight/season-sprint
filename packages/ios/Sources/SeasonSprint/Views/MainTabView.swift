@@ -10,13 +10,19 @@ struct MainTabView: View {
     @State private var showSettings = false
 
     var body: some View {
-        TabView {
-            GraphTabView(store: store, showSettings: $showSettings)
-                .tabItem { Label("Graph", systemImage: "chart.xyaxis.line") }
-            LogTabView(store: store, showSettings: $showSettings)
-                .tabItem { Label("Log", systemImage: "square.and.pencil") }
-            DetailsTabView(store: store, showSettings: $showSettings)
-                .tabItem { Label("Details", systemImage: "list.bullet") }
+        Group {
+            if store.hasLoaded {
+                TabView {
+                    GraphTabView(store: store, showSettings: $showSettings)
+                        .tabItem { Label("Graph", systemImage: "chart.xyaxis.line") }
+                    LogTabView(store: store, showSettings: $showSettings)
+                        .tabItem { Label("Log", systemImage: "square.and.pencil") }
+                    DetailsTabView(store: store, showSettings: $showSettings)
+                        .tabItem { Label("Details", systemImage: "list.bullet") }
+                }
+            } else {
+                BrandedLoadingView(message: "Loading your season…")
+            }
         }
         .task { await store.load() }
         .sheet(isPresented: $showSettings) {

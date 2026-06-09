@@ -24,6 +24,9 @@ let package = Package(
             name: "SeasonSprint",
             dependencies: [
                 .product(name: "ClerkKit", package: "clerk-ios"),
+            ],
+            resources: [
+                .copy("Resources/Logo.png"),
             ]
         ),
     ]

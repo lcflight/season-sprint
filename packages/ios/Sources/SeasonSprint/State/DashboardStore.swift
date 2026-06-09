@@ -9,6 +9,8 @@ import Observation
 final class DashboardStore {
     private(set) var points: [Point] = []
     private(set) var isLoading = false
+    /// True once the first load attempt has finished (success or failure).
+    private(set) var hasLoaded = false
     private(set) var errorMessage: String?
     private(set) var isLive = false
     private(set) var season: Season?
@@ -96,7 +98,7 @@ final class DashboardStore {
     func load() async {
         isLoading = true
         errorMessage = nil
-        defer { isLoading = false }
+        defer { isLoading = false; hasLoaded = true }
 
         // Season is public + best-effort; don't let its failure block records.
         if let s = try? await APIClient.getSeasons() {

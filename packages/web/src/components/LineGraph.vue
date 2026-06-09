@@ -8,6 +8,9 @@
       <div v-if="headerDisclaimer" class="lg-disclaimer">
         {{ headerDisclaimer }}
       </div>
+      <div v-if="isLive" class="live-indicator" title="Connected to live updates">
+        <span class="live-dot"></span>Live
+      </div>
     </header>
 
     <div v-if="!isAuthenticated && !isLoading" class="status-banner auth-banner">
@@ -432,6 +435,7 @@ const {
   isLoading,
   loadError,
   isAuthenticated,
+  isLive,
   sortedPoints,
   sortedPointsReverse,
   currentWinPoints,
@@ -803,6 +807,36 @@ try {
 
 .lg-header {
   margin-bottom: 8px;
+}
+.live-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #22c55e;
+}
+.live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #22c55e;
+  box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.6);
+  animation: live-pulse 2s ease-out infinite;
+}
+@keyframes live-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.5);
+  }
+  70% {
+    box-shadow: 0 0 0 6px rgba(34, 197, 94, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0);
+  }
 }
 .lg-gamemode {
   margin: 0;

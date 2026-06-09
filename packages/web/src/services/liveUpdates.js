@@ -36,7 +36,7 @@ async function getStreamToken() {
  * @param {(payload: {records: object[]}) => void} handlers.onBulkUpsert
  * @returns {Promise<{close: () => void}>}
  */
-export async function connectSSE(handlers) {
+export async function connectLiveUpdates(handlers) {
   if (!BASE) return { close() {} };
 
   // http -> ws, https -> wss
@@ -72,6 +72,7 @@ export async function connectSSE(handlers) {
   }
 
   function scheduleReconnect() {
+    handlers.onLive?.(false);
     if (pingTimer) {
       clearInterval(pingTimer);
       pingTimer = null;
@@ -92,6 +93,7 @@ export async function connectSSE(handlers) {
     ws = new WebSocket(`${wsBase}/me/stream?token=${encodeURIComponent(token)}`);
 
     ws.onopen = () => {
+      handlers.onLive?.(true);
       // Keep the socket warm; the server auto-responds "pong".
       pingTimer = setInterval(() => {
         try {
@@ -118,6 +120,7 @@ export async function connectSSE(handlers) {
   return {
     close() {
       closed = true;
+      handlers.onLive?.(false);
       if (pingTimer) clearInterval(pingTimer);
       if (reconnectTimer) clearTimeout(reconnectTimer);
       if (ws) {
