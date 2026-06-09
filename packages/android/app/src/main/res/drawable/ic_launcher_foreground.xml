@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Brand "S" sprinter mark, from packages/web/public/logo.svg, scaled into the adaptive
+     icon safe zone (background is the brand red, set in mipmap-anydpi-v26/ic_launcher.xml). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="360"
+    android:viewportHeight="360">
+    <group
+        android:pivotX="180"
+        android:pivotY="180"
+        android:scaleX="0.66"
+        android:scaleY="0.66">
+        <group
+            android:translateX="9.25"
+            android:translateY="-13.48">
+            <path
+                android:fillColor="#A4C9F5"
+                android:pathData="M71 308.45 L189.82 234.3 Q200 227.95 190.1 221.17 L109.9 166.23 Q100 159.45 109.12 151.65 L174.38 95.75 Q183.5 87.95 193.98 93.8 L272.52 137.6 Q283 143.45 273.82 151.19 L266.68 157.21 Q257.5 164.95 247.05 159.06 L196.95 130.84 Q186.5 124.95 177.76 133.17 L161.24 148.73 Q152.5 156.95 162.73 163.23 L252.27 218.17 Q262.5 224.45 253.62 232.51 L206.38 275.39 Q197.5 283.45 185.73 285.78 Z" />
+            <path
+                android:fillColor="#263342"
+                android:pathData="m185.5 227.37l-11.87-7.42-123.13 92z" />
+            <path
+                android:fillColor="#263342"
+                android:pathData="m167 214.45l-9-7.5-89.5 83.5z" />
+            <path
+                android:fillColor="#263342"
+                android:pathData="m268.5 120c-12.44 0-22.5-10.06-22.5-22.5 0-12.44 10.06-22.5 22.5-22.5 12.44 0 22.5 10.06 22.5 22.5 0 12.44-10.06 22.5-22.5 22.5z" />
+        </group>
+    </group>
+</vector>

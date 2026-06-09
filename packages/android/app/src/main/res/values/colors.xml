@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="brand_bg">#0B0D12</color>
+    <!-- Launcher icon background: THE FINALS brand red (matches Logo.png). -->
+    <color name="ic_launcher_background">#CE2C30</color>
+</resources>
