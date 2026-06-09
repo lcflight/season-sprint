@@ -1,6 +1,8 @@
 <template>
   <HeaderBar />
   <main class="container">
+    <!-- Mode toggle hidden for now — Ranked is disabled. -->
+    <!-- <ModeSwitcher /> -->
     <router-view />
   </main>
   <footer class="site-footer" role="contentinfo">
@@ -10,12 +12,15 @@
 
 <script>
 import HeaderBar from "./components/HeaderBar.vue";
+// ModeSwitcher hidden for now — Ranked is disabled.
+// import ModeSwitcher from "./components/ModeSwitcher.vue";
 import { loadSeasonJson } from "@/utils/season";
 
 export default {
   name: "App",
   components: {
     HeaderBar,
+    // ModeSwitcher,
   },
   data() {
     return { seasonInfo: null };
