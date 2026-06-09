@@ -8,7 +8,7 @@ import {
   bulkUpsertRecords,
   getAuthorizationHeader,
 } from '@/services/api'
-import { connectSSE } from '@/services/sse'
+import { connectLiveUpdates } from '@/services/liveUpdates'
 
 /**
  * Manages the points array and all API-backed CRUD operations.
@@ -24,6 +24,7 @@ export function usePointsData({ isSeasonValid, seasonStart, seasonEnd, autoSetSe
   const isLoading = ref(false)
   const loadError = ref('')
   const isAuthenticated = ref(false)
+  const isLive = ref(false)
 
   const sortedPoints = computed(() =>
     [...points].sort((a, b) => dateToMs(a.date) - dateToMs(b.date))
@@ -51,7 +52,7 @@ export function usePointsData({ isSeasonValid, seasonStart, seasonEnd, autoSetSe
     return Math.round((todayPoint.value.y - prevY) * 100) / 100
   })
 
-  let sseConnection = null
+  let liveConnection = null
 
   function upsertPoint(record) {
     const dateStr = typeof record.date === 'string' ? record.date.slice(0, 10) : ''
@@ -64,10 +65,13 @@ export function usePointsData({ isSeasonValid, seasonStart, seasonEnd, autoSetSe
     }
   }
 
-  async function openSSE() {
-    if (sseConnection) sseConnection.close()
+  async function openLiveUpdates() {
+    if (liveConnection) liveConnection.close()
     try {
-      sseConnection = await connectSSE({
+      liveConnection = await connectLiveUpdates({
+        onLive(v) {
+          isLive.value = v
+        },
         onUpsert: upsertPoint,
         onDelete({ id }) {
           const idx = points.findIndex((p) => p.remoteId === id)
@@ -81,13 +85,14 @@ export function usePointsData({ isSeasonValid, seasonStart, seasonEnd, autoSetSe
         },
       })
     } catch {
-      // SSE is optional — REST still works
+      // Live updates are optional — REST still works
     }
   }
 
   onScopeDispose(() => {
-    sseConnection?.close()
-    sseConnection = null
+    liveConnection?.close()
+    liveConnection = null
+    isLive.value = false
   })
 
   async function loadPointsFromAPI() {
@@ -107,11 +112,11 @@ export function usePointsData({ isSeasonValid, seasonStart, seasonEnd, autoSetSe
         y: r.winPoints,
       }))
       points.splice(0, points.length, ...mapped)
-      // Delay SSE until after page is fully loaded to avoid Firefox aborting
+      // Delay live updates until after page is fully loaded to avoid Firefox aborting
       if (document.readyState === 'complete') {
-        openSSE()
+        openLiveUpdates()
       } else {
-        window.addEventListener('load', () => setTimeout(openSSE, 500), { once: true })
+        window.addEventListener('load', () => setTimeout(openLiveUpdates, 500), { once: true })
       }
     } catch (e) {
       loadError.value = 'Failed to load data. Please refresh to try again.'
@@ -275,6 +280,7 @@ export function usePointsData({ isSeasonValid, seasonStart, seasonEnd, autoSetSe
     isLoading,
     loadError,
     isAuthenticated,
+    isLive,
     sortedPoints,
     sortedPointsReverse,
     currentWinPoints,

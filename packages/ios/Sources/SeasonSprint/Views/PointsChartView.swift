@@ -122,6 +122,7 @@ struct PointsChartView: View {
         .chartYScale(domain: 0...yMax)
         .chartYAxis(.hidden)
         .modifier(XScale(domain: xDomain))
+        .chartOverlay { proxy in zoneLabels(proxy) }
         .frame(height: 300)
         .clipped()
         .overlay(alignment: .topLeading) { todayBadge }
@@ -164,6 +165,54 @@ struct PointsChartView: View {
     }
 
     // MARK: Derived chart data
+
+    /// Tier-name labels placed inside the plot at each color zone's vertical midpoint
+    /// (leading-aligned), so they don't consume horizontal axis space.
+    @ViewBuilder
+    private func zoneLabels(_ proxy: ChartProxy) -> some View {
+        if showRankOverlay {
+            GeometryReader { geo in
+                if let plotFrame = proxy.plotFrame {
+                    let rect = geo[plotFrame]
+                    ForEach(tierZones, id: \.mid) { zone in
+                        if let y = proxy.position(forY: zone.mid) {
+                            Text(zone.name)
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(zone.color.opacity(0.15))
+                                .padding(.trailing, 4)
+                                .frame(width: rect.width, alignment: .trailing)
+                                .position(x: rect.minX + rect.width / 2, y: rect.minY + y)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// One entry per color zone (tier), with the vertical midpoint to label it at.
+    /// Adjacent same-tier sub-tiers share a color, so they form a single zone.
+    private var tierZones: [(name: String, mid: Double, color: Color)] {
+        var zones: [(String, Double, Color)] = []
+        let t = worldTourThresholds
+        var lower = 0
+        var i = 0
+        while i < t.count {
+            let tier = t[i].badge.split(separator: " ").first.map(String.init) ?? t[i].badge
+            var j = i
+            while j + 1 < t.count,
+                  (t[j + 1].badge.split(separator: " ").first.map(String.init) ?? "") == tier {
+                j += 1
+            }
+            let upper = t[j].points
+            let mid = (Double(lower) + Double(upper)) / 2
+            if mid < yMax {
+                zones.append((tier, mid, tierColor(t[i].badge)))
+            }
+            lower = upper
+            i = j + 1
+        }
+        return zones
+    }
 
     private var rankBands: [RankBand] {
         var bands: [RankBand] = []

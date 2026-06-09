@@ -27,11 +27,9 @@ struct LogTabView: View {
                             newValueText = ""
                         }
                     } label: {
-                        if store.isWriting {
-                            ProgressView()
-                        } else {
-                            Text("Save point")
-                        }
+                        Text("Save point")
+                            .opacity(store.isWriting ? 0 : 1)
+                            .overlay { if store.isWriting { ProgressView() } }
                     }
                     .disabled(parsedNewValue == nil || store.isWriting)
                 } header: {
