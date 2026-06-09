@@ -1,15 +1,12 @@
 <template>
   <div class="line-graph">
     <header class="lg-header">
-      <h2 class="lg-gamemode">World Tour</h2>
+      <h2 v-if="gamemode" class="lg-gamemode">{{ gamemode }}</h2>
       <h2 class="lg-season-title">
         {{ headerTitle || seasonTitle || "Interactive Line Graph" }}
       </h2>
       <div v-if="headerDisclaimer" class="lg-disclaimer">
         {{ headerDisclaimer }}
-      </div>
-      <div v-if="isLive" class="live-indicator" title="Connected to live updates">
-        <span class="live-dot"></span>Live
       </div>
     </header>
 
@@ -17,27 +14,49 @@
       Sign in to save and sync your data.
     </div>
 
-    <div class="controls" v-if="showGoalControl">
-      <GoalControls
-        :goal-options="goalOptions"
-        :selected-goal-index="selectedGoalIndex"
-        :goal-win-points="goalWinPoints"
-        :rank-info="rankInfo"
-        :current-win-points="currentWinPoints"
-        :to-next="toNext"
-        :progress-pct="progressPct"
-        unit="WP"
-        @select-goal="onSelectGoal"
-        @set-goal-win-points="setGoalWinPoints"
-      />
-    </div>
+    <!-- Unified status: goal/progress, today's gain + live state, required pace -->
+    <section class="lg-status">
+      <div class="controls" v-if="showGoalControl">
+        <GoalControls
+          :goal-options="goalOptions"
+          :selected-goal-index="selectedGoalIndex"
+          :goal-win-points="goalWinPoints"
+          :rank-info="rankInfo"
+          :current-win-points="currentWinPoints"
+          :to-next="toNext"
+          :progress-pct="progressPct"
+          unit="WP"
+          @select-goal="onSelectGoal"
+          @set-goal-win-points="setGoalWinPoints"
+        />
+      </div>
 
-    <StatsPanel
-      v-if="isSeasonValid"
-      :required-per-day-zero="requiredPerDayZero"
-      :required-per-day-from-last="requiredPerDayFromLast"
-      :is-from-last-defined="isFromLastDefined"
-    />
+      <div class="status-row" v-if="isSeasonValid">
+        <div class="today-progress">
+          <template v-if="todayPoint">
+            <span class="today-label">Today</span>
+            <span class="today-value">+{{ todayGain }} pts</span>
+          </template>
+          <template v-else>
+            <span class="today-label">No points logged today</span>
+          </template>
+        </div>
+        <div
+          v-if="isLive"
+          class="live-indicator"
+          title="Connected to live updates"
+        >
+          <span class="live-dot"></span>Live
+        </div>
+      </div>
+
+      <StatsPanel
+        v-if="isSeasonValid"
+        :required-per-day-zero="requiredPerDayZero"
+        :required-per-day-from-last="requiredPerDayFromLast"
+        :is-from-last-defined="isFromLastDefined"
+      />
+    </section>
 
     <!-- Custom content below stats -->
     <slot name="below-stats"></slot>
@@ -85,15 +104,6 @@
     <p v-if="!isSeasonValid" class="error">Season start must be before end.</p>
 
     <div class="chart-wrapper" v-if="isSeasonValid">
-      <div class="today-progress">
-        <template v-if="todayPoint">
-          <span class="today-label">Today</span>
-          <span class="today-value">+{{ todayGain }} pts</span>
-        </template>
-        <template v-else>
-          <span class="today-label">No points logged today</span>
-        </template>
-      </div>
       <button
         v-if="isOutOfDefault"
         class="recenter-btn"
@@ -321,18 +331,28 @@
     </div>
 
     <div class="chart-actions">
-      <button @click="clearPoints" :disabled="points.length === 0 || !isAuthenticated">
-        Clear
-      </button>
-      <button @click="openPointsModal" :disabled="points.length === 0">
-        View points ({{ points.length }})
-      </button>
+      <div class="action-group">
+        <button @click="openPointsModal" :disabled="points.length === 0">
+          View points ({{ points.length }})
+        </button>
+        <button @click="exportCSV" :disabled="points.length === 0">
+          Export CSV
+        </button>
+        <button @click="openImportModal" :disabled="!isAuthenticated">
+          Import CSV
+        </button>
+        <button
+          class="btn-danger"
+          @click="clearPoints"
+          :disabled="points.length === 0 || !isAuthenticated"
+        >
+          Clear
+        </button>
+      </div>
       <span class="spacer"></span>
-      <button @click="exportCSV" :disabled="points.length === 0">
-        Export CSV
-      </button>
-      <button @click="openImportModal" :disabled="!isAuthenticated">Import CSV</button>
-      <button @click="openSettingsModal" title="Settings" aria-label="Open settings">⚙️</button>
+      <div class="action-group">
+        <button @click="openSettingsModal" title="Settings" aria-label="Open settings">⚙️</button>
+      </div>
     </div>
   </div>
 </template>
@@ -808,11 +828,27 @@ try {
 .lg-header {
   margin-bottom: 8px;
 }
+
+/* Unified status block: goal/progress, today + live, required pace */
+.lg-status {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 .live-indicator {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  margin-top: 6px;
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -825,7 +861,11 @@ try {
   border-radius: 999px;
   background: #22c55e;
   box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.6);
-  animation: live-pulse 2s ease-out infinite;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .live-dot {
+    animation: live-pulse 2s ease-out infinite;
+  }
 }
 @keyframes live-pulse {
   0% {
@@ -865,7 +905,14 @@ try {
   gap: 12px;
   align-items: center;
   flex-wrap: wrap;
-  margin-bottom: 12px;
+}
+
+/* The status block owns spacing via gap; reset child component margins. */
+.lg-status :deep(.stats) {
+  margin: 0;
+}
+.lg-status :deep(.rank-indicator) {
+  margin: 0;
 }
 
 .range-form,
@@ -918,11 +965,28 @@ try {
   display: flex;
   gap: 8px;
   align-items: center;
-  margin-top: 8px;
+  margin-top: 12px;
+}
+
+.chart-actions .action-group {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
 }
 
 .chart-actions .spacer {
   flex: 1;
+}
+
+.btn-danger {
+  color: var(--danger);
+  border-color: color-mix(in oklab, var(--danger) 30%, var(--surface));
+}
+.btn-danger:hover {
+  border-color: color-mix(in oklab, var(--danger) 55%, var(--surface));
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.45),
+    0 0 0 3px color-mix(in oklab, var(--danger) 30%, transparent);
 }
 
 .stats {
@@ -1181,6 +1245,9 @@ svg.nav-disabled {
 @media (max-width: 480px) {
   .chart-actions {
     flex-wrap: wrap;
+  }
+  .chart-actions .action-group {
+    flex: 1 1 auto;
   }
   .chart-actions button {
     flex: 1 1 auto;

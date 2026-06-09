@@ -53,8 +53,6 @@ struct StatsGridView: View {
                     value: pace.isFromLastDefined ? format(pace.requiredPerDayFromLast) : "—",
                     accent: pace.isFromLastDefined ? .green : .secondary
                 )
-                StatCard(label: "Days left", value: "\(pace.daysRemaining)")
-                StatCard(label: "Goal", value: "\(store.goal)", accent: .orange)
             }
         }
     }

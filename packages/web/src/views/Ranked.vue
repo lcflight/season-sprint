@@ -1,13 +1,27 @@
 <template>
   <section>
-    <LineGraph storageKey="ranked" :goalOptions="rankedThresholds" @win-points="onRankScore">
-    </LineGraph>
+    <ModeLayout>
+      <template #main>
+        <LineGraph
+          ref="graphRef"
+          storageKey="ranked"
+          gamemode="Ranked"
+          :goalOptions="rankedThresholds"
+          @win-points="onRankScore"
+        />
+      </template>
+      <template #aside>
+        <SetPointsCard @add-at-date="addCustom" @add-today="addToday" />
+      </template>
+    </ModeLayout>
   </section>
 </template>
 
 <script>
 import { ref, computed } from 'vue'
 import LineGraph from '@/components/LineGraph.vue'
+import SetPointsCard from '@/components/SetPointsCard.vue'
+import ModeLayout from '@/components/ModeLayout.vue'
 import { useRankInfo } from '@/composables/useRankInfo'
 
 // Ranked RS thresholds from THE FINALS wiki (Rank Score to reach tier)
@@ -38,7 +52,7 @@ const RANKED_THRESHOLDS = [
 
 export default {
   name: 'RankedView',
-  components: { LineGraph },
+  components: { LineGraph, SetPointsCard, ModeLayout },
   setup() {
     const rankScore = ref(0)
     const thresholds = computed(() => RANKED_THRESHOLDS)
@@ -49,7 +63,18 @@ export default {
     onRankScore(v) {
       this.rankScore = Number(v) || 0
     },
+    addCustom({ date, y }) {
+      const graph = this.$refs.graphRef
+      if (graph && typeof graph.addPointAtDate === 'function') {
+        graph.addPointAtDate(date, y)
+      }
+    },
+    addToday({ y }) {
+      const graph = this.$refs.graphRef
+      if (graph && typeof graph.addWinPoints === 'function') {
+        graph.addWinPoints(y)
+      }
+    },
   },
 }
 </script>
-

@@ -21,6 +21,7 @@ from __future__ import annotations
 import datetime as dt
 import getpass
 import os
+import re
 import signal
 import sys
 import time
@@ -125,6 +126,20 @@ def _mask_token(t: str) -> str:
     return (t[:5] + "…" + t[-4:]) if len(t) > 12 else "<redacted>"
 
 
+# Canonical API key format produced by the server: "sk_" + 64 lowercase hex.
+# See packages/server/src/utils/apiKey.ts (generateApiKey). We validate against
+# this at config-load time so a truncated paste — e.g. the 11-char prefix shown
+# in the web UI's API Keys list, or a paste interrupted by a stray newline —
+# is caught before it gets sent to the server. Cloudflare's edge silently
+# returns an empty 400 for some malformed Authorization values, which is
+# painful to diagnose without this check.
+_API_KEY_RE = re.compile(r"^sk_[0-9a-f]{64}$")
+
+
+def _looks_like_api_key(t: str) -> bool:
+    return bool(_API_KEY_RE.match(t))
+
+
 def _parse_env_file(path: Path) -> dict[str, str]:
     out: dict[str, str] = {}
     if not path.is_file():
@@ -163,12 +178,28 @@ def _prompt_config() -> Config:
     print("═══ Season Sprint Tracker — Setup ═══\n")
     print(f"Server: {SERVER_URL}\n")
 
-    auth_token = existing.get("AUTH_TOKEN", "")
-    if not auth_token:
-        print("AUTH_TOKEN — your personal API key (starts with sk_)")
-        print("  Generate one from the web app: click 'API Keys' in the header.")
-        while not auth_token:
+    auth_token = existing.get("AUTH_TOKEN", "").strip()
+    if not _looks_like_api_key(auth_token):
+        if auth_token:
+            # Stored value is present but malformed. Tell the user why we're
+            # re-prompting so they don't think the script is just being weird.
+            print("Saved AUTH_TOKEN is not a valid API key — re-entering.")
+        print("AUTH_TOKEN — your personal API key (sk_ + 64 hex chars, 67 chars total)")
+        print("  Generate one from the web app: click 'API Keys' in the header,")
+        print("  then copy the full key shown in the green banner — not the")
+        print("  truncated prefix shown in the list below it.")
+        auth_token = ""
+        while not _looks_like_api_key(auth_token):
             auth_token = getpass.getpass("AUTH_TOKEN (hidden): ").strip()
+            if not auth_token:
+                continue
+            if not _looks_like_api_key(auth_token):
+                print(
+                    f"  That doesn't look like an API key "
+                    f"(got {len(auth_token)} chars, expected 67 starting with 'sk_'). "
+                    f"Try again."
+                )
+                auth_token = ""
 
     monitor_index = 0
     if existing.get("MONITOR_INDEX", "").isdigit():
@@ -222,11 +253,26 @@ def _probe_server(cfg: Config) -> tuple[bool, int]:
 def load_or_prompt_config() -> Config:
     env = _parse_env_file(ENV_FILE)
     needed = {"AUTH_TOKEN", "MONITOR_INDEX"}
-    if not needed.issubset(env) or not env["MONITOR_INDEX"].isdigit():
+    # Re-prompt if any field is missing OR present-but-empty/invalid OR the
+    # saved AUTH_TOKEN doesn't look like a real API key. An `AUTH_TOKEN=` line
+    # in .env (empty value) used to pass issubset() and silently propagate an
+    # empty token to push_record, which sent `Authorization: ` and got bounced
+    # at Cloudflare's edge with an empty 400 — invisible in wrangler tail and
+    # impossible to diagnose without the request dump. A *malformed* token
+    # (e.g. just the 11-char prefix the web UI shows in the API Keys list)
+    # produces the same opaque CF 400, so we reject it here too.
+    auth_token = env.get("AUTH_TOKEN", "").strip()
+    monitor_raw = env.get("MONITOR_INDEX", "").strip()
+    if (
+        not needed.issubset(env)
+        or not _looks_like_api_key(auth_token)
+        or not monitor_raw.isdigit()
+        or int(monitor_raw) <= 0
+    ):
         return _prompt_config()
     return Config(
-        auth_token=env["AUTH_TOKEN"],
-        monitor_index=int(env["MONITOR_INDEX"]),
+        auth_token=auth_token,
+        monitor_index=int(monitor_raw),
     )
 
 
@@ -340,20 +386,29 @@ def push_record(cfg: Config, win_points: int) -> bool:
         print(f"[push] FAILED: {e}")
         return False
     ok = r.status_code in (200, 201)
-    print(f"[push] winPoints={win_points} date={today} HTTP {r.status_code} {'OK' if ok else 'FAIL'}")
+    print(f"[push] winPoints={win_points} date={today} HTTP {r.status_code} {r.reason or ''} {'OK' if ok else 'FAIL'}".rstrip())
     if not ok:
-        # Include the response body (truncated) so the user can see why.
-        # 4xx usually carries a server message; 5xx is often empty or a
-        # generic Cloudflare page. Strip newlines so it stays one log line.
+        # Always log the response body — even if empty — so the user can
+        # tell apart "server returned an error message" from "CF rejected
+        # the request before it reached the worker" (which gives an empty
+        # body). 4xx usually carries a server message; 5xx is often empty
+        # or a generic Cloudflare page. Strip newlines so it stays one log
+        # line.
         resp_body = (r.text or "").strip().replace("\n", " ")[:500]
-        if resp_body:
-            print(f"[push]   response body: {resp_body}")
-        # Also surface a couple of CF-specific headers that pinpoint
+        print(f"[push]   response body: {resp_body if resp_body else '<empty>'}")
+        # Surface CF-specific + Clerk-specific headers that pinpoint
         # whether the response came from our worker or CF's edge layer.
+        # x-clerk-auth-* headers are set by the server when Clerk rejects
+        # the auth (e.g. "Invalid JWT form") and are the most useful clue
+        # for diagnosing token problems.
         cf_ray = r.headers.get("CF-Ray") or r.headers.get("cf-ray")
         server_hdr = r.headers.get("Server")
+        clerk_reason = r.headers.get("x-clerk-auth-reason")
+        clerk_message = r.headers.get("x-clerk-auth-message")
         if cf_ray or server_hdr:
             print(f"[push]   response server={server_hdr!r} cf-ray={cf_ray!r}")
+        if clerk_reason or clerk_message:
+            print(f"[push]   clerk auth reason={clerk_reason!r} message={clerk_message!r}")
     return ok
 
 
