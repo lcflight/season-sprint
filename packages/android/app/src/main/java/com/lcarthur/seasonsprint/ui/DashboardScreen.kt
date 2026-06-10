@@ -21,16 +21,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.lcarthur.seasonsprint.state.AppSettingsState
 import com.lcarthur.seasonsprint.state.DashboardState
 import com.lcarthur.seasonsprint.state.DashboardViewModel
-import com.lcarthur.seasonsprint.ui.theme.RankEmerald
 import com.lcarthur.seasonsprint.ui.theme.rankColor
 
-/** Graph tab: compact rank summary + cumulative points chart + pace figures. */
+/** Graph tab: compact rank summary + cumulative points chart + optional pace sub-graph. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DashboardScreen(
     viewModel: DashboardViewModel,
+    settings: AppSettingsState,
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -48,9 +49,20 @@ fun DashboardScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             RankSummaryCard(state)
-            LiveIndicator(isLive = state.isLive)
-            PointsChart(points = state.seasonPoints, goal = state.goal, season = state.season)
-            PaceCard(state)
+            PointsChart(
+                points = state.seasonPoints,
+                goal = state.goal,
+                season = state.season,
+                rank = state.rank,
+                pace = state.pace,
+                todayGain = state.todayGain,
+                showRankOverlay = settings.showRankOverlay,
+                showAveragePace = settings.showAveragePace,
+                showDeviationWedge = settings.showDeviationWedge,
+            )
+            if (settings.showPaceGraph) {
+                PaceChart(points = state.seasonPoints, goal = state.goal, season = state.season)
+            }
             if (state.error != null) {
                 Text(
                     state.error!!,
@@ -63,20 +75,9 @@ fun DashboardScreen(
 }
 
 @Composable
-private fun LiveIndicator(isLive: Boolean) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(if (isLive) "●" else "○", color = if (isLive) RankEmerald else MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(
-            if (isLive) "Live" else "Offline",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
-}
-
-@Composable
 private fun RankSummaryCard(state: DashboardState) {
     val rank = state.rank
+    val accent = rankColor(rank.badge)
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(
@@ -84,12 +85,15 @@ private fun RankSummaryCard(state: DashboardState) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    rank.badge,
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = rankColor(rank.badge),
-                )
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        rank.badge,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = accent,
+                    )
+                    LiveIndicator(state.liveStatus)
+                }
                 Column(horizontalAlignment = Alignment.End) {
                     Text("${state.currentPoints} pts", style = MaterialTheme.typography.titleMedium)
                     state.todayGain?.let { gain ->
@@ -104,36 +108,11 @@ private fun RankSummaryCard(state: DashboardState) {
             LinearProgressIndicator(
                 progress = { rank.progressFraction },
                 modifier = Modifier.fillMaxWidth(),
-                color = rankColor(rank.nextBadge ?: rank.badge),
+                color = accent,
             )
-            val toNextText = rank.nextTarget?.let { "${rank.toNext} pts to ${rank.nextBadge}" }
+            val toNextText = rank.nextTarget?.let { "${rank.toNext} pts to ${rank.nextBadge}  ·  ${rank.points}/$it" }
                 ?: "Top rank reached"
             Text(toNextText, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
-}
-
-@Composable
-private fun PaceCard(state: DashboardState) {
-    val pace = state.pace ?: return
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("Pace to goal ${state.goal}", style = MaterialTheme.typography.titleSmall)
-            Text(
-                "Required/day (zero → goal): ${"%.1f".format(pace.requiredPerDayZero)}",
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            if (pace.isFromLastDefined) {
-                Text(
-                    "Required/day (last → goal): ${"%.1f".format(pace.requiredPerDayFromLast)}",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            }
-            Text(
-                "${pace.daysRemaining} days remaining",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
     }
 }

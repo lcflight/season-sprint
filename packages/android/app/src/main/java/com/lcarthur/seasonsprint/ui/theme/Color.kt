@@ -19,6 +19,12 @@ val FinalsMint = Color(0xFF22D3A3)           // success
 val FinalsDanger = Color(0xFFFF3D7F)         // errors / points
 val BrandRed = Color(0xFFCE2C30)             // logo background
 
+// Chart overlay accents (match iOS PointsChartView / PaceChartView).
+val ChartAvgPace = Color(0xFF9F7AEA)         // average-pace line + deviation wedge (purple)
+val ChartRequired = Color(0xFFF59E0B)        // required/day pace line (amber)
+val GainPositive = Color(0xFF22D3A3)         // +today (mint)
+val GainNegative = Color(0xFFFF3D7F)         // -today (magenta)
+
 // Rank tier palette — ported from packages/ios .../Views/RankBadgeView.swift.
 val RankBronze = Color(0xFFCC8033)
 val RankSilver = Color(0xFFBFBFCC)
