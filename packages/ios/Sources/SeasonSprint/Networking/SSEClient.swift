@@ -9,6 +9,14 @@ enum RecordEvent: Sendable {
     case bulkUpsert([APIRecord])
 }
 
+/// Live-link state for the connection indicator.
+/// `disconnected` means there is no link at all (indicator hidden).
+enum LiveStatus: Sendable {
+    case disconnected
+    case connecting
+    case connected
+}
+
 /// Connects to the server's live stream over a **WebSocket** (`GET /me/stream`, upgraded)
 /// and reconnects with a fresh stream token on drop. Replaces the old SSE client — the
 /// Durable Object terminates the socket with the Hibernation API.
@@ -21,8 +29,8 @@ final class SSEClient {
 
     /// Fired for each record event.
     var onEvent: ((RecordEvent) -> Void)?
-    /// Fired with true once a socket is actually receiving, false when it drops.
-    var onLiveChange: ((Bool) -> Void)?
+    /// Fired as the live link transitions between disconnected/connecting/connected.
+    var onStatusChange: ((LiveStatus) -> Void)?
 
     func start() {
         guard loopTask == nil else { return }
@@ -34,11 +42,13 @@ final class SSEClient {
         loopTask = nil
         socket?.cancel(with: .goingAway, reason: nil)
         socket = nil
-        onLiveChange?(false)
+        onStatusChange?(.disconnected)
     }
 
     private func runLoop() async {
         while !Task.isCancelled {
+            // Attempting a link: indicator shows the connecting state.
+            onStatusChange?(.connecting)
             guard let token = try? await APIClient.getStreamToken(),
                   let url = makeURL(token: token) else {
                 try? await Task.sleep(for: .seconds(5))
@@ -49,11 +59,11 @@ final class SSEClient {
             socket = ws
             ws.resume()
             // Confirm the connection is actually established (not just resumed) with a
-            // ping round-trip, so the "Live" indicator lights up at launch rather than
+            // ping round-trip, so the indicator lights up at launch rather than
             // waiting for the first data event. The server auto-pongs.
             ws.sendPing { [weak self] error in
                 guard error == nil else { return }
-                Task { @MainActor in self?.onLiveChange?(true) }
+                Task { @MainActor in self?.onStatusChange?(.connected) }
             }
             let ping = startPing(ws)
 
@@ -64,11 +74,12 @@ final class SSEClient {
             }
 
             ping.cancel()
-            onLiveChange?(false)
             ws.cancel(with: .goingAway, reason: nil)
             socket = nil
 
             if Task.isCancelled { break }
+            // Back to connecting while we wait to retry.
+            onStatusChange?(.connecting)
             try? await Task.sleep(for: .seconds(2))
         }
     }
@@ -79,7 +90,7 @@ final class SSEClient {
             let message = try await ws.receive()
             if !announcedLive {
                 announcedLive = true
-                onLiveChange?(true)
+                onStatusChange?(.connected)
             }
             switch message {
             case .string(let text):

@@ -42,11 +42,31 @@
           </template>
         </div>
         <div
-          v-if="isLive"
+          v-if="liveStatus !== 'disconnected'"
           class="live-indicator"
-          title="Connected to live updates"
+          :class="`live-${liveStatus}`"
+          :title="
+            liveStatus === 'connected'
+              ? 'Connected to live updates'
+              : 'Connecting to live updates…'
+          "
         >
-          <span class="live-dot"></span>Live
+          <svg
+            class="live-db"
+            viewBox="0 0 24 24"
+            width="14"
+            height="14"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <ellipse cx="12" cy="5" rx="8" ry="3" />
+            <path d="M4 5v6c0 1.66 3.58 3 8 3s8-1.34 8-3V5" />
+            <path d="M4 11v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6" />
+          </svg>
         </div>
       </div>
 
@@ -455,7 +475,7 @@ const {
   isLoading,
   loadError,
   isAuthenticated,
-  isLive,
+  liveStatus,
   sortedPoints,
   sortedPointsReverse,
   currentWinPoints,
@@ -848,34 +868,30 @@ try {
 .live-indicator {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+}
+.live-db {
+  display: block;
+}
+/* Connected: steady green database. */
+.live-connected {
   color: #22c55e;
 }
-.live-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-  background: #22c55e;
-  box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.6);
+/* Connecting: amber database, fading in and out. */
+.live-connecting {
+  color: #eab308;
 }
 @media (prefers-reduced-motion: no-preference) {
-  .live-dot {
-    animation: live-pulse 2s ease-out infinite;
+  .live-connecting .live-db {
+    animation: live-fade 1.2s ease-in-out infinite;
   }
 }
-@keyframes live-pulse {
-  0% {
-    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.5);
-  }
-  70% {
-    box-shadow: 0 0 0 6px rgba(34, 197, 94, 0);
-  }
+@keyframes live-fade {
+  0%,
   100% {
-    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0);
+    opacity: 0.25;
+  }
+  50% {
+    opacity: 1;
   }
 }
 .lg-gamemode {

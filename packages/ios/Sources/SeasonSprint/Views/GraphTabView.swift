@@ -11,7 +11,7 @@ struct GraphTabView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 16) {
-                    CompactSummary(rank: store.rank, isLive: store.isLive)
+                    CompactSummary(rank: store.rank, liveStatus: store.liveStatus)
 
                     PointsChartView(
                         points: store.seasonPoints.sorted { $0.date < $1.date },
@@ -46,7 +46,7 @@ struct GraphTabView: View {
 /// Compact rank header for the Graph tab.
 private struct CompactSummary: View {
     let rank: RankInfo
-    let isLive: Bool
+    let liveStatus: LiveStatus
 
     var body: some View {
         let accent = tierColor(rank.badge)
@@ -56,11 +56,7 @@ private struct CompactSummary: View {
                     Text(rank.badge)
                         .font(.title3.bold())
                         .foregroundStyle(accent)
-                    if isLive {
-                        Image(systemName: "dot.radiowaves.left.and.right")
-                            .font(.caption)
-                            .foregroundStyle(.green)
-                    }
+                    LiveIndicatorView(status: liveStatus)
                 }
                 Spacer()
                 Text("\(rank.points)")

@@ -12,7 +12,7 @@ final class DashboardStore {
     /// True once the first load attempt has finished (success or failure).
     private(set) var hasLoaded = false
     private(set) var errorMessage: String?
-    private(set) var isLive = false
+    private(set) var liveStatus: LiveStatus = .disconnected
     private(set) var season: Season?
 
     /// Custom goal override; nil means "use the default (next rank target)".
@@ -33,9 +33,9 @@ final class DashboardStore {
         sse.onEvent = { [weak self] event in
             self?.apply(event)
         }
-        // Drive the "Live" indicator from the real socket state, not optimistically.
-        sse.onLiveChange = { [weak self] live in
-            self?.isLive = live
+        // Drive the indicator from the real socket state, not optimistically.
+        sse.onStatusChange = { [weak self] status in
+            self?.liveStatus = status
         }
     }
 
@@ -123,7 +123,7 @@ final class DashboardStore {
 
     func stop() {
         sse.stop()
-        isLive = false
+        liveStatus = .disconnected
     }
 
     // MARK: Live event merge (mirrors upsertPoint in usePointsData.js)
