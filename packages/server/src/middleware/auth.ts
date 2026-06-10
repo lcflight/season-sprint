@@ -17,7 +17,7 @@ const clerk = clerkMiddleware();
  * absent from production deploys to begin with — this is belt-and-braces.)
  */
 const devTokenEnabled = (c: { env: Env["Bindings"] }) =>
-  c.env.ENVIRONMENT?.toLowerCase() === "development" && !!c.env.DEV_AUTH_TOKEN;
+  c.env.ENVIRONMENT.toLowerCase() === "development" && !!c.env.DEV_AUTH_TOKEN;
 
 export const clerkOrDevToken: MiddlewareHandler<Env> = async (c, next) => {
   const header = c.req.header("Authorization") ?? "";
