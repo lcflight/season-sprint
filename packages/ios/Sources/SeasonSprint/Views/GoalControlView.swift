@@ -8,9 +8,14 @@ struct GoalControlView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Goal")
-                    .font(.headline)
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Goal")
+                        .font(.headline)
+                    Text("Tap to change")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
                 Spacer()
                 Menu {
                     ForEach(store.thresholds.reversed(), id: \.points) { t in
@@ -22,8 +27,18 @@ struct GoalControlView: View {
                         editingCustom = true
                     }
                 } label: {
-                    Label("\(store.goal)", systemImage: "target")
-                        .font(.body.weight(.semibold))
+                    HStack(spacing: 6) {
+                        Image(systemName: "target")
+                        Text("\(store.goal)")
+                            .monospacedDigit()
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.caption2.weight(.semibold))
+                    }
+                    .font(.body.weight(.semibold))
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(Color.accentColor, in: Capsule())
+                    .foregroundStyle(.white)
                 }
             }
 

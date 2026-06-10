@@ -24,7 +24,8 @@ export function usePointsData({ isSeasonValid, seasonStart, seasonEnd, autoSetSe
   const isLoading = ref(false)
   const loadError = ref('')
   const isAuthenticated = ref(false)
-  const isLive = ref(false)
+  // 'disconnected' | 'connecting' | 'connected'
+  const liveStatus = ref('disconnected')
 
   const sortedPoints = computed(() =>
     [...points].sort((a, b) => dateToMs(a.date) - dateToMs(b.date))
@@ -69,8 +70,8 @@ export function usePointsData({ isSeasonValid, seasonStart, seasonEnd, autoSetSe
     if (liveConnection) liveConnection.close()
     try {
       liveConnection = await connectLiveUpdates({
-        onLive(v) {
-          isLive.value = v
+        onStatus(s) {
+          liveStatus.value = s
         },
         onUpsert: upsertPoint,
         onDelete({ id }) {
@@ -92,7 +93,7 @@ export function usePointsData({ isSeasonValid, seasonStart, seasonEnd, autoSetSe
   onScopeDispose(() => {
     liveConnection?.close()
     liveConnection = null
-    isLive.value = false
+    liveStatus.value = 'disconnected'
   })
 
   async function loadPointsFromAPI() {
@@ -280,7 +281,7 @@ export function usePointsData({ isSeasonValid, seasonStart, seasonEnd, autoSetSe
     isLoading,
     loadError,
     isAuthenticated,
-    isLive,
+    liveStatus,
     sortedPoints,
     sortedPointsReverse,
     currentWinPoints,

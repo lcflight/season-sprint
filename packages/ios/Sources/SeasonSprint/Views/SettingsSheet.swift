@@ -3,7 +3,7 @@ import SwiftUI
 /// App-wide settings: graph display toggles + account. Opened from the toolbar gear.
 struct SettingsSheet: View {
     @Bindable var settings: AppSettings
-    let isLive: Bool
+    let liveStatus: LiveStatus
     let onSignOut: () async -> Void
     @Environment(\.dismiss) private var dismiss
 
@@ -26,8 +26,9 @@ struct SettingsSheet: View {
                     HStack {
                         Text("Live updates")
                         Spacer()
-                        Text(isLive ? "Connected" : "Off")
-                            .foregroundStyle(isLive ? .green : .secondary)
+                        LiveIndicatorView(status: liveStatus)
+                        Text(statusLabel)
+                            .foregroundStyle(statusColor)
                     }
                 } header: {
                     Text("Status")
@@ -51,6 +52,22 @@ struct SettingsSheet: View {
                     Button("Done") { dismiss() }
                 }
             }
+        }
+    }
+
+    private var statusLabel: String {
+        switch liveStatus {
+        case .connected: return "Connected"
+        case .connecting: return "Connecting…"
+        case .disconnected: return "Off"
+        }
+    }
+
+    private var statusColor: Color {
+        switch liveStatus {
+        case .connected: return .green
+        case .connecting: return .yellow
+        case .disconnected: return .secondary
         }
     }
 }

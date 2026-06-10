@@ -26,7 +26,7 @@ struct MainTabView: View {
         }
         .task { await store.load() }
         .sheet(isPresented: $showSettings) {
-            SettingsSheet(settings: settings, isLive: store.isLive) {
+            SettingsSheet(settings: settings, liveStatus: store.liveStatus) {
                 store.stop()
                 try? await clerk.auth.signOut()
             }

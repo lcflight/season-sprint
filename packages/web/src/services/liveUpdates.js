@@ -30,6 +30,7 @@ async function getStreamToken() {
  * reconnects with backoff on drop. Messages are JSON `{ event, data }`.
  *
  * @param {Object} handlers
+ * @param {(status: 'disconnected'|'connecting'|'connected') => void} handlers.onStatus
  * @param {(record: object) => void} handlers.onUpsert
  * @param {(payload: {id: string}) => void} handlers.onDelete
  * @param {() => void} handlers.onDeleteAll
@@ -72,7 +73,8 @@ export async function connectLiveUpdates(handlers) {
   }
 
   function scheduleReconnect() {
-    handlers.onLive?.(false);
+    // We immediately retry, so the link is "connecting", not gone.
+    handlers.onStatus?.("connecting");
     if (pingTimer) {
       clearInterval(pingTimer);
       pingTimer = null;
@@ -83,6 +85,7 @@ export async function connectLiveUpdates(handlers) {
 
   async function open() {
     if (closed) return;
+    handlers.onStatus?.("connecting");
 
     const token = await getStreamToken();
     if (!token) {
@@ -93,7 +96,7 @@ export async function connectLiveUpdates(handlers) {
     ws = new WebSocket(`${wsBase}/me/stream?token=${encodeURIComponent(token)}`);
 
     ws.onopen = () => {
-      handlers.onLive?.(true);
+      handlers.onStatus?.("connected");
       // Keep the socket warm; the server auto-responds "pong".
       pingTimer = setInterval(() => {
         try {
@@ -120,7 +123,7 @@ export async function connectLiveUpdates(handlers) {
   return {
     close() {
       closed = true;
-      handlers.onLive?.(false);
+      handlers.onStatus?.("disconnected");
       if (pingTimer) clearInterval(pingTimer);
       if (reconnectTimer) clearTimeout(reconnectTimer);
       if (ws) {
