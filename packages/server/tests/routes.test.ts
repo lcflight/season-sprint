@@ -34,6 +34,7 @@ async function createTestD1(): Promise<D1Database> {
 function makeEnv(d1: D1Database) {
   return {
     D1: d1,
+    ENVIRONMENT: "development",
     DEV_AUTH_TOKEN,
     DEV_USER_ID,
     CLERK_PUBLISHABLE_KEY: "test-key",

@@ -2,7 +2,7 @@ import { clerkClient } from "@clerk/clerk-sdk-node";
 
 export default async function getEmail(
   userId: string,
-  env: { DEV_USER_ID: string },
+  env: { DEV_USER_ID?: string },
   cachedEmail?: string
 ): Promise<string> {
   // If email was already resolved (e.g. via API key auth), use it directly
