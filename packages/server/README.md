@@ -51,17 +51,28 @@ pnpm wrangler d1 migrations apply season-sprint-dev --local
 
 ### Testing the API locally
 
-The dev server accepts a `DEV_AUTH_TOKEN` header to bypass Clerk auth:
+For **local** testing only, `wrangler dev` reads a `DEV_AUTH_TOKEN` from the
+gitignored `.dev.vars` file and accepts it as an `Authorization` header to bypass
+Clerk. This bypass is disabled in production (the token is never set in
+`wrangler.jsonc`, and the auth middleware also refuses it unless
+`ENVIRONMENT !== "production"`). Set your own value in `.dev.vars`:
+
+```bash
+# .dev.vars (gitignored)
+ENVIRONMENT=development
+DEV_AUTH_TOKEN=<choose-a-local-only-value>
+DEV_USER_ID=the-dev-user-id
+```
 
 ```bash
 # Health check
 curl http://localhost:8787/
 
-# Get records
-curl -H "Authorization: secret_dev_key" http://localhost:8787/me/records
+# Get records (uses your local DEV_AUTH_TOKEN)
+curl -H "Authorization: $DEV_AUTH_TOKEN" http://localhost:8787/me/records
 
 # Upsert a record
-curl -H "Authorization: secret_dev_key" \
+curl -H "Authorization: $DEV_AUTH_TOKEN" \
      -H "Content-Type: application/json" \
      -X POST http://localhost:8787/me/records \
      -d '{"date":"2026-03-27","winPoints":100}'

@@ -11,8 +11,11 @@ import stream from "./routes/stream";
 interface Bindings {
   D1: D1Database;
   USER_STREAM: DurableObjectNamespace;
-  DEV_AUTH_TOKEN: string;
-  DEV_USER_ID: string;
+  // "production" in deployed config; "development" only in local .dev.vars.
+  ENVIRONMENT?: string;
+  // Dev-only Clerk bypass. Set only in gitignored .dev.vars, so undefined in prod.
+  DEV_AUTH_TOKEN?: string;
+  DEV_USER_ID?: string;
   CLERK_PUBLISHABLE_KEY: string;
   CLERK_SECRET_KEY: string;
 }

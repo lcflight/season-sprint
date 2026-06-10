@@ -28,8 +28,11 @@
   "vars": {
     "DATABASE_URL": "file:./dev.db",
     "CLERK_PUBLISHABLE_KEY": "pk_live_Y2xlcmsuc2Vhc29uc3ByaW50LmNvbSQ",
-    "DEV_AUTH_TOKEN": "secret_dev_key",
-    "DEV_USER_ID": "the-dev-user-id"
+    "ENVIRONMENT": "production"
+    // DEV_AUTH_TOKEN / DEV_USER_ID are intentionally NOT set here. The Clerk
+    // bypass they enable must never exist in production. They live in the
+    // gitignored .dev.vars (loaded only by `wrangler dev`), and the auth
+    // middleware additionally refuses the bypass unless ENVIRONMENT !== "production".
   },
   "observability": {
     "enabled": true,

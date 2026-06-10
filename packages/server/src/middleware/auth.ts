@@ -7,10 +7,20 @@ import { hashApiKey, isApiKey } from "../utils/apiKey";
  * Clerk middleware that skips itself when a dev auth token or API key is present.
  */
 const clerk = clerkMiddleware();
+
+/**
+ * The DEV_AUTH_TOKEN bypass skips Clerk entirely, so it must NEVER be honored
+ * in production. It is enabled only when the deployment is explicitly non-prod
+ * AND a dev token is configured (the token lives in the gitignored .dev.vars,
+ * so it is absent from production deploys to begin with — this is belt-and-braces).
+ */
+const devTokenEnabled = (c: { env: Env["Bindings"] }) =>
+  c.env.ENVIRONMENT !== "production" && !!c.env.DEV_AUTH_TOKEN;
+
 export const clerkOrDevToken: MiddlewareHandler<Env> = async (c, next) => {
   const header = c.req.header("Authorization") ?? "";
   if (
-    (c.env.DEV_AUTH_TOKEN && header === c.env.DEV_AUTH_TOKEN) ||
+    (devTokenEnabled(c) && header === c.env.DEV_AUTH_TOKEN) ||
     isApiKey(header)
   ) {
     return next();
@@ -25,9 +35,9 @@ export const clerkOrDevToken: MiddlewareHandler<Env> = async (c, next) => {
 export const resolveAuth: MiddlewareHandler<Env> = async (c, next) => {
   const authFromHeader = c.req.header("Authorization") ?? "";
 
-  // 1. Dev token
-  if (authFromHeader && authFromHeader === c.env.DEV_AUTH_TOKEN) {
-    c.set("auth", { userId: c.env.DEV_USER_ID });
+  // 1. Dev token (non-production only — see devTokenEnabled)
+  if (devTokenEnabled(c) && authFromHeader === c.env.DEV_AUTH_TOKEN) {
+    c.set("auth", { userId: c.env.DEV_USER_ID ?? "the-dev-user-id" });
     return next();
   }
 
