@@ -12,7 +12,9 @@ interface Bindings {
   D1: D1Database;
   USER_STREAM: DurableObjectNamespace;
   // "production" in deployed config; "development" only in local .dev.vars.
-  ENVIRONMENT?: string;
+  // Closed set + required so a missing/typoed value can't silently enable the
+  // dev-token bypass (the gate checks ENVIRONMENT === "development").
+  ENVIRONMENT: "production" | "development";
   // Dev-only Clerk bypass. Set only in gitignored .dev.vars, so undefined in prod.
   DEV_AUTH_TOKEN?: string;
   DEV_USER_ID?: string;

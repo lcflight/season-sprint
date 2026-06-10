@@ -10,12 +10,14 @@ const clerk = clerkMiddleware();
 
 /**
  * The DEV_AUTH_TOKEN bypass skips Clerk entirely, so it must NEVER be honored
- * in production. It is enabled only when the deployment is explicitly non-prod
- * AND a dev token is configured (the token lives in the gitignored .dev.vars,
- * so it is absent from production deploys to begin with — this is belt-and-braces).
+ * in production. Fail closed: the bypass is enabled ONLY when ENVIRONMENT is
+ * explicitly "development" AND a dev token is configured. A missing, typoed, or
+ * unexpected ENVIRONMENT value therefore disables the bypass rather than
+ * enabling it. (The token also lives only in the gitignored .dev.vars, so it is
+ * absent from production deploys to begin with — this is belt-and-braces.)
  */
 const devTokenEnabled = (c: { env: Env["Bindings"] }) =>
-  c.env.ENVIRONMENT !== "production" && !!c.env.DEV_AUTH_TOKEN;
+  c.env.ENVIRONMENT?.toLowerCase() === "development" && !!c.env.DEV_AUTH_TOKEN;
 
 export const clerkOrDevToken: MiddlewareHandler<Env> = async (c, next) => {
   const header = c.req.header("Authorization") ?? "";
