@@ -27,7 +27,7 @@
 ; Output: dist\SeasonSprintSetup.exe (relative to this file).
 
 #define AppName       "Season Sprint Tracker"
-#define AppVersion    "0.1.8"
+#define AppVersion    "0.1.9"
 #define AppPublisher  "lcflight"
 #define AppURL        "https://github.com/lcflight/season-sprint"
 
