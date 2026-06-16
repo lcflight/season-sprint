@@ -13,7 +13,9 @@
 ;                                   tracker via `season_tracker.py --list-monitors`;
 ;                                   auto-skipped when there is only one monitor)
 ;     -> Install (copies files, writes .env)
-;     -> Finish (shows the Steam launch line, or a deps-failure message)
+;     -> Finish (two ways to run: paste the Steam launch line, or start
+;                "Season Sprint Tracker" from the Start menu for non-Steam
+;                launchers; or a deps-failure message)
 ;
 ; Dependencies are installed mid-wizard (on the API-key page's Next) so the
 ; monitor picker can be enumerated by mss exactly as the tracker sees it. The
@@ -25,7 +27,7 @@
 ; Output: dist\SeasonSprintSetup.exe (relative to this file).
 
 #define AppName       "Season Sprint Tracker"
-#define AppVersion    "0.1.7"
+#define AppVersion    "0.1.8"
 #define AppPublisher  "lcflight"
 #define AppURL        "https://github.com/lcflight/season-sprint"
 
@@ -59,12 +61,15 @@ UninstallDisplayName={#AppName}
 [Files]
 ; Source paths are relative to this .iss file.
 Source: "..\season_tracker.py"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\tray.py";           DestDir: "{app}"; Flags: ignoreversion
 Source: "..\requirements.txt";  DestDir: "{app}"; Flags: ignoreversion
 Source: "..\test_ocr.py";       DestDir: "{app}"; Flags: ignoreversion
 Source: "..\setup.bat";         DestDir: "{app}"; Flags: ignoreversion
 Source: "..\install-deps.bat";  DestDir: "{app}"; Flags: ignoreversion
 Source: "..\launch.bat";        DestDir: "{app}"; Flags: ignoreversion
 Source: "..\watch-tracker.bat"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\icon.ico";          DestDir: "{app}"; Flags: ignoreversion
+Source: "..\icon.png";          DestDir: "{app}"; Flags: ignoreversion
 
 ; Temp-extractable copies (dontcopy) used DURING the wizard, before the files
 ; above are installed to {app}: install-deps.bat + requirements.txt run the
@@ -75,6 +80,10 @@ Source: "..\requirements.txt";  Flags: dontcopy
 Source: "..\season_tracker.py"; Flags: dontcopy
 
 [Icons]
+; Forward-facing launcher (searchable as "Season Sprint Tracker" in the Start
+; menu) for players who don't use Steam. Runs tray.py headless via pythonw, so
+; no console window appears; the tracker shows a system-tray icon while running.
+Name: "{group}\Season Sprint Tracker"; Filename: "{%USERPROFILE}\.season-sprint\venv\Scripts\pythonw.exe"; Parameters: """{app}\tray.py"""; WorkingDir: "{app}"; IconFilename: "{app}\icon.ico"; Comment: "Start the Season Sprint tracker (runs in the system tray)"
 Name: "{group}\Reconfigure tracker";  Filename: "{app}\setup.bat"; Parameters: "--install-only"; WorkingDir: "{app}"
 Name: "{group}\Uninstall {#AppName}"; Filename: "{uninstallexe}"
 
@@ -95,6 +104,7 @@ var
   DepsOK: Boolean;                   // venv python produced by install-deps
   DepsAttempted: Boolean;            // guard so Back/Next doesn't re-run deps
   LaunchEdit: TNewEdit;              // selectable Steam launch line on finish page
+  Method2Label: TNewStaticText;     // non-Steam (Start-menu) instructions on finish page
 
 // True once install-deps.bat has produced the venv python. Drives the monitor
 // page skip and the finish-page success/failure branch.
@@ -144,6 +154,13 @@ begin
   LaunchEdit.Parent := WizardForm.FinishedPage;
   LaunchEdit.ReadOnly := True;
   LaunchEdit.Visible := False;
+
+  // Second instruction block on the finish page, for non-Steam launchers.
+  Method2Label := TNewStaticText.Create(WizardForm);
+  Method2Label.Parent := WizardForm.FinishedPage;
+  Method2Label.AutoSize := False;
+  Method2Label.WordWrap := True;
+  Method2Label.Visible := False;
 end;
 
 // Run install-deps.bat from a temp copy (logged), then, if it produced the
@@ -282,6 +299,7 @@ begin
       // Deps install failed — point the user at the log and the re-runnable
       // Start Menu shortcut rather than implying a working install.
       LaunchEdit.Visible := False;
+      Method2Label.Visible := False;
       L.Height := ScaleY(220);
       L.Caption :=
         'Setup could not finish installing the tracker''s dependencies.' + #13#10 + #13#10 +
@@ -294,17 +312,22 @@ begin
         '"Season Sprint Tracker" > "Reconfigure tracker".';
       exit;
     end;
-    // Success: keep the prose in the label (shrunk so it can't clip the line),
-    // and put the copy-paste launch line in the selectable edit below it.
-    L.Height := ScaleY(150);
+    // Success: two ways to run. Method 1 (Steam) is the copy-paste launch line
+    // in the selectable edit; Method 2 (other launchers) is the Start-menu /
+    // tray instructions below it. Heights are kept tight so nothing clips.
+    L.Height := ScaleY(92);
     L.Caption :=
       'Installation complete.' + #13#10 + #13#10 +
-      'The tracker starts automatically when you launch your game and stops ' +
-      'when you exit it.' + #13#10 + #13#10 +
-      'In Steam: right-click your game > Properties > General > Launch Options, ' +
-      'and paste this line exactly:';
-    LaunchEdit.SetBounds(L.Left, L.Top + ScaleY(155), L.Width, ScaleY(23));
+      'Two ways to run the tracker:' + #13#10 + #13#10 +
+      '1) Steam - paste this into your game''s Properties > General > Launch Options:';
+    LaunchEdit.SetBounds(L.Left, L.Top + ScaleY(96), L.Width, ScaleY(23));
     LaunchEdit.Text := '"' + ExpandConstant('{app}') + '\launch.bat" %command%';
     LaunchEdit.Visible := True;
+    Method2Label.SetBounds(L.Left, L.Top + ScaleY(126), L.Width, ScaleY(104));
+    Method2Label.Caption :=
+      '2) Other launchers (Epic, Xbox, a direct .exe) - before playing, open ' +
+      '"Season Sprint Tracker" from the Start menu (search for it). It runs in ' +
+      'the system tray; right-click the tray icon and choose Quit when done.';
+    Method2Label.Visible := True;
   end;
 end;
