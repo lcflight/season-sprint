@@ -6,7 +6,6 @@
 ; inside the wizard itself (no separate cmd window):
 ;
 ;   Welcome
-;     -> Choose install location
 ;     -> Enter API key            (native wizard page)
 ;     -> Installing dependencies   (progress; runs install-deps.bat from a
 ;                                   temp copy, logged to .season-sprint\install.log)
@@ -26,7 +25,7 @@
 ; Output: dist\SeasonSprintSetup.exe (relative to this file).
 
 #define AppName       "Season Sprint Tracker"
-#define AppVersion    "0.1.6"
+#define AppVersion    "0.1.7"
 #define AppPublisher  "lcflight"
 #define AppURL        "https://github.com/lcflight/season-sprint"
 
@@ -44,7 +43,9 @@ PrivilegesRequired=lowest
 DefaultDirName={localappdata}\Programs\SeasonSprint
 DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
-DisableDirPage=no
+; No install-location prompt — this is a fixed per-user app dir, not something
+; the user needs to choose. Installs straight to DefaultDirName.
+DisableDirPage=yes
 
 OutputDir=..\dist
 OutputBaseFilename=SeasonSprintSetup
@@ -93,6 +94,7 @@ var
   MonitorIndices: array of Integer;  // option index -> mss MONITOR_INDEX
   DepsOK: Boolean;                   // venv python produced by install-deps
   DepsAttempted: Boolean;            // guard so Back/Next doesn't re-run deps
+  LaunchEdit: TNewEdit;              // selectable Steam launch line on finish page
 
 // True once install-deps.bat has produced the venv python. Drives the monitor
 // page skip and the finish-page success/failure branch.
@@ -123,7 +125,7 @@ begin
   DepsAttempted := False;
   SetArrayLength(MonitorIndices, 0);
 
-  TokenPage := CreateInputQueryPage(wpSelectDir,
+  TokenPage := CreateInputQueryPage(wpWelcome,
     'Season Sprint account',
     'Enter your personal API key',
     'Paste the key from the web app''s "API Keys" banner (the full key in the green banner, not the truncated prefix). It starts with "sk_" and is 67 characters long. Clicking Next sets up Python and dependencies, which takes 1-2 minutes on the first install.');
@@ -134,6 +136,14 @@ begin
     'Choose the monitor that runs The Finals',
     'The tracker reads the World Tour Points from the bottom-centre of this screen.',
     True, False);
+
+  // Read-only, selectable edit that holds the Steam launch line on the finish
+  // page. A plain label can't be copied (and a long caption clips), so the
+  // "paste this exactly" line lives here. Positioned + filled in CurPageChanged.
+  LaunchEdit := TNewEdit.Create(WizardForm);
+  LaunchEdit.Parent := WizardForm.FinishedPage;
+  LaunchEdit.ReadOnly := True;
+  LaunchEdit.Visible := False;
 end;
 
 // Run install-deps.bat from a temp copy (logged), then, if it produced the
@@ -262,15 +272,18 @@ end;
 
 procedure CurPageChanged(CurPageID: Integer);
 var
-  LaunchLine: String;
+  L: TNewStaticText;
 begin
   if CurPageID = wpFinished then begin
-    WizardForm.FinishedLabel.AutoSize := False;
-    WizardForm.FinishedLabel.WordWrap := True;
+    L := WizardForm.FinishedLabel;
+    L.AutoSize := False;
+    L.WordWrap := True;
     if not VenvPythonExists then begin
       // Deps install failed — point the user at the log and the re-runnable
       // Start Menu shortcut rather than implying a working install.
-      WizardForm.FinishedLabel.Caption :=
+      LaunchEdit.Visible := False;
+      L.Height := ScaleY(220);
+      L.Caption :=
         'Setup could not finish installing the tracker''s dependencies.' + #13#10 + #13#10 +
         'A common cause is no internet connection, or "winget" being ' +
         'unavailable on older Windows 10 builds (install Python 3.11+ from ' +
@@ -281,13 +294,17 @@ begin
         '"Season Sprint Tracker" > "Reconfigure tracker".';
       exit;
     end;
-    LaunchLine := '"' + ExpandConstant('{app}') + '\launch.bat" %command%';
-    WizardForm.FinishedLabel.Caption :=
+    // Success: keep the prose in the label (shrunk so it can't clip the line),
+    // and put the copy-paste launch line in the selectable edit below it.
+    L.Height := ScaleY(150);
+    L.Caption :=
       'Installation complete.' + #13#10 + #13#10 +
-      'In Steam: right-click your game > Properties > General > Launch Options,' + #13#10 +
-      'and paste the following line exactly:' + #13#10 + #13#10 +
-      LaunchLine + #13#10 + #13#10 +
-      'The tracker will then start automatically whenever you launch the game, ' +
-      'and stop when you exit it.';
+      'The tracker starts automatically when you launch your game and stops ' +
+      'when you exit it.' + #13#10 + #13#10 +
+      'In Steam: right-click your game > Properties > General > Launch Options, ' +
+      'and paste this line exactly:';
+    LaunchEdit.SetBounds(L.Left, L.Top + ScaleY(155), L.Width, ScaleY(23));
+    LaunchEdit.Text := '"' + ExpandConstant('{app}') + '\launch.bat" %command%';
+    LaunchEdit.Visible := True;
   end;
 end;
