@@ -1,0 +1,84 @@
+name: Build Android APK
+
+# Builds the Android app whenever packages/android/ changes (on PRs and on a
+# v* tag push), or on manual dispatch. Every run uploads season-sprint-android.apk
+# as a workflow artifact; tag pushes additionally attach it to the GitHub Release
+# created for that tag.
+#
+# This is a debug-signed build (Android's universal debug key) published under a
+# clean name — installable via sideload, no release keystore required. If a real
+# signed release build is ever wanted, add a signingConfig + keystore secrets and
+# switch assembleDebug -> assembleRelease.
+#
+# Permissions follow least privilege: the build job is read-only (so PR runs hold
+# no write token), and only the tag-gated release job gets contents: write.
+
+on:
+  push:
+    paths:
+      - "packages/android/**"
+      - ".github/workflows/build-android.yml"
+    tags:
+      - "v*"
+  pull_request:
+    paths:
+      - "packages/android/**"
+      - ".github/workflows/build-android.yml"
+  workflow_dispatch:
+
+# Default to no permissions; each job opts into the minimum it needs.
+permissions: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Build debug APK
+        working-directory: packages/android
+        run: |
+          chmod +x ./gradlew
+          ./gradlew --no-daemon assembleDebug
+
+      - name: Stage APK under a clean name
+        run: cp packages/android/app/build/outputs/apk/debug/app-debug.apk season-sprint-android.apk
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: season-sprint-android
+          path: season-sprint-android.apk
+          if-no-files-found: error
+
+  # Attach the built APK to the GitHub Release. Separate job so contents: write
+  # is only ever granted on a v* tag, never on PR/branch build runs.
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: season-sprint-android
+
+      - name: Attach APK to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: season-sprint-android.apk
