@@ -272,30 +272,34 @@ def _probe_server(cfg: Config) -> tuple[bool, int]:
         return False, 0
 
 
-def load_or_prompt_config() -> Config:
+def load_config_or_none() -> Optional[Config]:
+    """Load config from .env, returning None if it's missing/invalid instead
+    of prompting. Used by the tray launcher, which runs under pythonw.exe with
+    no console — an interactive prompt there would hang or crash.
+
+    Rejects an empty or malformed AUTH_TOKEN: an `AUTH_TOKEN=` line (empty
+    value) used to propagate an empty token to push_record, which sent
+    `Authorization: ` and got bounced at Cloudflare's edge with an opaque empty
+    400. A truncated token (e.g. the 11-char prefix the web UI shows in the API
+    Keys list) produces the same CF 400, so it's rejected here too.
+    """
     env = _parse_env_file(ENV_FILE)
-    needed = {"AUTH_TOKEN", "MONITOR_INDEX"}
-    # Re-prompt if any field is missing OR present-but-empty/invalid OR the
-    # saved AUTH_TOKEN doesn't look like a real API key. An `AUTH_TOKEN=` line
-    # in .env (empty value) used to pass issubset() and silently propagate an
-    # empty token to push_record, which sent `Authorization: ` and got bounced
-    # at Cloudflare's edge with an empty 400 — invisible in wrangler tail and
-    # impossible to diagnose without the request dump. A *malformed* token
-    # (e.g. just the 11-char prefix the web UI shows in the API Keys list)
-    # produces the same opaque CF 400, so we reject it here too.
     auth_token = env.get("AUTH_TOKEN", "").strip()
     monitor_raw = env.get("MONITOR_INDEX", "").strip()
     if (
-        not needed.issubset(env)
-        or not _looks_like_api_key(auth_token)
+        not _looks_like_api_key(auth_token)
         or not monitor_raw.isdigit()
         or int(monitor_raw) <= 0
     ):
+        return None
+    return Config(auth_token=auth_token, monitor_index=int(monitor_raw))
+
+
+def load_or_prompt_config() -> Config:
+    cfg = load_config_or_none()
+    if cfg is None:
         return _prompt_config()
-    return Config(
-        auth_token=auth_token,
-        monitor_index=int(monitor_raw),
-    )
+    return cfg
 
 
 # ── Capture + OCR ─────────────────────────────────────────────────────────────

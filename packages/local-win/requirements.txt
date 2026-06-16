@@ -3,3 +3,4 @@ mss
 requests
 numpy
 Pillow
+pystray
