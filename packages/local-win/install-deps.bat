@@ -81,6 +81,21 @@ if not exist "%VENV_PY%" (
 
 REM ── 5. Install / upgrade dependencies (no-op if satisfied) ───────────────
 "%VENV_PY%" -m pip install --upgrade pip >nul
+
+REM EasyOCR depends on torch + torchvision. Installed straight from PyPI,
+REM pip can pull a CUDA-enabled torch wheel (~2GB) even though we run OCR on
+REM CPU (gpu=False). Pre-installing the CPU-only builds from PyTorch's own
+REM index pins the small wheels (~200MB total) so the subsequent
+REM `-r requirements.txt` sees torch/torchvision already satisfied and skips
+REM the CUDA download entirely. This is the single biggest factor in how long
+REM a cold install takes — and the most common point of failure on flaky
+REM connections. No-ops on a re-run once the wheels are present.
+"%VENV_PY%" -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+if errorlevel 1 (
+    echo ERROR: CPU torch install failed.
+    popd & endlocal & exit /b 1
+)
+
 "%VENV_PY%" -m pip install -r requirements.txt
 if errorlevel 1 (
     echo ERROR: pip install failed.
