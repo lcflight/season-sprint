@@ -172,6 +172,28 @@ def _list_monitors() -> list[dict]:
         return list(sct.monitors)
 
 
+def _print_monitor_list() -> int:
+    """Print the physical monitors in a machine-parseable form for the Inno
+    Setup installer's monitor-picker page. One line per physical monitor:
+
+        MON|<idx>|<width>x<height>|<left>,<top>
+
+    <idx> is the mss index (1-based into sct.monitors, skipping the index-0
+    "all monitors" bounding box) — exactly the value written as MONITOR_INDEX
+    and consumed by _grab_points_region, so the installer's picker, the saved
+    config, and the running tracker all agree on what each number means.
+
+    The "MON|" prefix lets the installer ignore unrelated stdout noise — most
+    notably the "=== Tracker started ===" banner that the module-level _Tee
+    emits at import time into whatever stdout the installer redirects to a file.
+    """
+    monitors = _list_monitors()
+    physical = monitors[1:]  # skip the "all" bounding-box at index 0
+    for i, m in enumerate(physical, start=1):
+        print(f"MON|{i}|{m['width']}x{m['height']}|{m['left']},{m['top']}")
+    return 0
+
+
 def _prompt_config() -> Config:
     existing = _parse_env_file(ENV_FILE)
 
@@ -489,6 +511,12 @@ def _sleep_interruptible(total_secs: int) -> None:
 
 
 def main() -> int:
+    # Non-interactive query used by the installer's wizard to build its
+    # monitor-picker page. Handled before anything else (no signal handlers,
+    # no config load, no prompts) so it stays a fast, side-effect-free probe.
+    if "--list-monitors" in sys.argv[1:]:
+        return _print_monitor_list()
+
     signal.signal(signal.SIGINT, _handle_signal)
     if hasattr(signal, "SIGTERM"):
         signal.signal(signal.SIGTERM, _handle_signal)
