@@ -3,6 +3,20 @@ import { useUser, useAuth } from "@clerk/vue";
 const w = typeof window !== "undefined" ? window : undefined;
 
 /**
+ * Whether the Clerk auth plugin is active in this environment. Mirrors the
+ * mounting condition in main.js: Clerk is skipped when there's no publishable
+ * key, or on localhost with a live key (a test key should be used locally).
+ * When disabled the app runs in dev-auth mode and isn't gated behind sign-in.
+ */
+export function isClerkEnabled() {
+  const key = process.env.VUE_APP_CLERK_PUBLISHABLE_KEY;
+  const host = w?.location?.hostname;
+  const isLocalDevHost = host === "localhost" || host === "127.0.0.1";
+  const isLiveClerkKey = typeof key === "string" && key.startsWith("pk_live_");
+  return Boolean(key) && !(isLocalDevHost && isLiveClerkKey);
+}
+
+/**
  * Normalizes a Clerk user into a lightweight POJO for app-wide use.
  */
 function normalizeUser(u) {
