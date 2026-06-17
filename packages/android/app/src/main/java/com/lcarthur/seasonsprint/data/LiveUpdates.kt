@@ -28,14 +28,17 @@ import okio.ByteString
  *
  * OkHttp performs the upgrade from the https URL, so we pass the plain server URL.
  */
+/** Live-link state for the connection indicator. `Disconnected` means no link (hidden). */
+enum class LiveStatus { Disconnected, Connecting, Connected }
+
 class LiveUpdates(private val scope: CoroutineScope) {
     private val json = Json { ignoreUnknownKeys = true }
 
     private val _events = MutableSharedFlow<RecordEvent>(extraBufferCapacity = 64)
     val events = _events.asSharedFlow()
 
-    private val _isLive = MutableStateFlow(false)
-    val isLive = _isLive.asStateFlow()
+    private val _status = MutableStateFlow(LiveStatus.Disconnected)
+    val status = _status.asStateFlow()
 
     private var loopJob: Job? = null
 
@@ -48,11 +51,13 @@ class LiveUpdates(private val scope: CoroutineScope) {
     fun stop() {
         loopJob?.cancel()
         loopJob = null
-        _isLive.value = false
+        _status.value = LiveStatus.Disconnected
     }
 
     private suspend fun runLoop() {
         while (scope.isActive) {
+            // Attempting a link: indicator shows the connecting state.
+            _status.value = LiveStatus.Connecting
             val token = runCatching { ApiClient.getStreamToken() }.getOrNull()
             if (token == null) {
                 delay(5_000)
@@ -66,7 +71,7 @@ class LiveUpdates(private val scope: CoroutineScope) {
             val closed = CompletableDeferred<Unit>()
             val ws = ApiClient.httpClient.newWebSocket(request, object : WebSocketListener() {
                 override fun onOpen(webSocket: WebSocket, response: Response) {
-                    _isLive.value = true
+                    _status.value = LiveStatus.Connected
                 }
 
                 override fun onMessage(webSocket: WebSocket, text: String) = handle(text)
@@ -97,9 +102,10 @@ class LiveUpdates(private val scope: CoroutineScope) {
             closed.await()
             pingJob.cancel()
             ws.cancel()
-            _isLive.value = false
 
             if (!scope.isActive) break
+            // Back to connecting while we wait to retry.
+            _status.value = LiveStatus.Connecting
             delay(2_000)
         }
     }

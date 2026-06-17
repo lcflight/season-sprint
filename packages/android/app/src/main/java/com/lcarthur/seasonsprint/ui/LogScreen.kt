@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -52,7 +53,10 @@ fun LogScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
-            Card(modifier = Modifier.fillMaxWidth()) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+            ) {
                 Column(
                     modifier = Modifier.padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -93,11 +97,7 @@ fun LogScreen(
             }
         } else {
             items(recordsNewestFirst, key = { it.remoteId }) { point ->
-                RecordRow(
-                    point = point,
-                    onEdit = { editing = point },
-                    onDelete = { viewModel.deletePoint(point) },
-                )
+                RecordRow(point = point, onEdit = { editing = point })
                 HorizontalDivider()
             }
         }
@@ -117,7 +117,7 @@ fun LogScreen(
 }
 
 @Composable
-private fun RecordRow(point: Point, onEdit: () -> Unit, onDelete: () -> Unit) {
+private fun RecordRow(point: Point, onEdit: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -134,7 +134,7 @@ private fun RecordRow(point: Point, onEdit: () -> Unit, onDelete: () -> Unit) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.End,
             )
-            TextButton(onClick = onDelete) { Text("Delete") }
+            TextButton(onClick = onEdit) { Text("Edit") }
         }
     }
 }

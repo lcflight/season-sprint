@@ -52,18 +52,28 @@ fun EditPointSheet(
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
             ) {
-                TextButton(onClick = onDismiss) { Text("Cancel") }
-                Button(
-                    enabled = parsedValue != null,
-                    onClick = {
-                        parsedValue?.let {
-                            viewModel.updatePoint(point, DateKey.dayStringFromUtcMillis(dateMillis), it)
-                            onDismiss()
-                        }
-                    },
-                ) { Text("Save") }
+                // Destructive delete lives here so the records list can lead with "Edit".
+                TextButton(onClick = {
+                    viewModel.deletePoint(point)
+                    onDismiss()
+                }) {
+                    Text("Delete", color = androidx.compose.material3.MaterialTheme.colorScheme.error)
+                }
+                Row {
+                    TextButton(onClick = onDismiss) { Text("Cancel") }
+                    Button(
+                        enabled = parsedValue != null,
+                        onClick = {
+                            parsedValue?.let {
+                                viewModel.updatePoint(point, DateKey.dayStringFromUtcMillis(dateMillis), it)
+                                onDismiss()
+                            }
+                        },
+                    ) { Text("Save") }
+                }
             }
         }
     }
