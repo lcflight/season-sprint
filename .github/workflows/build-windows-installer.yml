@@ -2,7 +2,7 @@ name: Build Windows installer
 
 # Builds the Inno Setup .exe whenever files under packages/local-win/ change,
 # on manual dispatch, or on a v* tag push. Every run uploads
-# SeasonSprintSetup.exe as a workflow artifact; tag pushes additionally
+# SeasonSprintTracker.exe as a workflow artifact; tag pushes additionally
 # publish a GitHub Release with the installer attached.
 
 on:
@@ -45,15 +45,15 @@ jobs:
         shell: pwsh
         working-directory: packages/local-win/dist
         run: |
-          Compress-Archive -Path SeasonSprintSetup.exe -DestinationPath SeasonSprintSetup.zip -CompressionLevel Optimal -Force
+          Compress-Archive -Path SeasonSprintTracker.exe -DestinationPath SeasonSprintTracker.zip -CompressionLevel Optimal -Force
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: SeasonSprintSetup
+          name: SeasonSprintTracker
           path: |
-            packages/local-win/dist/SeasonSprintSetup.exe
-            packages/local-win/dist/SeasonSprintSetup.zip
+            packages/local-win/dist/SeasonSprintTracker.exe
+            packages/local-win/dist/SeasonSprintTracker.zip
           if-no-files-found: error
 
       - name: Publish GitHub Release (on v* tag only)
@@ -61,7 +61,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            packages/local-win/dist/SeasonSprintSetup.exe
-            packages/local-win/dist/SeasonSprintSetup.zip
+            packages/local-win/dist/SeasonSprintTracker.exe
+            packages/local-win/dist/SeasonSprintTracker.zip
           draft: false
           generate_release_notes: true
