@@ -4,36 +4,54 @@ Static marketing site served at **https://www.seasonsprint.com** (apex
 `seasonsprint.com` redirects here). The app lives separately at
 **https://app.seasonsprint.com**.
 
-No build step — plain HTML/CSS in this folder.
+Plain HTML/CSS/JS. The only build step bakes `releases.json` for the downloads
+page (see below); everything else is static.
 
 ## Local preview
 
 ```bash
 pnpm -F landing dev      # serves this folder on http://localhost:3000
+pnpm -F landing build    # regenerate releases.json from the latest GitHub release
 ```
 
 ## Files
 
 - `index.html` — the landing page
 - `downloads.html` + `downloads.js` — the downloads page (`/downloads`)
+- `install.sh` — Linux installer bootstrap served at `/install.sh`
+- `generate-releases.mjs` — build-time script that bakes `releases.json`
+- `releases.json` — snapshot of the latest release (regenerated on every deploy)
 - `styles.css` — THE FINALS-inspired theme (mirrors `packages/web`)
 - `assets/logo.svg` — brand logo (copied from `packages/web/public/logo.svg`)
 - `favicon.ico`
 
 All app CTAs point at `https://app.seasonsprint.com`. The "Get the apps" CTA and
-the Android/Windows platform tiles point at `/downloads`.
+the Linux/Android/Windows platform tiles point at `/downloads`.
 
 ### Downloads page
 
-`/downloads` fetches the **latest** GitHub release at runtime from
-`https://api.github.com/repos/lcflight/season-sprint/releases/latest` (public,
-CORS-enabled, 60 req/hr per IP) and renders one download card per platform from
-whatever assets are attached. Assets are classified by extension/name, not
-hardcoded URLs — `.apk` → Android, `.exe`/`.msi`/`.zip` → Windows,
-`.tar.gz`/`.AppImage` → Linux — so the page keeps up with releases
-automatically even when asset filenames drift. The Linux card also shows a
-copyable `curl … | bash` one-liner that runs `install.sh`. iOS is shown as
-"coming soon", and any fetch failure falls back to a GitHub Releases link.
+`/downloads` renders one download card per platform. Assets are classified by
+extension/name, not hardcoded URLs — `.apk` → Android, `.exe`/`.msi`/`.zip` →
+Windows, `.tar.gz`/`.AppImage` → Linux — so the page keeps up with releases
+even when asset filenames drift. The Linux card also shows a copyable
+`curl … | bash` one-liner that runs `install.sh`. iOS is shown as "coming soon".
+
+**Data source (fast path):** at deploy time `generate-releases.mjs` fetches the
+latest release **once** and bakes a trimmed `releases.json` into this folder.
+The page reads it **same-origin**, so cards render instantly with no
+per-visitor GitHub API call and no rate limit.
+
+**Fallbacks:** if `releases.json` is missing, `downloads.js` falls back to the
+live GitHub API (`.../releases/latest`); if that also fails it shows a GitHub
+Releases link (and there is a `<noscript>` link too). So the page works whether
+or not the build step ran.
+
+**Staying current:** a new release fires
+`.github/workflows/refresh-landing.yml`, which POSTs Render's deploy hook to
+rebuild the static site and re-bake `releases.json`. Set this up by creating a
+Deploy Hook on the landing static site (Render → Settings → Deploy Hook) and
+adding its URL as the repo secret `RENDER_LANDING_DEPLOY_HOOK`. Without the
+secret the workflow is a no-op and the page still refreshes on the next deploy.
 
 > Clean URL note: links use `/downloads` (no `.html`). Render static sites and
 > the `serve` dev command both resolve this to `downloads.html` automatically.
@@ -79,7 +97,8 @@ from the `app.` subdomain does not break API calls.
 New **Static Site** in Render, pointed at this repo:
 
 - **Root Directory:** `packages/landing`
-- **Build Command:** *(leave blank)* — or `pnpm -F landing build` (no-op)
+- **Build Command:** `pnpm -F landing build` — bakes `releases.json` from the
+  latest GitHub release so the downloads page loads instantly.
 - **Publish Directory:** `.`
 - **Custom Domains:** add `seasonsprint.com` **and** `www.seasonsprint.com`.
 

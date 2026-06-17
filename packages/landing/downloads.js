@@ -1,17 +1,23 @@
-/* Downloads page — pulls the latest GitHub release and renders a card per
- * platform from whatever assets are attached. No build step, no API key:
- * the GitHub REST API for the latest release is public and CORS-enabled
- * (rate-limited to 60 req/hr per IP, which is plenty for a static page).
+/* Downloads page.
+ *
+ * Primary source is /releases.json — a trimmed snapshot of the latest GitHub
+ * release baked at deploy time (see generate-releases.mjs). Reading it
+ * same-origin means the cards render instantly, with no per-visitor GitHub API
+ * call and no rate limit.
+ *
+ * If the snapshot is missing (e.g. the build step didn't run, or local preview
+ * without a build), we fall back to the live GitHub API so the page still works
+ * everywhere.
  *
  * Asset names drift between releases (e.g. season-sprint-android.apk vs
- * season-sprint-android-debug.apk), so we classify by extension/name rather
- * than hardcoding URLs. New asset types fall back to a generic "Other" card,
- * so nothing a release publishes ever goes missing here.
+ * season-sprint-android-debug.apk), so assets are classified by extension/name
+ * rather than hardcoded URLs.
  */
 (function () {
   "use strict";
 
   var REPO = "lcflight/season-sprint";
+  var SNAPSHOT = "/releases.json";
   var API = "https://api.github.com/repos/" + REPO + "/releases/latest";
   var RELEASES_URL = "https://github.com/" + REPO + "/releases";
 
@@ -59,6 +65,23 @@
       },
     },
   ];
+
+  // Normalise both the baked snapshot shape (tag/download_url) and the live
+  // GitHub API shape (tag_name/browser_download_url) into one structure.
+  function normalize(raw) {
+    if (!raw) return null;
+    return {
+      tag: raw.tag || raw.tag_name || raw.name || "",
+      published_at: raw.published_at || "",
+      assets: (raw.assets || []).map(function (a) {
+        return {
+          name: a.name,
+          size: a.size,
+          url: a.download_url || a.browser_download_url,
+        };
+      }),
+    };
+  }
 
   function classify(assetName) {
     for (var i = 0; i < PLATFORMS.length; i++) {
@@ -169,7 +192,7 @@
 
     var actions = el("div", "dl-actions");
     var dl = el("a", "button button-primary", "Download");
-    dl.href = asset.browser_download_url;
+    dl.href = asset.url;
     dl.setAttribute("download", "");
     dl.rel = "noopener";
     dl.setAttribute(
@@ -204,11 +227,12 @@
 
   function render(release) {
     var assets = (release && release.assets) || [];
-    var tag = release && (release.tag_name || release.name);
+    var tag = release && release.tag;
 
     // Bucket assets by platform, then pick the best-ranked asset per platform.
     var buckets = {};
     assets.forEach(function (a) {
+      if (!a.url) return;
       var p = classify(a.name);
       if (!p) return;
       (buckets[p.key] = buckets[p.key] || []).push(a);
@@ -232,7 +256,6 @@
     elList.appendChild(renderSoon());
 
     if (!rendered) {
-      // No recognised desktop/mobile assets in this release.
       renderFallback(
         "This release has no desktop or mobile installers yet. Check GitHub for all assets."
       );
@@ -243,19 +266,28 @@
       var parts = [];
       if (tag) parts.push("Latest release " + tag);
       if (when) parts.push("published " + when);
-      elMeta.textContent = parts.length
-        ? parts.join(" · ")
-        : "Latest release";
+      elMeta.textContent = parts.length ? parts.join(" · ") : "Latest release";
     }
   }
 
+  function fetchJson(url, opts) {
+    return fetch(url, opts).then(function (res) {
+      if (!res.ok) throw new Error(url + " -> " + res.status);
+      return res.json();
+    });
+  }
+
   function load() {
-    fetch(API, { headers: { Accept: "application/vnd.github+json" } })
-      .then(function (res) {
-        if (!res.ok) throw new Error("GitHub API " + res.status);
-        return res.json();
+    // Same-origin baked snapshot first (instant), then live API, then fallback.
+    fetchJson(SNAPSHOT, { cache: "no-cache" })
+      .catch(function () {
+        return fetchJson(API, {
+          headers: { Accept: "application/vnd.github+json" },
+        });
       })
-      .then(render)
+      .then(function (raw) {
+        render(normalize(raw));
+      })
       .catch(function () {
         if (elMeta) {
           elMeta.textContent =

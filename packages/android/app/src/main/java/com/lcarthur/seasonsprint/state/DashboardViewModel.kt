@@ -6,6 +6,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.lcarthur.seasonsprint.data.ApiClient
 import com.lcarthur.seasonsprint.data.ApiRecord
+import com.lcarthur.seasonsprint.data.LiveStatus
 import com.lcarthur.seasonsprint.data.LiveUpdates
 import com.lcarthur.seasonsprint.data.RecordEvent
 import com.lcarthur.seasonsprint.domain.PaceStats
@@ -31,7 +32,7 @@ data class DashboardState(
     val hasLoaded: Boolean = false,
     val isWriting: Boolean = false,
     val error: String? = null,
-    val isLive: Boolean = false,
+    val liveStatus: LiveStatus = LiveStatus.Disconnected,
     val goalOverride: Int? = null,
 ) {
     val sortedPoints: List<Point> get() = points.sortedBy { it.instant }
@@ -79,7 +80,7 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         viewModelScope.launch { live.events.collect(::applyEvent) }
-        viewModelScope.launch { live.isLive.collect { l -> _state.update { it.copy(isLive = l) } } }
+        viewModelScope.launch { live.status.collect { s -> _state.update { it.copy(liveStatus = s) } } }
     }
 
     fun load() {

@@ -4,7 +4,7 @@
   "private": true,
   "description": "Marketing landing page for Season Sprint (www.seasonsprint.com)",
   "scripts": {
-    "build": "echo \"static site — nothing to build\"",
+    "build": "node generate-releases.mjs",
     "dev": "npx -y serve ."
   }
 }
