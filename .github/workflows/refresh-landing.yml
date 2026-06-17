@@ -1,0 +1,33 @@
+name: Refresh landing downloads
+
+# When a release is published/updated, ping Render's deploy hook so the landing
+# static site rebuilds and re-bakes packages/landing/releases.json (via
+# `pnpm -F landing build` → generate-releases.mjs) with the new assets.
+#
+# Setup: in the Render dashboard for the landing static site, create a Deploy
+# Hook (Settings → Deploy Hook), then add its URL as the repo secret
+# RENDER_LANDING_DEPLOY_HOOK. Without the secret this job is a no-op, so the
+# downloads page still refreshes on the next normal deploy (and falls back to
+# the live GitHub API at runtime in the meantime).
+
+on:
+  release:
+    types: [published, edited, released, deleted, unpublished]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  trigger-render:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render deploy
+        env:
+          HOOK: ${{ secrets.RENDER_LANDING_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$HOOK" ]; then
+            echo "RENDER_LANDING_DEPLOY_HOOK not set — skipping (no-op)."
+            exit 0
+          fi
+          curl -fsSL -X POST "$HOOK" >/dev/null && echo "Render deploy triggered."
