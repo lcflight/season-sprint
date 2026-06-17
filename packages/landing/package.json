@@ -1,0 +1,10 @@
+{
+  "name": "landing",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Marketing landing page for Season Sprint (www.seasonsprint.com)",
+  "scripts": {
+    "build": "echo \"static site — nothing to build\"",
+    "dev": "npx -y serve ."
+  }
+}
