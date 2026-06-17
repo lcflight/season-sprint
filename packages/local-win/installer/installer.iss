@@ -1,6 +1,6 @@
 ; Inno Setup script for Season Sprint Tracker (Windows).
 ;
-; Produces a single SeasonSprintSetup.exe that installs per-user (no UAC),
+; Produces a single SeasonSprintTracker.exe that installs per-user (no UAC),
 ; copies the Python sources + a Steam-launch wrapper into
 ; %LOCALAPPDATA%\Programs\SeasonSprint\, and collects all first-run config
 ; inside the wizard itself (no separate cmd window):
@@ -24,7 +24,7 @@
 ; Build (on Windows with Inno Setup 6 installed):
 ;   "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
 ;
-; Output: dist\SeasonSprintSetup.exe (relative to this file).
+; Output: dist\SeasonSprintTracker.exe (relative to this file).
 
 #define AppName       "Season Sprint Tracker"
 #define AppVersion    "0.1.9"
@@ -50,7 +50,7 @@ DisableProgramGroupPage=yes
 DisableDirPage=yes
 
 OutputDir=..\dist
-OutputBaseFilename=SeasonSprintSetup
+OutputBaseFilename=SeasonSprintTracker
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
