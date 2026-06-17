@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Download Season Sprint — desktop & mobile apps</title>
+    <meta
+      name="description"
+      content="Download the latest Season Sprint apps for Windows and Android. Always up to date with the newest release."
+    />
+    <link rel="icon" type="image/svg+xml" href="/assets/logo.svg" />
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+
+    <!-- Open Graph / social -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Download Season Sprint" />
+    <meta
+      property="og:description"
+      content="Grab the latest Windows and Android builds of Season Sprint."
+    />
+    <meta property="og:url" content="https://www.seasonsprint.com/downloads" />
+    <meta property="og:image" content="/assets/logo.svg" />
+
+    <link rel="preconnect" href="https://api.github.com" />
+    <link rel="preconnect" href="https://github.com" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <header class="site-header">
+      <a class="brand" href="/" aria-label="Season Sprint home">
+        <img class="brand-mark" src="/assets/logo.svg" alt="" width="40" height="40" />
+        <span class="brand-name">Season&nbsp;Sprint</span>
+      </a>
+      <nav class="nav" aria-label="Primary">
+        <a href="/#features">Features</a>
+        <a href="/#platforms">Platforms</a>
+        <a href="/downloads" aria-current="page">Downloads</a>
+        <a class="button button-primary" href="https://app.seasonsprint.com">Open the app</a>
+      </nav>
+    </header>
+
+    <main id="main">
+      <section class="section downloads-head">
+        <p class="eyebrow">Downloads</p>
+        <h1>Get Season Sprint</h1>
+        <p class="lede downloads-lede">
+          Install the companion apps to track your World Tour climb on your own
+          devices. The web app needs no install — just
+          <a href="https://app.seasonsprint.com">open it</a>.
+        </p>
+        <p class="downloads-release" id="release-meta" aria-live="polite">
+          Loading the latest release…
+        </p>
+      </section>
+
+      <section class="section downloads-section">
+        <div class="downloads" id="downloads">
+          <!-- Cards injected by downloads.js; fallback below shows if JS/fetch fails -->
+          <noscript>
+            <div class="download-card">
+              <div class="dl-body">
+                <h2 class="dl-name">Downloads</h2>
+                <p class="dl-desc">
+                  Enable JavaScript, or grab the latest builds straight from
+                  GitHub.
+                </p>
+              </div>
+              <a
+                class="button button-primary"
+                href="https://github.com/lcflight/season-sprint/releases/latest"
+                >View releases on GitHub</a
+              >
+            </div>
+          </noscript>
+        </div>
+
+        <p class="downloads-foot">
+          All builds are published on
+          <a href="https://github.com/lcflight/season-sprint/releases"
+            >GitHub Releases</a
+          >. Windows installers are unsigned — Windows SmartScreen may warn on
+          first launch. Android requires allowing installs from your browser.
+        </p>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="footer-inner">
+        <a class="brand brand-sm" href="/" aria-label="Season Sprint home">
+          <img src="/assets/logo.svg" alt="" width="28" height="28" />
+          <span>Season Sprint</span>
+        </a>
+        <nav class="footer-nav" aria-label="Footer">
+          <a href="https://app.seasonsprint.com">Open the app</a>
+          <a href="https://github.com/lcflight/season-sprint">GitHub</a>
+        </nav>
+      </div>
+      <p class="footer-note">Created by Luke Arthur (Aireal) · © 2025</p>
+      <p class="footer-disclaimer">
+        Season Sprint is an unofficial fan-made tool and is not affiliated with,
+        endorsed by, or sponsored by Embark Studios. THE FINALS is a trademark of
+        Embark Studios AB.
+      </p>
+    </footer>
+
+    <script src="/downloads.js" defer></script>
+  </body>
+</html>

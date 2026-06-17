@@ -370,6 +370,107 @@ h3 {
   color: var(--muted);
 }
 
+/* ── Downloads page ── */
+.downloads-head {
+  text-align: center;
+  padding-bottom: 8px;
+}
+.downloads-head h1 {
+  font-size: clamp(34px, 5vw, 56px);
+  margin-bottom: 16px;
+}
+.downloads-lede {
+  margin-left: auto;
+  margin-right: auto;
+}
+.downloads-lede a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.downloads-release {
+  color: var(--muted);
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin: 4px 0 0;
+}
+.downloads-section {
+  padding-top: 24px;
+}
+.downloads {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+}
+.download-card {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  background: linear-gradient(180deg, var(--surface-2) 0%, var(--surface) 100%);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 26px 24px;
+}
+.dl-body {
+  flex: 1;
+}
+.dl-name {
+  font-size: 20px;
+  color: var(--primary);
+  margin-bottom: 10px;
+}
+.dl-desc {
+  margin: 0;
+  color: var(--text);
+  font-size: 14px;
+}
+.dl-meta {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.dl-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+.dl-actions .button {
+  align-self: stretch;
+}
+.dl-filename {
+  color: var(--muted);
+  font-size: 11px;
+  word-break: break-all;
+}
+.download-card-soon {
+  opacity: 0.6;
+  border-style: dashed;
+}
+.dl-soon-note {
+  align-self: flex-start;
+  color: var(--accent);
+  font-weight: 900;
+  font-size: 13px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.downloads-foot {
+  max-width: 70ch;
+  margin: 32px auto 0;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+}
+.downloads-foot a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 /* ── Final CTA ── */
 .cta-band {
   text-align: center;
@@ -441,6 +542,9 @@ h3 {
   .platforms {
     grid-template-columns: repeat(2, 1fr);
   }
+  .downloads {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 
 @media (max-width: 560px) {
@@ -452,6 +556,9 @@ h3 {
   }
   .platforms {
     grid-template-columns: 1fr 1fr;
+  }
+  .downloads {
+    grid-template-columns: 1fr;
   }
   .section {
     padding: 48px 20px;
