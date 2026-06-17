@@ -14,13 +14,38 @@ pnpm -F landing dev      # serves this folder on http://localhost:3000
 
 ## Files
 
-- `index.html` — the page
+- `index.html` — the landing page
+- `downloads.html` + `downloads.js` — the downloads page (`/downloads`)
 - `styles.css` — THE FINALS-inspired theme (mirrors `packages/web`)
 - `assets/logo.svg` — brand logo (copied from `packages/web/public/logo.svg`)
 - `favicon.ico`
 
-All CTAs point at `https://app.seasonsprint.com`; download links point at the
-GitHub releases page.
+All app CTAs point at `https://app.seasonsprint.com`. The "Get the apps" CTA and
+the Android/Windows platform tiles point at `/downloads`.
+
+### Downloads page
+
+`/downloads` fetches the **latest** GitHub release at runtime from
+`https://api.github.com/repos/lcflight/season-sprint/releases/latest` (public,
+CORS-enabled, 60 req/hr per IP) and renders one download card per platform from
+whatever assets are attached. Assets are classified by extension/name, not
+hardcoded URLs — `.apk` → Android, `.exe`/`.msi`/`.zip` → Windows,
+`.tar.gz`/`.AppImage` → Linux — so the page keeps up with releases
+automatically even when asset filenames drift. The Linux card also shows a
+copyable `curl … | bash` one-liner that runs `install.sh`. iOS is shown as
+"coming soon", and any fetch failure falls back to a GitHub Releases link.
+
+> Clean URL note: links use `/downloads` (no `.html`). Render static sites and
+> the `serve` dev command both resolve this to `downloads.html` automatically.
+
+### Linux installer (`install.sh`)
+
+Served from this folder at `/install.sh`. The one-liner
+`curl -fsSL https://www.seasonsprint.com/install.sh | bash` downloads the latest
+`season-sprint-linux.tar.gz` release asset (built by `.github/workflows/build-linux.yml`
+from `packages/local/`), extracts it, and hands off to the bundled
+`season-tracker.sh`, which installs deps + EasyOCR, compiles the tracker, and
+configures the Steam launch option.
 
 ---
 

@@ -1,0 +1,44 @@
+name: Build Linux tarball
+
+# Packages the Linux desktop tracker (source + installer script) into
+# season-sprint-linux.tar.gz whenever files under packages/local/ change, on
+# manual dispatch, or on a v* tag push. Every run uploads the tarball as a
+# workflow artifact; tag pushes additionally publish a GitHub Release with the
+# tarball attached, which is what install.sh and the downloads page fetch.
+
+on:
+  push:
+    paths:
+      - "packages/local/**"
+      - ".github/workflows/build-linux.yml"
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write  # needed to create GitHub Releases on tag push
+
+jobs:
+  build-tarball:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build tarball
+        working-directory: packages/local
+        run: bash package-linux.sh
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: season-sprint-linux
+          path: packages/local/dist/season-sprint-linux.tar.gz
+          if-no-files-found: error
+
+      - name: Publish GitHub Release (on v* tag only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: packages/local/dist/season-sprint-linux.tar.gz
+          draft: false
+          generate_release_notes: true
