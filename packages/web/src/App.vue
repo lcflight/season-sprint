@@ -23,7 +23,7 @@
         </main>
       </SignedIn>
       <SignedOut>
-        <RedirectToSignIn />
+        <SignInView />
       </SignedOut>
     </ClerkLoaded>
   </template>
@@ -37,6 +37,7 @@
 
 <script>
 import HeaderBar from "./components/HeaderBar.vue";
+import SignInView from "./components/SignInView.vue";
 // ModeSwitcher hidden for now — Ranked is disabled.
 // import ModeSwitcher from "./components/ModeSwitcher.vue";
 import {
@@ -44,7 +45,6 @@ import {
   ClerkLoaded,
   SignedIn,
   SignedOut,
-  RedirectToSignIn,
 } from "@clerk/vue";
 import { loadSeasonJson } from "@/utils/season";
 import { isClerkEnabled } from "@/services/clerk";
@@ -53,11 +53,11 @@ export default {
   name: "App",
   components: {
     HeaderBar,
+    SignInView,
     ClerkLoading,
     ClerkLoaded,
     SignedIn,
     SignedOut,
-    RedirectToSignIn,
     // ModeSwitcher,
   },
   data() {
