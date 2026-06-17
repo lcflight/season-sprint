@@ -18,6 +18,7 @@ pnpm -F landing build    # regenerate releases.json from the latest GitHub relea
 
 - `index.html` — the landing page
 - `downloads.html` + `downloads.js` — the downloads page (`/downloads`)
+- `install.sh` — Linux installer bootstrap served at `/install.sh`
 - `generate-releases.mjs` — build-time script that bakes `releases.json`
 - `releases.json` — snapshot of the latest release (regenerated on every deploy)
 - `styles.css` — THE FINALS-inspired theme (mirrors `packages/web`)
@@ -25,14 +26,15 @@ pnpm -F landing build    # regenerate releases.json from the latest GitHub relea
 - `favicon.ico`
 
 All app CTAs point at `https://app.seasonsprint.com`. The "Get the apps" CTA and
-the Android/Windows platform tiles point at `/downloads`.
+the Linux/Android/Windows platform tiles point at `/downloads`.
 
 ### Downloads page
 
 `/downloads` renders one download card per platform. Assets are classified by
 extension/name, not hardcoded URLs — `.apk` → Android, `.exe`/`.msi`/`.zip` →
-Windows — so the page keeps up with releases even when asset filenames drift.
-iOS is shown as "coming soon".
+Windows, `.tar.gz`/`.AppImage` → Linux — so the page keeps up with releases
+even when asset filenames drift. The Linux card also shows a copyable
+`curl … | bash` one-liner that runs `install.sh`. iOS is shown as "coming soon".
 
 **Data source (fast path):** at deploy time `generate-releases.mjs` fetches the
 latest release **once** and bakes a trimmed `releases.json` into this folder.
@@ -53,6 +55,15 @@ secret the workflow is a no-op and the page still refreshes on the next deploy.
 
 > Clean URL note: links use `/downloads` (no `.html`). Render static sites and
 > the `serve` dev command both resolve this to `downloads.html` automatically.
+
+### Linux installer (`install.sh`)
+
+Served from this folder at `/install.sh`. The one-liner
+`curl -fsSL https://www.seasonsprint.com/install.sh | bash` downloads the latest
+`season-sprint-linux.tar.gz` release asset (built by `.github/workflows/build-linux.yml`
+from `packages/local/`), extracts it, and hands off to the bundled
+`season-tracker.sh`, which installs deps + EasyOCR, compiles the tracker, and
+configures the Steam launch option.
 
 ---
 

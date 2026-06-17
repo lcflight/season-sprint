@@ -40,6 +40,20 @@
       },
     },
     {
+      key: "linux",
+      name: "Linux",
+      desc: "Desktop tracker with auto-capture (X11). One command installs deps, builds it, and wires it into Steam.",
+      // The easy path is the hosted installer; the tarball is the manual fallback.
+      install: "curl -fsSL https://www.seasonsprint.com/install.sh | bash",
+      match: function (n) {
+        return /\.tar\.gz$/i.test(n) || /\.AppImage$/i.test(n);
+      },
+      // Prefer an AppImage (no build step) over the source tarball when both exist.
+      rank: function (n) {
+        return /\.AppImage$/i.test(n) ? 0 : 1;
+      },
+    },
+    {
       key: "android",
       name: "Android",
       desc: "Install the APK to log and sync your runs from your phone.",
@@ -136,6 +150,43 @@
     if (asset.size) bits.push(fmtSize(asset.size));
     meta.textContent = bits.join(" · ");
     if (bits.length) body.appendChild(meta);
+
+    // Some platforms (Linux) install via a one-liner; show it as a copyable
+    // command above the raw asset download.
+    if (platform.install) {
+      var install = el("div", "dl-install");
+      var code = el("code", "dl-install-cmd", platform.install);
+      install.appendChild(code);
+      var copy = el("button", "dl-copy", "Copy");
+      copy.type = "button";
+      copy.setAttribute("aria-label", "Copy install command");
+      copy.addEventListener("click", function () {
+        var done = function () {
+          copy.textContent = "Copied";
+          copy.classList.add("is-copied");
+          setTimeout(function () {
+            copy.textContent = "Copy";
+            copy.classList.remove("is-copied");
+          }, 1500);
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(platform.install).then(done, function () {});
+        } else {
+          var r = document.createRange();
+          r.selectNode(code);
+          var sel = window.getSelection();
+          sel.removeAllRanges();
+          sel.addRange(r);
+          try {
+            document.execCommand("copy");
+            done();
+          } catch (e) {}
+          sel.removeAllRanges();
+        }
+      });
+      install.appendChild(copy);
+      body.appendChild(install);
+    }
 
     card.appendChild(body);
 
