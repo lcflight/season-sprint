@@ -400,13 +400,17 @@ h3 {
 }
 .downloads {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  /* minmax(0, 1fr) (not 1fr) so a long, non-wrapping install command can't
+     force the Linux column wider than the others — the track may shrink below
+     its content's min size, and .dl-install-cmd scrolls horizontally instead. */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 18px;
 }
 .download-card {
   display: flex;
   flex-direction: column;
   gap: 18px;
+  min-width: 0; /* allow the card to shrink below its content's min-content */
   background: linear-gradient(180deg, var(--surface-2) 0%, var(--surface) 100%);
   border: 1px solid var(--border);
   border-radius: 16px;
@@ -414,6 +418,7 @@ h3 {
 }
 .dl-body {
   flex: 1;
+  min-width: 0; /* let nested overflow-x children scroll rather than expand */
 }
 .dl-name {
   font-size: 20px;
@@ -436,6 +441,7 @@ h3 {
   display: flex;
   align-items: stretch;
   gap: 8px;
+  min-width: 0; /* flex container must allow the command box to shrink + scroll */
   margin: 14px 0 0;
 }
 .dl-install-cmd {
@@ -583,7 +589,7 @@ h3 {
     grid-template-columns: repeat(2, 1fr);
   }
   .downloads {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -598,7 +604,7 @@ h3 {
     grid-template-columns: 1fr 1fr;
   }
   .downloads {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
   .section {
     padding: 48px 20px;
