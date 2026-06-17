@@ -45,6 +45,11 @@
       desc: "Desktop tracker with auto-capture (X11). One command installs deps, builds it, and wires it into Steam.",
       // The easy path is the hosted installer; the tarball is the manual fallback.
       install: "curl -fsSL https://www.seasonsprint.com/install.sh | bash",
+      // The one-liner pulls the *latest* release, so the Linux route exists
+      // independent of any single release's assets. Keep a card on the page
+      // even before a tarball is published — shown as "coming soon" until then
+      // (see renderCard), so it stays consistent with the landing page tile.
+      alwaysShow: true,
       match: function (n) {
         return /\.tar\.gz$/i.test(n) || /\.AppImage$/i.test(n);
       },
@@ -143,6 +148,17 @@
     var body = el("div", "dl-body");
     body.appendChild(el("h2", "dl-name", platform.name));
     body.appendChild(el("p", "dl-desc", platform.desc));
+
+    // An always-shown platform with no published asset yet (Linux before its
+    // first tarball release): present it as coming-soon. The install one-liner
+    // pulls the latest release, so it would 404 until that release exists —
+    // don't surface a command that can't work yet.
+    if (!asset) {
+      card.classList.add("download-card-soon");
+      card.appendChild(body);
+      card.appendChild(el("span", "dl-soon-note", "Coming soon"));
+      return card;
+    }
 
     var meta = el("p", "dl-meta");
     var bits = [];
@@ -243,12 +259,19 @@
 
     PLATFORMS.forEach(function (p) {
       var list = buckets[p.key];
-      if (!list || !list.length) return;
-      list.sort(function (a, b) {
-        return p.rank(a.name) - p.rank(b.name);
-      });
-      elList.appendChild(renderCard(p, list[0], tag));
-      rendered++;
+      if (list && list.length) {
+        list.sort(function (a, b) {
+          return p.rank(a.name) - p.rank(b.name);
+        });
+        elList.appendChild(renderCard(p, list[0], tag));
+        rendered++;
+      } else if (p.alwaysShow) {
+        // No asset for this platform in the latest release, but it has a
+        // release-independent install path. Show a coming-soon card so the
+        // platform stays visible (don't count it as a real installer, so the
+        // "no installers yet" fallback still fires if nothing else rendered).
+        elList.appendChild(renderCard(p, null, tag));
+      }
     });
 
     // Always show iOS as coming-soon so the platform story stays consistent
