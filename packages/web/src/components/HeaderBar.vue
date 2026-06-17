@@ -1,15 +1,11 @@
 <script setup>
 import { ref } from "vue";
-import { RedirectToSignIn, SignedIn, SignedOut, UserButton } from "@clerk/vue";
+import { SignedIn, UserButton } from "@clerk/vue";
 import ApiKeyModal from "@/components/modals/ApiKeyModal.vue";
+import { isClerkEnabled } from "@/services/clerk";
 
-const publishableKey = process.env.VUE_APP_CLERK_PUBLISHABLE_KEY;
-const isLocalDevHost =
-  window.location.hostname === "localhost" ||
-  window.location.hostname === "127.0.0.1";
-const isLiveClerkKey =
-  typeof publishableKey === "string" && publishableKey.startsWith("pk_live_");
-const clerkEnabled = Boolean(publishableKey) && !(isLocalDevHost && isLiveClerkKey);
+// The signed-out redirect is handled in App.vue alongside the content gate.
+const clerkEnabled = isClerkEnabled();
 
 const showApiKeyModal = ref(false);
 </script>
@@ -26,9 +22,6 @@ const showApiKeyModal = ref(false);
         <SignedIn>
           <UserButton />
         </SignedIn>
-        <SignedOut>
-          <RedirectToSignIn />
-        </SignedOut>
       </template>
       <span v-else class="dev-auth-pill">Dev auth mode</span>
     </div>

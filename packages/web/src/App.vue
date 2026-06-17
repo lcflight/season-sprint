@@ -1,8 +1,33 @@
 <template>
   <HeaderBar />
-  <main class="container">
-    <!-- Mode toggle hidden for now — Ranked is disabled. -->
-    <!-- <ModeSwitcher /> -->
+  <!--
+    Gate the app body behind Clerk's auth state so signed-out visitors never
+    see app content flash before the sign-in redirect. While Clerk loads we
+    show a placeholder; once loaded we render content only when SignedIn, and
+    the SignedOut branch redirects to sign-in. In dev-auth mode (no Clerk
+    plugin) the gate is bypassed.
+  -->
+  <template v-if="clerkEnabled">
+    <ClerkLoading>
+      <div class="auth-loading" role="status" aria-live="polite">
+        <span class="auth-spinner" aria-hidden="true"></span>
+        <span class="auth-loading-sr">Loading…</span>
+      </div>
+    </ClerkLoading>
+    <ClerkLoaded>
+      <SignedIn>
+        <main class="container">
+          <!-- Mode toggle hidden for now — Ranked is disabled. -->
+          <!-- <ModeSwitcher /> -->
+          <router-view />
+        </main>
+      </SignedIn>
+      <SignedOut>
+        <RedirectToSignIn />
+      </SignedOut>
+    </ClerkLoaded>
+  </template>
+  <main v-else class="container">
     <router-view />
   </main>
   <footer class="site-footer" role="contentinfo">
@@ -14,16 +39,29 @@
 import HeaderBar from "./components/HeaderBar.vue";
 // ModeSwitcher hidden for now — Ranked is disabled.
 // import ModeSwitcher from "./components/ModeSwitcher.vue";
+import {
+  ClerkLoading,
+  ClerkLoaded,
+  SignedIn,
+  SignedOut,
+  RedirectToSignIn,
+} from "@clerk/vue";
 import { loadSeasonJson } from "@/utils/season";
+import { isClerkEnabled } from "@/services/clerk";
 
 export default {
   name: "App",
   components: {
     HeaderBar,
+    ClerkLoading,
+    ClerkLoaded,
+    SignedIn,
+    SignedOut,
+    RedirectToSignIn,
     // ModeSwitcher,
   },
   data() {
-    return { seasonInfo: null };
+    return { seasonInfo: null, clerkEnabled: isClerkEnabled() };
   },
   computed: {
     seasonName() {
@@ -160,6 +198,44 @@ button:disabled,
   padding: 24px 16px 48px;
   max-width: 1000px;
   margin: 0 auto;
+}
+
+/* Shown while Clerk resolves auth state, in place of the app body, so
+   signed-out visitors never see app content before the sign-in redirect. */
+.auth-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 50vh;
+}
+.auth-spinner {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 3px solid color-mix(in oklab, var(--primary) 25%, transparent);
+  border-top-color: var(--primary);
+  animation: auth-spin 0.8s linear infinite;
+}
+.auth-loading-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+@keyframes auth-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .auth-spinner {
+    animation-duration: 2s;
+  }
 }
 
 .site-footer {
