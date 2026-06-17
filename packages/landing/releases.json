@@ -1,0 +1,27 @@
+{
+  "tag": "v0.1.9",
+  "name": "v0.1.9",
+  "published_at": "2026-06-16T22:35:58Z",
+  "html_url": "https://github.com/lcflight/season-sprint/releases/tag/v0.1.9",
+  "assets": [
+    {
+      "name": "season-sprint-android-debug.apk",
+      "size": 22600357,
+      "download_url": "https://github.com/lcflight/season-sprint/releases/download/v0.1.9/season-sprint-android-debug.apk",
+      "content_type": "application/vnd.android.package-archive"
+    },
+    {
+      "name": "SeasonSprintSetup.exe",
+      "size": 2144167,
+      "download_url": "https://github.com/lcflight/season-sprint/releases/download/v0.1.9/SeasonSprintSetup.exe",
+      "content_type": "application/x-msdos-program"
+    },
+    {
+      "name": "SeasonSprintSetup.zip",
+      "size": 1581588,
+      "download_url": "https://github.com/lcflight/season-sprint/releases/download/v0.1.9/SeasonSprintSetup.zip",
+      "content_type": "application/zip"
+    }
+  ],
+  "generated_at": "2026-06-17T02:23:43.498Z"
+}
