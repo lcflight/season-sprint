@@ -224,56 +224,20 @@ h3 {
   display: flex;
   justify-content: center;
 }
-.art-card {
+.hero-shot {
+  margin: 0;
   width: 100%;
-  max-width: 420px;
-  background: linear-gradient(180deg, var(--surface-2) 0%, var(--surface) 100%);
+  max-width: 460px;
+  border-radius: 12px;
+  overflow: hidden;
   border: 1px solid var(--border);
-  border-radius: 18px;
-  padding: 20px;
   box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5),
     0 0 0 1px rgba(255, 255, 255, 0.02) inset;
 }
-.art-chart {
-  background: rgba(0, 0, 0, 0.25);
-  border: 1px solid rgba(255, 255, 255, 0.04);
-  border-radius: 12px;
-  padding: 8px;
-}
-.art-chart svg {
+.hero-shot img {
   display: block;
   width: 100%;
-  height: 160px;
-}
-.art-stats {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
-  margin-top: 16px;
-}
-.stat {
-  background: rgba(0, 0, 0, 0.25);
-  border: 1px solid rgba(255, 255, 255, 0.04);
-  border-radius: 10px;
-  padding: 12px 10px;
-  text-align: center;
-}
-.stat-label {
-  display: block;
-  color: var(--muted);
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  margin-bottom: 6px;
-}
-.stat-value {
-  display: block;
-  color: var(--text-strong);
-  font-weight: 900;
-  font-size: 18px;
-}
-.stat-accent {
-  color: var(--accent);
+  height: auto;
 }
 
 /* ── Sections ── */
@@ -315,6 +279,81 @@ h3 {
   margin: 0;
   color: var(--text);
   font-size: 15px;
+}
+
+/* ── Showcase (device mockups) ── */
+.section-showcase {
+  text-align: center;
+}
+.showcase-lede {
+  color: var(--muted);
+  font-size: 16px;
+  max-width: 54ch;
+  margin: -24px auto 44px;
+}
+.showcase {
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+}
+.browser {
+  margin: 0;
+  width: 100%;
+  max-width: 760px;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: 0 40px 90px rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(255, 255, 255, 0.02) inset;
+}
+.browser-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--surface-2);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+.browser-dots {
+  display: inline-flex;
+  gap: 6px;
+  flex: none;
+}
+.browser-dots i {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #3a4150;
+}
+.browser-url {
+  flex: 1;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  /* offset the dots so the url sits visually centred */
+  margin-right: 52px;
+}
+.browser img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.phone {
+  flex: none;
+  margin: 0 0 -12px -64px;
+  width: 196px;
+  border-radius: 30px;
+  border: 7px solid #20242e;
+  overflow: hidden;
+  background: #000;
+  box-shadow: 0 30px 70px rgba(0, 0, 0, 0.6);
+}
+.phone img {
+  display: block;
+  width: 100%;
+  height: auto;
 }
 
 /* ── Platforms ── */
@@ -400,17 +439,13 @@ h3 {
 }
 .downloads {
   display: grid;
-  /* minmax(0, 1fr) (not 1fr) so a long, non-wrapping install command can't
-     force the Linux column wider than the others — the track may shrink below
-     its content's min size, and .dl-install-cmd scrolls horizontally instead. */
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(3, 1fr);
   gap: 18px;
 }
 .download-card {
   display: flex;
   flex-direction: column;
   gap: 18px;
-  min-width: 0; /* allow the card to shrink below its content's min-content */
   background: linear-gradient(180deg, var(--surface-2) 0%, var(--surface) 100%);
   border: 1px solid var(--border);
   border-radius: 16px;
@@ -418,7 +453,6 @@ h3 {
 }
 .dl-body {
   flex: 1;
-  min-width: 0; /* let nested overflow-x children scroll rather than expand */
 }
 .dl-name {
   font-size: 20px;
@@ -441,7 +475,6 @@ h3 {
   display: flex;
   align-items: stretch;
   gap: 8px;
-  min-width: 0; /* flex container must allow the command box to shrink + scroll */
   margin: 14px 0 0;
 }
 .dl-install-cmd {
@@ -582,6 +615,14 @@ h3 {
   .hero-art {
     order: -1;
   }
+  .showcase {
+    flex-direction: column;
+    align-items: center;
+  }
+  .phone {
+    margin: -52px 0 0;
+    width: 172px;
+  }
   .grid {
     grid-template-columns: repeat(2, 1fr);
   }
@@ -589,7 +630,7 @@ h3 {
     grid-template-columns: repeat(2, 1fr);
   }
   .downloads {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(2, 1fr);
   }
 }
 
@@ -604,7 +645,7 @@ h3 {
     grid-template-columns: 1fr 1fr;
   }
   .downloads {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: 1fr;
   }
   .section {
     padding: 48px 20px;
