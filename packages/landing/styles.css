@@ -346,6 +346,19 @@ h3 {
   box-shadow: 0 0 0 1px rgba(255, 212, 0, 0.1),
     0 12px 30px rgba(255, 212, 0, 0.15);
 }
+.platform-soon {
+  cursor: default;
+  opacity: 0.6;
+  border-style: dashed;
+}
+.platform-soon:hover {
+  transform: none;
+  border-color: var(--border);
+  box-shadow: none;
+}
+.platform-soon .platform-note {
+  color: var(--accent);
+}
 .platform-name {
   font-weight: 900;
   text-transform: uppercase;
