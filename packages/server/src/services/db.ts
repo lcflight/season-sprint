@@ -22,8 +22,6 @@ export class DbService {
   }
 
   async getUserRecords(clerkUserId: string, mode = "world-tour") {
-    console.warn("Getting user records for clerk user", clerkUserId);
-
     return await this.prisma.record.findMany({
       where: {
         mode,
@@ -347,6 +345,7 @@ export class DbService {
       where: { email: { contains: query } },
       select: {
         id: true,
+        clerkUserId: true,
         email: true,
         isAdmin: true,
         flagOverrides: { select: { flagKey: true, enabled: true } },
