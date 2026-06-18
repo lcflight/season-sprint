@@ -31,7 +31,7 @@
     "ENVIRONMENT": "production",
     // Comma-separated Clerk user IDs that are always admins (bootstraps the
     // admin panel). Set this to the owner's Clerk user id before deploying.
-    "ADMIN_CLERK_USER_IDS": ""
+    "ADMIN_CLERK_USER_IDS": "user_32Yjrat3MFU86GHwPE2x1SwDDH5"
     // DEV_AUTH_TOKEN / DEV_USER_ID are intentionally NOT set here. The Clerk
     // bypass they enable must never exist in production. They live in the
     // gitignored .dev.vars (loaded only by `wrangler dev`), and the auth
