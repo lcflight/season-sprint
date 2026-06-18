@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-OCR daemon using EasyOCR. Finds the "WORLD TOUR POINTS" header
-and returns the "current / max" numbers spatially located below it.
+OCR daemon using EasyOCR. Finds a known points header ("WORLD TOUR POINTS"
+or "RANK SCORE") and returns the "current / max" numbers spatially located
+below it.
 
 Modes:
   Single-shot:  python3 ocr_preprocess.py <input.png>
@@ -19,6 +20,13 @@ import easyocr
 SENTINEL = "---END---"
 
 
+def is_points_header(text):
+    """True if text is a known points header. The points screen shows either
+    of these depending on the selected tab (World Tour vs Ranked)."""
+    u = text.upper()
+    return ("TOUR" in u and "POINT" in u) or ("RANK" in u and "SCORE" in u)
+
+
 def process_image(reader, path):
     """OCR one image and print results to stdout."""
     try:
@@ -27,18 +35,18 @@ def process_image(reader, path):
         print(f"ERROR: {e}", file=sys.stderr)
         return
 
-    # Find the "WORLD TOUR POINTS" header by text match
+    # Find the points header by text match (World Tour or Ranked)
     header_bbox = None
     for (bbox, text, conf) in results:
-        if "TOUR" in text.upper() and "POINT" in text.upper():
+        if is_points_header(text):
             header_bbox = bbox
             print(text)
             break
 
     if header_bbox is None:
-        # No header found — dump all text for the parser to handle
-        for (bbox, text, conf) in results:
-            print(text)
+        # No points header on screen — don't OCR-dump everything, as stray
+        # numbers (e.g. season-tier badges) get misread as the score.
+        print("ERROR: no points header found", file=sys.stderr)
         return
 
     # Header bbox: [[x1,y1],[x2,y2],[x3,y3],[x4,y4]]
