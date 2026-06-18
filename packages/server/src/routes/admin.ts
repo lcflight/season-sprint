@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { Env } from "../index";
-import { requireAdmin } from "../middleware/admin";
+import { requireAdmin, allowlist } from "../middleware/admin";
+import { audit } from "../utils/audit";
 
 const admin = new Hono<Env>();
 
@@ -22,6 +23,7 @@ admin.post("/flags", async (c) => {
     return c.text("Missing flag key", 400);
   }
   const flag = await c.get("db").createFlag(key, description ?? "");
+  audit(c, "flag.create", { key });
   return c.json(flag);
 });
 
@@ -32,6 +34,7 @@ admin.patch("/flags/:key", async (c) => {
     return c.text("enabledGlobally must be a boolean", 400);
   }
   const flag = await c.get("db").setFlagGlobal(key, enabledGlobally);
+  audit(c, "flag.setGlobal", { key, enabledGlobally });
   return c.json(flag);
 });
 
@@ -39,7 +42,17 @@ admin.patch("/flags/:key", async (c) => {
 
 admin.get("/users", async (c) => {
   const email = c.req.query("email") ?? "";
-  return c.json(await c.get("db").searchUsersByEmail(email));
+  const allow = allowlist(c.env);
+  const users = await c.get("db").searchUsersByEmail(email);
+  // `allowlisted` users are admins via the env allowlist regardless of the DB
+  // isAdmin flag (see isAdmin()), so the UI greys out their admin toggle.
+  // clerkUserId is only needed for that match — drop it from the response.
+  return c.json(
+    users.map(({ clerkUserId, ...u }) => ({
+      ...u,
+      allowlisted: allow.has(clerkUserId),
+    }))
+  );
 });
 
 admin.put("/users/:userId/flags/:flagKey", async (c) => {
@@ -50,6 +63,7 @@ admin.put("/users/:userId/flags/:flagKey", async (c) => {
     return c.text("enabled must be a boolean", 400);
   }
   const override = await c.get("db").setUserOverride(userId, flagKey, enabled);
+  audit(c, "user.flag.override.set", { userId, flagKey, enabled });
   return c.json(override);
 });
 
@@ -57,6 +71,7 @@ admin.delete("/users/:userId/flags/:flagKey", async (c) => {
   const userId = c.req.param("userId");
   const flagKey = c.req.param("flagKey");
   const cleared = await c.get("db").clearUserOverride(userId, flagKey);
+  audit(c, "user.flag.override.clear", { userId, flagKey, cleared });
   return c.json({ cleared });
 });
 
@@ -67,6 +82,7 @@ admin.patch("/users/:userId", async (c) => {
     return c.text("isAdmin must be a boolean", 400);
   }
   const user = await c.get("db").setUserAdmin(userId, isAdmin);
+  audit(c, "user.setAdmin", { userId, isAdmin });
   return c.json(user);
 });
 

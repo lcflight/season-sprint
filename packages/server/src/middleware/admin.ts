@@ -6,7 +6,7 @@ import type { MiddlewareHandler } from "hono";
  * The allowlist guarantees the owner is always an admin regardless of DB
  * state, which prevents a bootstrap lockout for the admin panel.
  */
-function allowlist(env: Env["Bindings"]): Set<string> {
+export function allowlist(env: Env["Bindings"]): Set<string> {
   return new Set(
     (env.ADMIN_CLERK_USER_IDS ?? "")
       .split(",")

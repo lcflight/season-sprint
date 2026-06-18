@@ -54,13 +54,18 @@
       <div v-for="u in users" :key="u.id" class="user-row">
         <div class="user-head">
           <span class="user-email">{{ u.email }}</span>
-          <label class="switch">
+          <label
+            class="switch"
+            :class="{ 'switch-locked': u.allowlisted }"
+            :title="u.allowlisted ? 'Admin via ADMIN_CLERK_USER_IDS allowlist — set in worker config, not editable here' : ''"
+          >
             <input
               type="checkbox"
-              :checked="u.isAdmin"
+              :checked="u.isAdmin || u.allowlisted"
+              :disabled="u.allowlisted"
               @change="setAdmin(u, $event.target.checked)"
             />
-            <span>Admin</span>
+            <span>Admin{{ u.allowlisted ? " (allowlist)" : "" }}</span>
           </label>
         </div>
         <div class="user-flags">
@@ -195,6 +200,9 @@ async function changeOverride(user, flagKey, state) {
 }
 
 async function setAdmin(user, isAdmin) {
+  // Allowlisted admins are fixed in worker config; the toggle is disabled in
+  // the UI, but guard here too so it can never clear their admin status.
+  if (user.allowlisted) return;
   await run(async () => {
     const updated = await adminSetUserAdmin(user.id, isAdmin, await auth());
     user.isAdmin = updated.isAdmin;
@@ -260,6 +268,13 @@ onMounted(() => {
   align-items: center;
   gap: 6px;
   cursor: pointer;
+}
+.switch-locked {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+.switch-locked input {
+  cursor: not-allowed;
 }
 .create-flag,
 .user-search {
