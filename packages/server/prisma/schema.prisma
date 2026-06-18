@@ -49,7 +49,7 @@ model Record {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([userId, mode, date])
+  @@unique([userId, mode, date])
 }
 
 model FeatureFlag {

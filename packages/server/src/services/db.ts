@@ -22,8 +22,6 @@ export class DbService {
   }
 
   async getUserRecords(clerkUserId: string, mode = "world-tour") {
-    console.warn("Getting user records for clerk user", clerkUserId);
-
     return await this.prisma.record.findMany({
       where: {
         mode,

@@ -15,12 +15,14 @@ let inflight = null
 async function loadFlags() {
   if (inflight) return inflight
   inflight = (async () => {
+    let succeeded = false
     try {
       const authHeader = await getAuthorizationHeader()
       if (!authHeader) {
         // Signed out — clear any previously loaded state.
         for (const k of Object.keys(flags)) delete flags[k]
         isAdmin.value = false
+        succeeded = true
         return
       }
       const data = await getFlags(authHeader)
@@ -30,10 +32,15 @@ async function loadFlags() {
       }
       Object.assign(flags, next)
       isAdmin.value = Boolean(data?.isAdmin)
+      succeeded = true
     } catch (e) {
       console.warn('Failed to load feature flags', e)
+      // Fail closed: never preserve stale admin/feature access on error, and
+      // leave `loaded` false so route guards retry instead of trusting state.
+      for (const k of Object.keys(flags)) delete flags[k]
+      isAdmin.value = false
     } finally {
-      loaded.value = true
+      loaded.value = succeeded
       inflight = null
     }
   })()

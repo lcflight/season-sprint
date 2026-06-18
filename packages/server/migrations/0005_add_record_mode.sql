@@ -4,5 +4,6 @@
 ALTER TABLE "Record" ADD COLUMN "mode" TEXT NOT NULL DEFAULT 'world-tour';
 
 -- CreateIndex
--- Supports the (userId, mode, date) lookup used by upsert/query/delete-all.
-CREATE INDEX "Record_userId_mode_date_idx" ON "Record"("userId", "mode", "date");
+-- One record per (user, mode, day). UNIQUE both supports the upsert lookup and
+-- prevents duplicate rows if two writes for the same day race each other.
+CREATE UNIQUE INDEX "Record_userId_mode_date_key" ON "Record"("userId", "mode", "date");
