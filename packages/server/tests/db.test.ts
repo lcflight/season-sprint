@@ -66,7 +66,7 @@ describe("DbService", () => {
   });
 
   describe("deleteRecordIfOwner", () => {
-    it("deletes an owned record and returns true", async () => {
+    it("deletes an owned record and returns its mode", async () => {
       const record = await db.upsertRecord(
         "clerk-1",
         "test@example.com",
@@ -75,13 +75,13 @@ describe("DbService", () => {
       );
 
       const result = await db.deleteRecordIfOwner("clerk-1", record.id);
-      expect(result).toBe(true);
+      expect(result).toEqual({ mode: "world-tour" });
 
       const remaining = await db.getUserRecords("clerk-1");
       expect(remaining).toHaveLength(0);
     });
 
-    it("returns false for a record owned by another user", async () => {
+    it("returns null for a record owned by another user", async () => {
       const record = await db.upsertRecord(
         "clerk-1",
         "user1@example.com",
@@ -90,16 +90,16 @@ describe("DbService", () => {
       );
 
       const result = await db.deleteRecordIfOwner("clerk-2", record.id);
-      expect(result).toBe(false);
+      expect(result).toBeNull();
 
       // Record should still exist
       const remaining = await db.getUserRecords("clerk-1");
       expect(remaining).toHaveLength(1);
     });
 
-    it("returns false for a non-existent record", async () => {
+    it("returns null for a non-existent record", async () => {
       const result = await db.deleteRecordIfOwner("clerk-1", "non-existent-id");
-      expect(result).toBe(false);
+      expect(result).toBeNull();
     });
   });
 

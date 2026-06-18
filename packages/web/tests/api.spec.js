@@ -40,7 +40,7 @@ describe('api service', () => {
 
       const result = await getRecords('Bearer token123')
       expect(mockFetch).toHaveBeenCalledWith(
-        'http://localhost:8787/me/records',
+        'http://localhost:8787/me/records?mode=world-tour',
         expect.objectContaining({
           headers: expect.objectContaining({ Authorization: 'Bearer token123' }),
         })
@@ -65,7 +65,7 @@ describe('api service', () => {
         'http://localhost:8787/me/records',
         expect.objectContaining({
           method: 'POST',
-          body: JSON.stringify({ date: '2026-03-01', winPoints: 100 }),
+          body: JSON.stringify({ date: '2026-03-01', winPoints: 100, mode: 'world-tour' }),
         })
       )
     })
@@ -107,7 +107,7 @@ describe('api service', () => {
 
       const result = await deleteAllRecords('Bearer token123')
       expect(mockFetch).toHaveBeenCalledWith(
-        'http://localhost:8787/me/records',
+        'http://localhost:8787/me/records?mode=world-tour',
         expect.objectContaining({
           method: 'DELETE',
           headers: expect.objectContaining({ Authorization: 'Bearer token123' }),
@@ -137,7 +137,7 @@ describe('api service', () => {
         'http://localhost:8787/me/records/bulk',
         expect.objectContaining({
           method: 'POST',
-          body: JSON.stringify({ records: input }),
+          body: JSON.stringify({ records: input, mode: 'world-tour' }),
         })
       )
       expect(result).toEqual({ records: input })

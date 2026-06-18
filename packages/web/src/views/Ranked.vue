@@ -6,6 +6,9 @@
           ref="graphRef"
           storageKey="ranked"
           gamemode="Ranked"
+          mode="ranked"
+          yAxisLabel="Rank Score"
+          unit="RS"
           :goalOptions="rankedThresholds"
           @win-points="onRankScore"
         />

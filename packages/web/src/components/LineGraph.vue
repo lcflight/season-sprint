@@ -25,7 +25,7 @@
           :current-win-points="currentWinPoints"
           :to-next="toNext"
           :progress-pct="progressPct"
-          unit="WP"
+          :unit="unit"
           @select-goal="onSelectGoal"
           @set-goal-win-points="setGoalWinPoints"
         />
@@ -35,7 +35,9 @@
         <div class="today-progress">
           <template v-if="todayPoint">
             <span class="today-label">Today</span>
-            <span class="today-value">+{{ todayGain }} pts</span>
+            <span class="today-value" :class="{ 'today-loss': todayGain < 0 }"
+              >{{ todayGain >= 0 ? "+" : "" }}{{ todayGain }} pts</span
+            >
           </template>
           <template v-else>
             <span class="today-label">No points logged today</span>
@@ -327,7 +329,7 @@
           :y="height / 2"
           text-anchor="middle"
           :transform="`rotate(-90 22 ${height / 2})`"
-        >Total Win Points</text>
+        >{{ yAxisLabel }}</text>
         <text
           class="axis-label"
           :x="width / 2"
@@ -423,6 +425,12 @@ const props = defineProps({
   goalOptions: { type: Array, default: () => [] },
   headerDisclaimer: { type: String, default: "" },
   headerTitle: { type: String, default: "" },
+  // Which game mode's data this graph reads/writes. Keeps World Tour and
+  // Ranked records in separate buckets on the server.
+  mode: { type: String, default: "world-tour" },
+  // Y-axis label and progress unit (e.g. "Rank Score" / "RS" for Ranked).
+  yAxisLabel: { type: String, default: "Total Win Points" },
+  unit: { type: String, default: "WP" },
 });
 
 // Config
@@ -489,7 +497,7 @@ const {
   onImportedRows,
   addWinPoints,
   incrementWinPoints,
-} = usePointsData({ isSeasonValid, seasonStart, seasonEnd, autoSetSeasonFromImport });
+} = usePointsData({ isSeasonValid, seasonStart, seasonEnd, autoSetSeasonFromImport, mode: props.mode });
 
 // Modal state
 const showImportModal = ref(false);
@@ -1052,6 +1060,9 @@ try {
 .today-value {
   color: var(--success);
   font-weight: 800;
+}
+.today-value.today-loss {
+  color: var(--danger);
 }
 
 .status-banner {

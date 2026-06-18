@@ -7,6 +7,8 @@ import { clerkOrDevToken, resolveAuth } from "./middleware/auth";
 import records from "./routes/records";
 import apiKeys from "./routes/apiKeys";
 import stream from "./routes/stream";
+import flags from "./routes/flags";
+import admin from "./routes/admin";
 
 interface Bindings {
   D1: D1Database;
@@ -20,6 +22,9 @@ interface Bindings {
   DEV_USER_ID?: string;
   CLERK_PUBLISHABLE_KEY: string;
   CLERK_SECRET_KEY: string;
+  // Comma-separated Clerk user IDs that are always admins. Bootstraps the admin
+  // panel so the owner is never locked out regardless of the DB isAdmin flag.
+  ADMIN_CLERK_USER_IDS?: string;
 }
 
 export interface Variables {
@@ -85,6 +90,8 @@ app.use("*", resolveAuth);
 // Authenticated routes
 app.route("/me/records", records);
 app.route("/me/api-keys", apiKeys);
+app.route("/me/flags", flags);
+app.route("/admin", admin);
 
 // Stream token exchange — uses normal Clerk auth to issue a stream token
 app.post("/me/stream/token", async (c) => {
