@@ -44,6 +44,7 @@
 #define MAX_LOG_LINES    500
 #define LOG_PRUNE_EVERY  50
 #define MAX_WTP          2400
+#define MAX_RANK         50000
 #define SENTINEL         "---END---"
 #define RESP_BUF_SIZE    4096
 
@@ -61,7 +62,8 @@ typedef struct {
     /* Paths */
     char script_dir[PATH_MAX];
     char env_file[PATH_MAX];
-    char state_file[PATH_MAX];
+    char state_file_wt[PATH_MAX];
+    char state_file_rank[PATH_MAX];
     char log_file[PATH_MAX];
     char ocr_script[PATH_MAX];
 } Config;
@@ -159,9 +161,10 @@ static int load_env(Config *cfg) {
         if (slash) *slash = '\0';
     }
 
-    snprintf(cfg->env_file,   PATH_MAX, "%s/.env",       cfg->script_dir);
-    snprintf(cfg->state_file, PATH_MAX, "%s/.last-wtp",  cfg->script_dir);
-    snprintf(cfg->log_file,   PATH_MAX, "%s/tracker.log", cfg->script_dir);
+    snprintf(cfg->env_file,        PATH_MAX, "%s/.env",       cfg->script_dir);
+    snprintf(cfg->state_file_wt,   PATH_MAX, "%s/.last-wtp",  cfg->script_dir);
+    snprintf(cfg->state_file_rank, PATH_MAX, "%s/.last-rank", cfg->script_dir);
+    snprintf(cfg->log_file,        PATH_MAX, "%s/tracker.log", cfg->script_dir);
     snprintf(cfg->ocr_script, PATH_MAX, "%s/ocr_preprocess.py", cfg->script_dir);
 
     FILE *f = fopen(cfg->env_file, "r");
@@ -550,8 +553,24 @@ static char *strcasestr_local(const char *haystack, const char *needle) {
     return NULL;
 }
 
-/* Parse World Tour Points from OCR text. Returns value or -1 if not found. */
-static int parse_wtp(const char *text) {
+/* Strip commas and underscores from src into dst (so "15,053" -> "15053"). */
+static void strip_grouping(const char *src, char *dst, size_t dst_sz) {
+    size_t di = 0;
+    for (const char *p = src; *p && di + 1 < dst_sz; p++) {
+        if (*p != ',' && *p != '_')
+            dst[di++] = *p;
+    }
+    dst[di] = '\0';
+}
+
+/* Parse a "current / max" metric from OCR text. The metric is identified by a
+ * header line containing hdr1 (or optional hdr2); the value follows on the same
+ * or a subsequent line. Returns the current value, or -1 if not found.
+ *   World Tour: parse_metric(text, "TOUR POINTS", "TOUR POINT", MAX_WTP)
+ *   Ranked:     parse_metric(text, "RANK SCORE",  NULL,        MAX_RANK)
+ */
+static int parse_metric(const char *text, const char *hdr1, const char *hdr2,
+                        int max_val) {
     char buf[RESP_BUF_SIZE];
     strncpy(buf, text, sizeof(buf) - 1);
     buf[sizeof(buf) - 1] = '\0';
@@ -568,31 +587,26 @@ static int parse_wtp(const char *text) {
         char *end = line + strlen(line) - 1;
         while (end > line && isspace(*end)) { *end = '\0'; end--; }
 
+        /* Strip thousands separators so commas don't break number parsing */
+        char cleaned[128];
+        strip_grouping(line, cleaned, sizeof(cleaned));
+
         if (found_header) {
             /* Try "current / max" pattern */
             int cur, max;
-            if (sscanf(line, "%d / %d", &cur, &max) == 2 ||
-                sscanf(line, "%d/ %d", &cur, &max) == 2 ||
-                sscanf(line, "%d /%d", &cur, &max) == 2 ||
-                sscanf(line, "%d/%d", &cur, &max) == 2) {
-                if (cur >= 0 && cur <= MAX_WTP && max >= 0 && max <= MAX_WTP) {
+            if (sscanf(cleaned, "%d / %d", &cur, &max) == 2 ||
+                sscanf(cleaned, "%d/ %d", &cur, &max) == 2 ||
+                sscanf(cleaned, "%d /%d", &cur, &max) == 2 ||
+                sscanf(cleaned, "%d/%d", &cur, &max) == 2) {
+                if (cur >= 0 && cur <= max_val && max >= 0 && max <= max_val) {
                     return cur;
                 }
             }
 
             /* Try standalone number */
-            /* Strip commas and underscores */
-            char cleaned[64];
-            int ci = 0;
-            for (char *p = line; *p && ci < 62; p++) {
-                if (*p != ',' && *p != '_')
-                    cleaned[ci++] = *p;
-            }
-            cleaned[ci] = '\0';
-
             char *endp;
             long val = strtol(cleaned, &endp, 10);
-            if (endp != cleaned && *endp == '\0' && val >= 0 && val <= MAX_WTP) {
+            if (endp != cleaned && *endp == '\0' && val >= 0 && val <= max_val) {
                 if (first_num < 0) {
                     first_num = (int)val;
                 } else {
@@ -614,16 +628,16 @@ static int parse_wtp(const char *text) {
         }
 
         /* Check for header */
-        if (strcasestr_local(line, "TOUR POINTS") ||
-            strcasestr_local(line, "TOUR POINT")) {
-            /* Try "current / max" on same line */
-            char *p = line;
+        if (strcasestr_local(line, hdr1) ||
+            (hdr2 && strcasestr_local(line, hdr2))) {
+            /* Try "current / max" on same line (after the header text) */
+            char *p = cleaned;
             int cur, max;
             while (*p) {
-                if (isdigit(*p)) {
+                if (isdigit((unsigned char)*p)) {
                     if (sscanf(p, "%d / %d", &cur, &max) == 2 ||
                         sscanf(p, "%d/%d", &cur, &max) == 2) {
-                        if (cur >= 0 && cur <= MAX_WTP && max >= 0 && max <= MAX_WTP)
+                        if (cur >= 0 && cur <= max_val && max >= 0 && max <= max_val)
                             return cur;
                     }
                     break;
@@ -640,6 +654,14 @@ static int parse_wtp(const char *text) {
     return -1;
 }
 
+static int parse_wtp(const char *text) {
+    return parse_metric(text, "TOUR POINTS", "TOUR POINT", MAX_WTP);
+}
+
+static int parse_rank(const char *text) {
+    return parse_metric(text, "RANK SCORE", "RANK SCORE", MAX_RANK);
+}
+
 /* ── HTTP API ──────────────────────────────────────────────────────────────── */
 
 static size_t curl_discard(void *ptr, size_t size, size_t nmemb, void *ud) {
@@ -647,7 +669,7 @@ static size_t curl_discard(void *ptr, size_t size, size_t nmemb, void *ud) {
     return size * nmemb;
 }
 
-static int push_record(const Config *cfg, int win_points) {
+static int push_record(const Config *cfg, const char *mode, int win_points) {
     time_t now = time(NULL);
     struct tm tm;
     localtime_r(&now, &tm);
@@ -656,7 +678,8 @@ static int push_record(const Config *cfg, int win_points) {
 
     char body[256];
     snprintf(body, sizeof(body),
-             "{\"date\":\"%s\",\"winPoints\":%d}", date, win_points);
+             "{\"date\":\"%s\",\"winPoints\":%d,\"mode\":\"%s\"}",
+             date, win_points, mode);
 
     char url[600];
     snprintf(url, sizeof(url), "%s/me/records", cfg->server_url);
@@ -691,7 +714,8 @@ static int push_record(const Config *cfg, int win_points) {
     }
 
     if (http_code == 200 || http_code == 201) {
-        logmsg("Pushed winPoints=%d for %s (HTTP %ld)", win_points, date, http_code);
+        logmsg("Pushed %s winPoints=%d for %s (HTTP %ld)",
+               mode, win_points, date, http_code);
         return 0;
     }
 
@@ -701,8 +725,8 @@ static int push_record(const Config *cfg, int win_points) {
 
 /* ── State file ────────────────────────────────────────────────────────────── */
 
-static int read_state(const Config *cfg) {
-    FILE *f = fopen(cfg->state_file, "r");
+static int read_state(const char *path) {
+    FILE *f = fopen(path, "r");
     if (!f) return -1;
     int val = -1;
     fscanf(f, "%d", &val);
@@ -710,9 +734,50 @@ static int read_state(const Config *cfg) {
     return val;
 }
 
-static void write_state(const Config *cfg, int val) {
-    FILE *f = fopen(cfg->state_file, "w");
+static void write_state(const char *path, int val) {
+    FILE *f = fopen(path, "w");
     if (f) { fprintf(f, "%d\n", val); fclose(f); }
+}
+
+/* ── Per-mode tracking ─────────────────────────────────────────────────────────
+ * The points screen shows World Tour Points or Rank Score depending on the
+ * selected tab. Each mode rests independently after its value is confirmed, so
+ * we stop re-reading it while the loop keeps running for the other mode. Only
+ * when BOTH modes are resting does the loop take the long sleep. */
+
+#define COOLDOWN_SECS    300  /* per-mode rest after a confirmed read */
+#define CONFIRM_READS    2    /* consecutive reads before a mode rests */
+
+typedef struct {
+    const char *name;        /* human label for logs */
+    const char *mode;        /* mode string posted to the server */
+    const char *state_file;  /* last-pushed value path */
+    time_t      rest_until;  /* dormant until this time (0 = active) */
+    int         reads;       /* consecutive successful reads */
+} ModeState;
+
+/* Process one frame for a mode. value < 0 means its header wasn't on screen.
+ * A mode goes to rest once its value is confirmed; until then the loop keeps
+ * polling so a mode switch is picked up within a cycle. Returns 1 if read. */
+static int handle_mode(const Config *cfg, ModeState *m, int value, time_t now) {
+    if (value < 0) {
+        m->reads = 0;
+        return 0;
+    }
+
+    int last = read_state(m->state_file);
+    if (value != last) {
+        logmsg("%s changed: %d -> %d", m->name, last, value);
+        if (push_record(cfg, m->mode, value) == 0)
+            write_state(m->state_file, value);
+    }
+
+    if (++m->reads >= CONFIRM_READS) {
+        m->rest_until = now + COOLDOWN_SECS;
+        m->reads = 0;
+        logmsg("%s confirmed (%d). Resting %ds.", m->name, value, COOLDOWN_SECS);
+    }
+    return 1;
 }
 
 /* ── Signal handler ────────────────────────────────────────────────────────── */
@@ -803,11 +868,13 @@ int main(int argc, char **argv) {
            g_cfg.pts_w,  g_cfg.pts_h,  g_cfg.pts_x,  g_cfg.pts_y);
     logmsg("Server: %s", g_cfg.server_url);
 
-    int wt_read_count   = 0;  /* consecutive successful WT reads */
+    ModeState wt   = { "World Tour Points", "world-tour",
+                       g_cfg.state_file_wt,   0, 0 };
+    ModeState rank = { "Rank Score",        "ranked",
+                       g_cfg.state_file_rank, 0, 0 };
     int sleep_interval  = 1;
     int cycle_count     = 0;
     #define GATE_INTERVAL   1    /* seconds between gate checks */
-    #define COOLDOWN_SECS   300  /* 5 min cooldown after confirmed read */
 
     while (!g_exiting) {
         /* Check if game exited */
@@ -817,6 +884,20 @@ int main(int argc, char **argv) {
                 logmsg("Game process exited. Stopping tracker.");
                 break;
             }
+        }
+
+        /* If both modes are resting, skip all capture/OCR until the earlier
+         * one wakes. The loop only takes the long sleep when both are dormant. */
+        time_t now = time(NULL);
+        int wt_resting   = now < wt.rest_until;
+        int rank_resting = now < rank.rest_until;
+        if (wt_resting && rank_resting) {
+            time_t wake = wt.rest_until < rank.rest_until
+                          ? wt.rest_until : rank.rest_until;
+            long secs = (long)(wake - now);
+            if (secs < 1) secs = 1;
+            if (!g_exiting) sleep((unsigned)secs);
+            continue;
         }
 
         cycle_count++;
@@ -844,7 +925,8 @@ int main(int argc, char **argv) {
         if (!gate_pass) {
             logq("Gate: not World Tour screen | %.0fms (cap=%.1fms tess=%.1fms)",
                  ms_gate, t_cap - t_start, t_gate - t_cap);
-            wt_read_count = 0;
+            wt.reads = 0;
+            rank.reads = 0;
             sleep_interval = GATE_INTERVAL;
             sleep(sleep_interval);
             continue;
@@ -865,36 +947,26 @@ int main(int argc, char **argv) {
         double ms_total = t_ocr - t_start;
         double ms_ocr   = t_ocr - t_bmp;
 
-        int wtp = parse_wtp(response);
+        /* The points screen shows either World Tour Points or Rank Score
+         * depending on the tab the user has selected, so try both parsers
+         * against the same OCR output. Only act on modes that aren't resting. */
+        int wtp  = parse_wtp(response);
+        int rank_pts = parse_rank(response);
 
-        if (wtp >= 0) {
-            int last = read_state(&g_cfg);
+        int got = 0;
+        if (!wt_resting)   got |= handle_mode(&g_cfg, &wt,   wtp,      now);
+        if (!rank_resting) got |= handle_mode(&g_cfg, &rank, rank_pts, now);
 
-            if (wtp != last) {
-                logmsg("World Tour Points changed: %d -> %d", last, wtp);
-                if (push_record(&g_cfg, wtp) == 0)
-                    write_state(&g_cfg, wtp);
-            }
-
-            wt_read_count++;
-            logq("OCR ok | wtp=%d (read #%d) | gate=%.0fms ocr=%.0fms total=%.0fms",
-                 wtp, wt_read_count, ms_gate, ms_ocr, ms_total);
-
-            if (wt_read_count >= 2) {
-                /* Confirmed read — cooldown for 5 minutes */
-                logmsg("World Tour Points confirmed: %d. Sleeping %ds.",
-                       wtp, COOLDOWN_SECS);
-                wt_read_count = 0;
-                if (!g_exiting) sleep(COOLDOWN_SECS);
-                continue;
-            }
+        if (got) {
+            logq("OCR ok | wtp=%d rank=%d | gate=%.0fms ocr=%.0fms total=%.0fms",
+                 wtp, rank_pts, ms_gate, ms_ocr, ms_total);
         } else {
             char oneline[120];
             strncpy(oneline, response, 119);
             oneline[119] = '\0';
             for (char *p = oneline; *p; p++)
                 if (*p == '\n') *p = ' ';
-            logq("OCR ok | no WTP | raw=\"%s\" | gate=%.0fms ocr=%.0fms total=%.0fms",
+            logq("OCR ok | no points | raw=\"%s\" | gate=%.0fms ocr=%.0fms total=%.0fms",
                  oneline, ms_gate, ms_ocr, ms_total);
         }
 
