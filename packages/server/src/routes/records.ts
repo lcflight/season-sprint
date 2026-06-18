@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type { Env } from "../index";
-import type { Record } from "../types";
+import type { GameMode, Record } from "../types";
 import getEmail from "../getEmail";
 import { parseDate } from "../utils/parseDate";
 import { broadcast } from "../utils/broadcast";
@@ -21,7 +21,10 @@ records.post("/", async (c) => {
   const email = await getEmail(userId, c.env, cachedEmail);
   const db = c.get("db");
 
-  const { date, winPoints, mode } = await c.req.json<Record>();
+  // `mode` is optional on the wire (older clients omit it) — default it.
+  const { date, winPoints, mode } = await c.req.json<
+    Omit<Record, "id" | "userId" | "mode"> & { mode?: GameMode }
+  >();
   const resolvedMode = mode ?? "world-tour";
 
   const record = await db.upsertRecord(
