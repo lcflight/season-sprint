@@ -64,7 +64,7 @@ export async function connectLiveUpdates(handlers) {
         handlers.onDelete?.(data);
         break;
       case "record:delete-all":
-        handlers.onDeleteAll?.();
+        handlers.onDeleteAll?.(data);
         break;
       case "record:bulk-upsert":
         handlers.onBulkUpsert?.(data);

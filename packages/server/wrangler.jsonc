@@ -28,7 +28,10 @@
   "vars": {
     "DATABASE_URL": "file:./dev.db",
     "CLERK_PUBLISHABLE_KEY": "pk_live_Y2xlcmsuc2Vhc29uc3ByaW50LmNvbSQ",
-    "ENVIRONMENT": "production"
+    "ENVIRONMENT": "production",
+    // Comma-separated Clerk user IDs that are always admins (bootstraps the
+    // admin panel). Set this to the owner's Clerk user id before deploying.
+    "ADMIN_CLERK_USER_IDS": ""
     // DEV_AUTH_TOKEN / DEV_USER_ID are intentionally NOT set here. The Clerk
     // bypass they enable must never exist in production. They live in the
     // gitignored .dev.vars (loaded only by `wrangler dev`), and the auth

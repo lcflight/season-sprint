@@ -14,14 +14,17 @@ function requireApiBaseUrl() {
   return BASE;
 }
 
-export async function getRecords(authorizationHeader) {
+export async function getRecords(authorizationHeader, mode = "world-tour") {
   if (!authorizationHeader) {
     throw new Error("Missing authorization header");
   }
   const apiBase = requireApiBaseUrl();
-  const response = await fetch(`${apiBase}/me/records`, {
-    headers: { Authorization: authorizationHeader },
-  });
+  const response = await fetch(
+    `${apiBase}/me/records?mode=${encodeURIComponent(mode)}`,
+    {
+      headers: { Authorization: authorizationHeader },
+    }
+  );
 
   if (!response.ok) {
     throw new Error(`Failed to fetch records: ${response.status}`);
@@ -30,7 +33,12 @@ export async function getRecords(authorizationHeader) {
   return response.json();
 }
 
-export async function upsertRecord(date, winPoints, authorizationHeader) {
+export async function upsertRecord(
+  date,
+  winPoints,
+  authorizationHeader,
+  mode = "world-tour"
+) {
   if (!authorizationHeader) {
     throw new Error("Missing authorization header");
   }
@@ -41,7 +49,7 @@ export async function upsertRecord(date, winPoints, authorizationHeader) {
       "Content-Type": "application/json",
       Authorization: authorizationHeader,
     },
-    body: JSON.stringify({ date, winPoints }),
+    body: JSON.stringify({ date, winPoints, mode }),
   });
 
   if (!response.ok) {
@@ -68,15 +76,21 @@ export async function deleteRecord(id, authorizationHeader) {
   return response.json();
 }
 
-export async function deleteAllRecords(authorizationHeader) {
+export async function deleteAllRecords(
+  authorizationHeader,
+  mode = "world-tour"
+) {
   if (!authorizationHeader) {
     throw new Error("Missing authorization header");
   }
   const apiBase = requireApiBaseUrl();
-  const response = await fetch(`${apiBase}/me/records`, {
-    method: "DELETE",
-    headers: { Authorization: authorizationHeader },
-  });
+  const response = await fetch(
+    `${apiBase}/me/records?mode=${encodeURIComponent(mode)}`,
+    {
+      method: "DELETE",
+      headers: { Authorization: authorizationHeader },
+    }
+  );
 
   if (!response.ok) {
     throw new Error(`Failed to delete records: ${response.status}`);
@@ -85,7 +99,11 @@ export async function deleteAllRecords(authorizationHeader) {
   return response.json();
 }
 
-export async function bulkUpsertRecords(records, authorizationHeader) {
+export async function bulkUpsertRecords(
+  records,
+  authorizationHeader,
+  mode = "world-tour"
+) {
   if (!authorizationHeader) {
     throw new Error("Missing authorization header");
   }
@@ -96,7 +114,7 @@ export async function bulkUpsertRecords(records, authorizationHeader) {
       "Content-Type": "application/json",
       Authorization: authorizationHeader,
     },
-    body: JSON.stringify({ records }),
+    body: JSON.stringify({ records, mode }),
   });
 
   if (!response.ok) {
@@ -158,6 +176,93 @@ export async function revokeApiKey(keyId, authorizationHeader) {
   }
 
   return response.json();
+}
+
+// ── Feature flags ───────────────────────────────────────────────────────────
+
+export async function getFlags(authorizationHeader) {
+  if (!authorizationHeader) {
+    throw new Error("Missing authorization header");
+  }
+  const apiBase = requireApiBaseUrl();
+  const response = await fetch(`${apiBase}/me/flags`, {
+    headers: { Authorization: authorizationHeader },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch flags: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+async function adminFetch(path, authorizationHeader, options = {}) {
+  if (!authorizationHeader) {
+    throw new Error("Missing authorization header");
+  }
+  const apiBase = requireApiBaseUrl();
+  const response = await fetch(`${apiBase}${path}`, {
+    ...options,
+    headers: {
+      Authorization: authorizationHeader,
+      ...(options.body ? { "Content-Type": "application/json" } : {}),
+      ...(options.headers || {}),
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Admin request failed: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export function adminListFlags(authorizationHeader) {
+  return adminFetch("/admin/flags", authorizationHeader);
+}
+
+export function adminCreateFlag(key, description, authorizationHeader) {
+  return adminFetch("/admin/flags", authorizationHeader, {
+    method: "POST",
+    body: JSON.stringify({ key, description }),
+  });
+}
+
+export function adminToggleFlag(key, enabledGlobally, authorizationHeader) {
+  return adminFetch(`/admin/flags/${encodeURIComponent(key)}`, authorizationHeader, {
+    method: "PATCH",
+    body: JSON.stringify({ enabledGlobally }),
+  });
+}
+
+export function adminSearchUsers(email, authorizationHeader) {
+  return adminFetch(
+    `/admin/users?email=${encodeURIComponent(email)}`,
+    authorizationHeader
+  );
+}
+
+export function adminSetUserOverride(userId, flagKey, enabled, authorizationHeader) {
+  return adminFetch(
+    `/admin/users/${encodeURIComponent(userId)}/flags/${encodeURIComponent(flagKey)}`,
+    authorizationHeader,
+    { method: "PUT", body: JSON.stringify({ enabled }) }
+  );
+}
+
+export function adminClearUserOverride(userId, flagKey, authorizationHeader) {
+  return adminFetch(
+    `/admin/users/${encodeURIComponent(userId)}/flags/${encodeURIComponent(flagKey)}`,
+    authorizationHeader,
+    { method: "DELETE" }
+  );
+}
+
+export function adminSetUserAdmin(userId, isAdmin, authorizationHeader) {
+  return adminFetch(`/admin/users/${encodeURIComponent(userId)}`, authorizationHeader, {
+    method: "PATCH",
+    body: JSON.stringify({ isAdmin }),
+  });
 }
 
 export async function getAuthorizationHeader() {

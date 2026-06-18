@@ -17,8 +17,7 @@
     <ClerkLoaded>
       <SignedIn>
         <main class="container">
-          <!-- Mode toggle hidden for now — Ranked is disabled. -->
-          <!-- <ModeSwitcher /> -->
+          <ModeSwitcher />
           <router-view />
         </main>
       </SignedIn>
@@ -28,6 +27,7 @@
     </ClerkLoaded>
   </template>
   <main v-else class="container">
+    <ModeSwitcher />
     <router-view />
   </main>
   <footer class="site-footer" role="contentinfo">
@@ -36,10 +36,11 @@
 </template>
 
 <script>
+import { watch } from "vue";
+import { useAuth } from "@clerk/vue";
 import HeaderBar from "./components/HeaderBar.vue";
 import SignInView from "./components/SignInView.vue";
-// ModeSwitcher hidden for now — Ranked is disabled.
-// import ModeSwitcher from "./components/ModeSwitcher.vue";
+import ModeSwitcher from "./components/ModeSwitcher.vue";
 import {
   ClerkLoading,
   ClerkLoaded,
@@ -48,6 +49,7 @@ import {
 } from "@clerk/vue";
 import { loadSeasonJson } from "@/utils/season";
 import { isClerkEnabled } from "@/services/clerk";
+import { useFlags } from "@/composables/useFlags";
 
 export default {
   name: "App",
@@ -58,7 +60,18 @@ export default {
     ClerkLoaded,
     SignedIn,
     SignedOut,
-    // ModeSwitcher,
+    ModeSwitcher,
+  },
+  setup() {
+    const { loadFlags } = useFlags();
+    // Flags depend on auth — load now, and reload when Clerk sign-in changes.
+    loadFlags();
+    try {
+      const { isSignedIn } = useAuth();
+      watch(isSignedIn, () => loadFlags());
+    } catch (e) {
+      // Clerk not available (e.g. dev mode) — initial load above is enough.
+    }
   },
   data() {
     return { seasonInfo: null, clerkEnabled: isClerkEnabled() };

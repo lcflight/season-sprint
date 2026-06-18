@@ -1,14 +1,23 @@
 <template>
   <nav class="mode-switch" aria-label="Game mode">
     <router-link to="/world-tour" class="mode-seg">World Tour</router-link>
-    <router-link to="/ranked" class="mode-seg">Ranked</router-link>
+    <router-link v-if="flags.ranked" to="/ranked" class="mode-seg"
+      >Ranked</router-link
+    >
+    <router-link v-if="isAdmin" to="/admin" class="mode-seg mode-seg-admin"
+      >Admin</router-link
+    >
   </nav>
 </template>
 
 <script setup>
-// Segmented control between the two game modes. Pure navigation — vue-router
+// Segmented control between the game modes. Pure navigation — vue-router
 // applies `router-link-active` to the matching segment, which we style as the
-// selected pill.
+// selected pill. The Ranked segment appears only when the `ranked` flag is on;
+// the Admin segment only for admins.
+import { useFlags } from "@/composables/useFlags";
+
+const { flags, isAdmin } = useFlags();
 </script>
 
 <style scoped>

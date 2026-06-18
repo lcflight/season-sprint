@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type { Env } from "../index";
-import type { Record } from "../types";
+import type { GameMode, Record } from "../types";
 import getEmail from "../getEmail";
 import { parseDate } from "../utils/parseDate";
 import { broadcast } from "../utils/broadcast";
@@ -11,7 +11,8 @@ records.get("/", async (c) => {
   const { userId } = c.get("auth");
   const db = c.get("db");
 
-  const result = await db.getUserRecords(userId);
+  const mode = c.req.query("mode") ?? "world-tour";
+  const result = await db.getUserRecords(userId, mode);
   return c.json(result);
 });
 
@@ -20,9 +21,19 @@ records.post("/", async (c) => {
   const email = await getEmail(userId, c.env, cachedEmail);
   const db = c.get("db");
 
-  const { date, winPoints } = await c.req.json<Record>();
+  // `mode` is optional on the wire (older clients omit it) — default it.
+  const { date, winPoints, mode } = await c.req.json<
+    Omit<Record, "id" | "userId" | "mode"> & { mode?: GameMode }
+  >();
+  const resolvedMode = mode ?? "world-tour";
 
-  const record = await db.upsertRecord(userId, email, date, winPoints);
+  const record = await db.upsertRecord(
+    userId,
+    email,
+    date,
+    winPoints,
+    resolvedMode
+  );
 
   broadcast(c, userId, "record:upsert", record);
 
@@ -79,7 +90,7 @@ records.delete("/:id", async (c) => {
     return c.text("Not found", 404);
   }
 
-  broadcast(c, userId, "record:delete", { id });
+  broadcast(c, userId, "record:delete", { id, mode: deleted.mode });
 
   return c.json({ deleted: true });
 });
@@ -88,9 +99,10 @@ records.delete("/", async (c) => {
   const { userId } = c.get("auth");
   const db = c.get("db");
 
-  const count = await db.deleteAllUserRecords(userId);
+  const mode = c.req.query("mode") ?? "world-tour";
+  const count = await db.deleteAllUserRecords(userId, mode);
 
-  broadcast(c, userId, "record:delete-all", {});
+  broadcast(c, userId, "record:delete-all", { mode });
 
   return c.json({ deleted: count });
 });
@@ -100,17 +112,23 @@ records.post("/bulk", async (c) => {
   const email = await getEmail(userId, c.env, cachedEmail);
   const db = c.get("db");
 
-  const { records: input } = await c.req.json<{
+  const { records: input, mode } = await c.req.json<{
     records: { date: string; winPoints: number }[];
+    mode?: string;
   }>();
+  const resolvedMode = mode ?? "world-tour";
 
   const result = await db.bulkUpsertRecords(
     userId,
     email,
-    input.map((r) => ({ date: new Date(r.date), winPoints: r.winPoints }))
+    input.map((r) => ({ date: new Date(r.date), winPoints: r.winPoints })),
+    resolvedMode
   );
 
-  broadcast(c, userId, "record:bulk-upsert", { records: result });
+  broadcast(c, userId, "record:bulk-upsert", {
+    records: result,
+    mode: resolvedMode,
+  });
 
   return c.json({ records: result });
 });

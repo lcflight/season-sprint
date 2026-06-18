@@ -19,7 +19,10 @@ import { connectLiveUpdates } from '@/services/liveUpdates'
  * @param {import('vue').Ref<string>} opts.seasonEnd
  * @param {import('vue').Ref<boolean>} opts.autoSetSeasonFromImport
  */
-export function usePointsData({ isSeasonValid, seasonStart, seasonEnd, autoSetSeasonFromImport }) {
+export function usePointsData({ isSeasonValid, seasonStart, seasonEnd, autoSetSeasonFromImport, mode = 'world-tour' }) {
+  // Live events carry a `mode`; ignore any that belong to a different graph.
+  // Treat a missing mode as 'world-tour' for backward-compat with old payloads.
+  const matchesMode = (payload) => (payload?.mode ?? 'world-tour') === mode
   const points = reactive([])
   const isLoading = ref(false)
   const loadError = ref('')
@@ -73,15 +76,21 @@ export function usePointsData({ isSeasonValid, seasonStart, seasonEnd, autoSetSe
         onStatus(s) {
           liveStatus.value = s
         },
-        onUpsert: upsertPoint,
-        onDelete({ id }) {
+        onUpsert(record) {
+          if (!matchesMode(record)) return
+          upsertPoint(record)
+        },
+        onDelete({ id, mode: m }) {
+          if (!matchesMode({ mode: m })) return
           const idx = points.findIndex((p) => p.remoteId === id)
           if (idx !== -1) points.splice(idx, 1)
         },
-        onDeleteAll() {
+        onDeleteAll(payload) {
+          if (!matchesMode(payload)) return
           points.splice(0, points.length)
         },
-        onBulkUpsert({ records }) {
+        onBulkUpsert({ records, mode: m }) {
+          if (!matchesMode({ mode: m })) return
           if (Array.isArray(records)) records.forEach(upsertPoint)
         },
       })
@@ -106,7 +115,7 @@ export function usePointsData({ isSeasonValid, seasonStart, seasonEnd, autoSetSe
         return
       }
       isAuthenticated.value = true
-      const records = await getRecords(authHeader)
+      const records = await getRecords(authHeader, mode)
       const mapped = records.map((r) => ({
         remoteId: r.id,
         date: typeof r.date === 'string' ? r.date.slice(0, 10) : '',
@@ -131,7 +140,7 @@ export function usePointsData({ isSeasonValid, seasonStart, seasonEnd, autoSetSe
     try {
       const authHeader = await getAuthorizationHeader()
       if (!authHeader) return null
-      const result = await upsertRecord(dateStr, Number(yVal), authHeader)
+      const result = await upsertRecord(dateStr, Number(yVal), authHeader, mode)
       return result.record
     } catch (error) {
       console.warn('Failed to persist point to server', error)
@@ -189,7 +198,7 @@ export function usePointsData({ isSeasonValid, seasonStart, seasonEnd, autoSetSe
     points.splice(0, points.length)
     try {
       const authHeader = await getAuthorizationHeader()
-      if (authHeader) await deleteAllRecords(authHeader)
+      if (authHeader) await deleteAllRecords(authHeader, mode)
     } catch (e) {
       console.warn('Failed to clear points on server', e)
     }
@@ -209,7 +218,7 @@ export function usePointsData({ isSeasonValid, seasonStart, seasonEnd, autoSetSe
       const authHeader = await getAuthorizationHeader()
       if (authHeader) {
         const input = rows.map((r) => ({ date: r.date, winPoints: r.y }))
-        const result = await bulkUpsertRecords(input, authHeader)
+        const result = await bulkUpsertRecords(input, authHeader, mode)
         if (result.records) {
           for (const rec of result.records) {
             const dateStr = typeof rec.date === 'string' ? rec.date.slice(0, 10) : ''

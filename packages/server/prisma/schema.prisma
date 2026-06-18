@@ -15,14 +15,16 @@ datasource db {
 }
 
 model User {
-  id          String   @id @default(uuid())
-  email       String   @unique
-  name        String?
-  clerkUserId String   @unique
-  records     Record[]
-  apiKeys     ApiKey[]
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id            String             @id @default(uuid())
+  email         String             @unique
+  name          String?
+  clerkUserId   String             @unique
+  isAdmin       Boolean            @default(false)
+  records       Record[]
+  apiKeys       ApiKey[]
+  flagOverrides UserFlagOverride[]
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
 }
 
 model ApiKey {
@@ -41,8 +43,33 @@ model Record {
   id        String   @id @default(uuid())
   date      DateTime
   winPoints Int
+  mode      String   @default("world-tour")
   User      User     @relation(fields: [userId], references: [id])
   userId    String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([userId, mode, date])
+}
+
+model FeatureFlag {
+  key             String             @id
+  description     String             @default("")
+  enabledGlobally Boolean            @default(false)
+  overrides       UserFlagOverride[]
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+}
+
+model UserFlagOverride {
+  id        String      @id @default(uuid())
+  User      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  Flag      FeatureFlag @relation(fields: [flagKey], references: [key], onDelete: Cascade)
+  flagKey   String
+  enabled   Boolean
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  @@unique([userId, flagKey])
 }

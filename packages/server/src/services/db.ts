@@ -21,11 +21,12 @@ export class DbService {
     });
   }
 
-  async getUserRecords(clerkUserId: string) {
+  async getUserRecords(clerkUserId: string, mode = "world-tour") {
     console.warn("Getting user records for clerk user", clerkUserId);
 
     return await this.prisma.record.findMany({
       where: {
+        mode,
         User: {
           clerkUserId,
         },
@@ -34,6 +35,7 @@ export class DbService {
         id: true,
         date: true,
         winPoints: true,
+        mode: true,
       },
       orderBy: {
         date: "desc",
@@ -45,7 +47,8 @@ export class DbService {
     clerkUserId: string,
     userEmail: string,
     date: Date,
-    winPoints: number
+    winPoints: number,
+    mode = "world-tour"
   ) {
     const user = await this.getOrCreateUserByClerkId(clerkUserId, userEmail);
 
@@ -54,6 +57,7 @@ export class DbService {
         userId: user.id,
         date: new Date(date),
         winPoints,
+        mode,
       },
     });
   }
@@ -62,7 +66,8 @@ export class DbService {
     clerkUserId: string,
     userEmail: string,
     date: Date,
-    winPoints: number
+    winPoints: number,
+    mode = "world-tour"
   ) {
     const user = await this.getOrCreateUserByClerkId(clerkUserId, userEmail);
 
@@ -70,10 +75,11 @@ export class DbService {
     const normalizedDate = new Date(date);
     normalizedDate.setUTCHours(0, 0, 0, 0);
 
-    // Find existing record for this user and date
+    // Find existing record for this user, mode, and date
     const existing = await this.prisma.record.findFirst({
       where: {
         userId: user.id,
+        mode,
         date: normalizedDate,
       },
     });
@@ -83,7 +89,7 @@ export class DbService {
       return await this.prisma.record.update({
         where: { id: existing.id },
         data: { winPoints },
-        select: { id: true, date: true, winPoints: true },
+        select: { id: true, date: true, winPoints: true, mode: true },
       });
     } else {
       // Create new record
@@ -92,33 +98,38 @@ export class DbService {
           userId: user.id,
           date: normalizedDate,
           winPoints,
+          mode,
         },
-        select: { id: true, date: true, winPoints: true },
+        select: { id: true, date: true, winPoints: true, mode: true },
       });
     }
   }
 
+  // Returns the deleted record's mode so callers can scope the live broadcast.
   async deleteRecordIfOwner(
     clerkUserId: string,
     recordId: string
-  ): Promise<boolean> {
+  ): Promise<{ mode: string } | null> {
     const existing = await this.prisma.record.findFirst({
       where: {
         id: recordId,
         User: { clerkUserId },
       },
-      select: { id: true },
+      select: { id: true, mode: true },
     });
 
     if (!existing) {
-      return false;
+      return null;
     }
 
     await this.prisma.record.delete({ where: { id: recordId } });
-    return true;
+    return { mode: existing.mode };
   }
 
-  async deleteAllUserRecords(clerkUserId: string): Promise<number> {
+  async deleteAllUserRecords(
+    clerkUserId: string,
+    mode = "world-tour"
+  ): Promise<number> {
     const user = await this.prisma.user.findUnique({
       where: { clerkUserId },
       select: { id: true },
@@ -129,7 +140,7 @@ export class DbService {
     }
 
     const result = await this.prisma.record.deleteMany({
-      where: { userId: user.id },
+      where: { userId: user.id, mode },
     });
 
     return result.count;
@@ -138,7 +149,8 @@ export class DbService {
   async bulkUpsertRecords(
     clerkUserId: string,
     userEmail: string,
-    records: { date: Date; winPoints: number }[]
+    records: { date: Date; winPoints: number }[],
+    mode = "world-tour"
   ) {
     if (records.length === 0) return [];
 
@@ -150,20 +162,20 @@ export class DbService {
       normalizedDate.setUTCHours(0, 0, 0, 0);
 
       const existing = await this.prisma.record.findFirst({
-        where: { userId: user.id, date: normalizedDate },
+        where: { userId: user.id, mode, date: normalizedDate },
       });
 
       if (existing) {
         const updated = await this.prisma.record.update({
           where: { id: existing.id },
           data: { winPoints },
-          select: { id: true, date: true, winPoints: true },
+          select: { id: true, date: true, winPoints: true, mode: true },
         });
         results.push(updated);
       } else {
         const created = await this.prisma.record.create({
-          data: { userId: user.id, date: normalizedDate, winPoints },
-          select: { id: true, date: true, winPoints: true },
+          data: { userId: user.id, date: normalizedDate, winPoints, mode },
+          select: { id: true, date: true, winPoints: true, mode: true },
         });
         results.push(created);
       }
@@ -263,7 +275,108 @@ export class DbService {
     return await this.prisma.record.update({
       where: { id: recordId },
       data,
-      select: { id: true, date: true, winPoints: true },
+      select: { id: true, date: true, winPoints: true, mode: true },
+    });
+  }
+
+  // ── Feature flags ─────────────────────────────────────────────────────────
+
+  /** Resolve every flag for a user: per-user override wins over the global default. */
+  async getResolvedFlags(clerkUserId: string): Promise<Record<string, boolean>> {
+    const flags = await this.prisma.featureFlag.findMany({
+      select: { key: true, enabledGlobally: true },
+    });
+
+    const user = await this.prisma.user.findUnique({
+      where: { clerkUserId },
+      select: { id: true },
+    });
+
+    const overrides = user
+      ? await this.prisma.userFlagOverride.findMany({
+          where: { userId: user.id },
+          select: { flagKey: true, enabled: true },
+        })
+      : [];
+    const overrideMap = new Map(overrides.map((o) => [o.flagKey, o.enabled]));
+
+    const resolved: Record<string, boolean> = {};
+    for (const flag of flags) {
+      resolved[flag.key] = overrideMap.has(flag.key)
+        ? Boolean(overrideMap.get(flag.key))
+        : flag.enabledGlobally;
+    }
+    return resolved;
+  }
+
+  async isUserAdmin(clerkUserId: string): Promise<boolean> {
+    const user = await this.prisma.user.findUnique({
+      where: { clerkUserId },
+      select: { isAdmin: true },
+    });
+    return Boolean(user?.isAdmin);
+  }
+
+  async listFlags() {
+    return await this.prisma.featureFlag.findMany({
+      select: { key: true, description: true, enabledGlobally: true },
+      orderBy: { key: "asc" },
+    });
+  }
+
+  async createFlag(key: string, description: string) {
+    return await this.prisma.featureFlag.upsert({
+      where: { key },
+      update: { description },
+      create: { key, description },
+      select: { key: true, description: true, enabledGlobally: true },
+    });
+  }
+
+  async setFlagGlobal(key: string, enabledGlobally: boolean) {
+    return await this.prisma.featureFlag.update({
+      where: { key },
+      data: { enabledGlobally },
+      select: { key: true, description: true, enabledGlobally: true },
+    });
+  }
+
+  /** Look up users by an email substring, including their per-flag overrides. */
+  async searchUsersByEmail(query: string) {
+    return await this.prisma.user.findMany({
+      where: { email: { contains: query } },
+      select: {
+        id: true,
+        email: true,
+        isAdmin: true,
+        flagOverrides: { select: { flagKey: true, enabled: true } },
+      },
+      orderBy: { email: "asc" },
+      take: 25,
+    });
+  }
+
+  async setUserOverride(userId: string, flagKey: string, enabled: boolean) {
+    return await this.prisma.userFlagOverride.upsert({
+      where: { userId_flagKey: { userId, flagKey } },
+      update: { enabled },
+      create: { userId, flagKey, enabled },
+      select: { userId: true, flagKey: true, enabled: true },
+    });
+  }
+
+  async clearUserOverride(userId: string, flagKey: string): Promise<boolean> {
+    const result = await this.prisma.userFlagOverride.deleteMany({
+      where: { userId, flagKey },
+    });
+    return result.count > 0;
+  }
+
+  async setUserAdmin(userId: string, isAdmin: boolean) {
+    return await this.prisma.user.update({
+      where: { id: userId },
+      data: { isAdmin },
+      select: { id: true, email: true, isAdmin: true },
     });
   }
 }

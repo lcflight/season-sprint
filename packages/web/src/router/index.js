@@ -1,16 +1,25 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
 import WorldTour from '@/views/WorldTour.vue'
-// Ranked mode is disabled for now. Keep the import/route commented so it can be
-// restored quickly later.
-// import Ranked from '@/views/Ranked.vue'
+import { useFlags } from '@/composables/useFlags'
 
 const routes = [
   { path: '/', redirect: '/world-tour' },
   { path: '/world-tour', name: 'WorldTour', component: WorldTour },
-  // Ranked is disabled for now — redirect any /ranked links back to World Tour.
-  // { path: '/ranked', name: 'Ranked', component: Ranked },
-  { path: '/ranked', redirect: '/world-tour' },
+  // Ranked is gated by the `ranked` feature flag (see the guard below).
+  {
+    path: '/ranked',
+    name: 'Ranked',
+    component: () => import('@/views/Ranked.vue'),
+    meta: { flag: 'ranked' },
+  },
+  // Admin panel — only for admins.
+  {
+    path: '/admin',
+    name: 'Admin',
+    component: () => import('@/views/Admin.vue'),
+    meta: { admin: true },
+  },
 ]
 
 const router = createRouter({
@@ -21,5 +30,16 @@ const router = createRouter({
   },
 })
 
-export default router
+// Gate flag-protected and admin-only routes. Flags depend on auth, so ensure
+// they are loaded before deciding (idempotent — shares one in-flight request).
+router.beforeEach(async (to) => {
+  const { flags, isAdmin, loaded, loadFlags } = useFlags()
+  if (to.meta?.flag || to.meta?.admin) {
+    if (!loaded.value) await loadFlags()
+    if (to.meta.admin && !isAdmin.value) return '/world-tour'
+    if (to.meta.flag && !flags[to.meta.flag]) return '/world-tour'
+  }
+  return true
+})
 
+export default router
