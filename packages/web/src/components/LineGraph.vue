@@ -14,7 +14,8 @@
       Sign in to save and sync your data.
     </div>
 
-    <!-- Unified status: goal/progress, today's gain + live state, required pace -->
+    <!-- Unified status: goal/progress and required pace. Today's gain + live
+         state live inside the graph area (see chart-wrapper below). -->
     <section class="lg-status">
       <div class="controls" v-if="showGoalControl">
         <GoalControls
@@ -31,7 +32,44 @@
         />
       </div>
 
-      <div class="status-row" v-if="isSeasonValid">
+      <StatsPanel
+        v-if="isSeasonValid"
+        :required-per-day-zero="requiredPerDayZero"
+        :required-per-day-from-last="requiredPerDayFromLast"
+        :is-from-last-defined="isFromLastDefined"
+      />
+    </section>
+
+    <!-- Custom content below stats -->
+    <slot name="below-stats"></slot>
+
+    <!-- Import Modal -->
+    <ImportModal
+      v-if="showImportModal"
+      :auto-set-season-from-import="autoSetSeasonFromImport"
+      :simplify-import="simplifyImport"
+      @update:autoSetSeasonFromImport="(v) => (autoSetSeasonFromImport = v)"
+      @update:simplifyImport="(v) => (simplifyImport = v)"
+      @import-data="onImportedRows"
+      @close="closeImportModal"
+    />
+
+
+    <!-- Points Modal -->
+    <PointsModal
+      v-if="showPointsModal"
+      :points="points"
+      :sorted-points-reverse="sortedPointsReverse"
+      @save-edit="onSaveEdit"
+      @remove-point="removePoint"
+      @close="closePointsModal"
+    />
+
+    <p v-if="!isSeasonValid" class="error">Season start must be before end.</p>
+
+    <div class="chart-wrapper" v-if="isSeasonValid">
+      <!-- Today's gain + live state, at the top of the graph area. -->
+      <div class="status-row">
         <div class="today-progress">
           <template v-if="todayPoint">
             <span class="today-label">Today</span>
@@ -71,43 +109,6 @@
           </svg>
         </div>
       </div>
-
-      <StatsPanel
-        v-if="isSeasonValid"
-        :required-per-day-zero="requiredPerDayZero"
-        :required-per-day-from-last="requiredPerDayFromLast"
-        :is-from-last-defined="isFromLastDefined"
-      />
-    </section>
-
-    <!-- Custom content below stats -->
-    <slot name="below-stats"></slot>
-
-    <!-- Import Modal -->
-    <ImportModal
-      v-if="showImportModal"
-      :auto-set-season-from-import="autoSetSeasonFromImport"
-      :simplify-import="simplifyImport"
-      @update:autoSetSeasonFromImport="(v) => (autoSetSeasonFromImport = v)"
-      @update:simplifyImport="(v) => (simplifyImport = v)"
-      @import-data="onImportedRows"
-      @close="closeImportModal"
-    />
-
-
-    <!-- Points Modal -->
-    <PointsModal
-      v-if="showPointsModal"
-      :points="points"
-      :sorted-points-reverse="sortedPointsReverse"
-      @save-edit="onSaveEdit"
-      @remove-point="removePoint"
-      @close="closePointsModal"
-    />
-
-    <p v-if="!isSeasonValid" class="error">Season start must be before end.</p>
-
-    <div class="chart-wrapper" v-if="isSeasonValid">
       <button
         v-if="isOutOfDefault"
         class="recenter-btn"
