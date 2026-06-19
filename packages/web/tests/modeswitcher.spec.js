@@ -20,7 +20,7 @@ async function render() {
   return renderToString(app)
 }
 
-describe('ModeSwitcher admin link visibility', () => {
+describe('ModeSwitcher segments', () => {
   const { flags, isAdmin } = useFlags()
 
   beforeEach(() => {
@@ -29,20 +29,18 @@ describe('ModeSwitcher admin link visibility', () => {
     isAdmin.value = false
   })
 
-  it('hides the Admin link when the user is not an admin', async () => {
-    isAdmin.value = false
+  it('always shows the World Tour segment', async () => {
     const html = await render()
-    expect(html).not.toContain('/admin')
-    expect(html).not.toContain('Admin')
-    // World Tour is always present.
     expect(html).toContain('/world-tour')
   })
 
-  it('shows the Admin link when the user is an admin', async () => {
+  it('never shows an Admin link (admin lives in the user dropdown)', async () => {
+    // Admin moved from the mode switcher into UserMenu, so it must not appear
+    // here even for admins.
     isAdmin.value = true
     const html = await render()
-    expect(html).toContain('/admin')
-    expect(html).toContain('Admin')
+    expect(html).not.toContain('/admin')
+    expect(html).not.toContain('Admin')
   })
 
   it('hides the Ranked link until the ranked flag is on', async () => {

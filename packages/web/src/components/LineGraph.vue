@@ -94,24 +94,6 @@
       @close="closeImportModal"
     />
 
-    <!-- Settings Modal -->
-    <SettingsModal
-      v-if="showSettingsModal"
-      :nav-sensitivity="navSensitivity"
-      :enable-navigation="enableNavigation"
-      :show-rank-overlay="showRankOverlay"
-      :show-average-pace="showAveragePace"
-      :show-deviation-wedge="showDeviationWedge"
-      :show-pace-graph="showPaceGraph"
-      :has-goal-options="goalOptions.length > 0"
-      @update:nav-sensitivity="navSensitivity = $event"
-      @update:enable-navigation="enableNavigation = $event"
-      @update:show-rank-overlay="showRankOverlay = $event"
-      @update:show-average-pace="showAveragePace = $event"
-      @update:show-deviation-wedge="showDeviationWedge = $event"
-      @update:show-pace-graph="showPaceGraph = $event"
-      @close="closeSettingsModal"
-    />
 
     <!-- Points Modal -->
     <PointsModal
@@ -371,10 +353,6 @@
           Clear
         </button>
       </div>
-      <span class="spacer"></span>
-      <div class="action-group">
-        <button @click="openSettingsModal" title="Settings" aria-label="Open settings">⚙️</button>
-      </div>
     </div>
   </div>
 </template>
@@ -410,7 +388,6 @@ import { usePointsData } from "@/composables/usePointsData";
 import GoalControls from "@/components/GoalControls.vue";
 import StatsPanel from "@/components/StatsPanel.vue";
 import ImportModal from "@/components/modals/ImportModal.vue";
-import SettingsModal from "@/components/modals/SettingsModal.vue";
 import PointsModal from "@/components/modals/PointsModal.vue";
 
 // eslint-disable-next-line no-undef
@@ -502,7 +479,6 @@ const {
 // Modal state
 const showImportModal = ref(false);
 const showPointsModal = ref(false);
-const showSettingsModal = ref(false);
 
 const xDomain = computed(() =>
   calcXDomain(seasonStart.value, seasonEnd.value, today)
@@ -751,14 +727,6 @@ function openPointsModal() {
 
 function closePointsModal() {
   showPointsModal.value = false;
-}
-
-function openSettingsModal() {
-  showSettingsModal.value = true;
-}
-
-function closeSettingsModal() {
-  showSettingsModal.value = false;
 }
 
 // (Removed per design) newDate is managed by parent when adding custom points.

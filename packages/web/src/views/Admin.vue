@@ -1,6 +1,9 @@
 <template>
   <section v-if="isAdmin" class="admin">
-    <h1 class="admin-title">Admin · Feature Flags</h1>
+    <header class="admin-head">
+      <h1 class="admin-title">Admin · Feature Flags</h1>
+      <router-link class="btn-ghost back-link" to="/">Back</router-link>
+    </header>
 
     <p v-if="error" class="admin-error">{{ error }}</p>
 
@@ -35,8 +38,8 @@
       <p v-else class="muted">No flags yet.</p>
 
       <form class="create-flag" @submit.prevent="createFlag">
-        <input v-model.trim="newKey" placeholder="flag key (e.g. ranked)" />
-        <input v-model.trim="newDescription" placeholder="description" />
+        <input v-model.trim="newKey" type="text" placeholder="flag key (e.g. ranked)" />
+        <input v-model.trim="newDescription" type="text" placeholder="description" />
         <button class="btn-primary" type="submit" :disabled="!newKey">
           Create / update
         </button>
@@ -47,7 +50,7 @@
     <div class="card">
       <h2 class="card-title">Users</h2>
       <form class="user-search" @submit.prevent="searchUsers">
-        <input v-model.trim="searchEmail" placeholder="search by email…" />
+        <input v-model.trim="searchEmail" type="text" placeholder="search by email…" />
         <button type="submit">Search</button>
       </form>
 
@@ -221,12 +224,23 @@ onMounted(() => {
   text-align: left;
   width: 100%;
 }
+.admin-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
 .admin-title {
   font-size: 22px;
   font-weight: 900;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--text-strong);
+  margin: 0;
+}
+.back-link {
+  text-decoration: none;
+  flex-shrink: 0;
 }
 .admin-error {
   color: var(--danger);
