@@ -17,7 +17,6 @@
     <ClerkLoaded>
       <SignedIn>
         <main class="container">
-          <ModeSwitcher v-if="$route.meta.modeSwitcher" />
           <router-view />
         </main>
       </SignedIn>
@@ -27,7 +26,6 @@
     </ClerkLoaded>
   </template>
   <main v-else class="container">
-    <ModeSwitcher v-if="$route.meta.modeSwitcher" />
     <router-view />
   </main>
   <footer class="site-footer" role="contentinfo">
@@ -40,7 +38,6 @@ import { watch } from "vue";
 import { useAuth } from "@clerk/vue";
 import HeaderBar from "./components/HeaderBar.vue";
 import SignInView from "./components/SignInView.vue";
-import ModeSwitcher from "./components/ModeSwitcher.vue";
 import {
   ClerkLoading,
   ClerkLoaded,
@@ -60,7 +57,6 @@ export default {
     ClerkLoaded,
     SignedIn,
     SignedOut,
-    ModeSwitcher,
   },
   setup() {
     const { loadFlags } = useFlags();
