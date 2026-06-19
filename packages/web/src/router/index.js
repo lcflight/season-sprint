@@ -5,15 +5,22 @@ import { useFlags } from '@/composables/useFlags'
 
 const routes = [
   { path: '/', redirect: '/world-tour' },
-  { path: '/world-tour', name: 'WorldTour', component: WorldTour },
+  { path: '/world-tour', name: 'WorldTour', component: WorldTour, meta: { modeSwitcher: true } },
   // Ranked is gated by the `ranked` feature flag (see the guard below).
   {
     path: '/ranked',
     name: 'Ranked',
     component: () => import('@/views/Ranked.vue'),
-    meta: { flag: 'ranked' },
+    meta: { flag: 'ranked', modeSwitcher: true },
   },
   // Admin panel — only for admins.
+  // Settings page (graph display options + API keys). The ranked graph
+  // section is gated internally by the `ranked` flag.
+  {
+    path: '/settings',
+    name: 'Settings',
+    component: () => import('@/views/Settings.vue'),
+  },
   {
     path: '/admin',
     name: 'Admin',

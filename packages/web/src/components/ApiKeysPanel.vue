@@ -1,70 +1,57 @@
 <template>
-  <div class="modal-backdrop" @click.self="$emit('close')">
-    <div class="modal">
-      <header class="modal-header">
-        <h3>API Keys</h3>
-      </header>
-      <section class="modal-body">
-        <p class="muted key-intro">
-          Generate a key to use with the local tracker script.
-          Keys are shown once on creation — copy it before closing.
-        </p>
+  <div class="api-keys-panel">
+    <p class="muted key-intro">
+      Generate a key to use with the local tracker script.
+      Keys are shown once on creation — copy it before leaving this page.
+    </p>
 
-        <!-- Create form -->
-        <div class="create-row">
-          <input
-            v-model.trim="newName"
-            type="text"
-            placeholder="Key name (e.g. laptop)"
-            maxlength="64"
-            @keyup.enter="onCreate"
-          />
-          <button class="btn-primary" :disabled="!newName || creating" @click="onCreate">
-            {{ creating ? '...' : 'Create' }}
-          </button>
-        </div>
-
-        <!-- Newly created key (show once) -->
-        <div v-if="justCreatedKey" class="created-key-banner">
-          <div class="setting-title">New key created — copy it now</div>
-          <div class="key-display">
-            <code>{{ justCreatedKey }}</code>
-            <button class="btn-ghost" @click="copyKey">{{ copied ? 'Copied' : 'Copy' }}</button>
-          </div>
-        </div>
-
-        <!-- Error -->
-        <p v-if="error" class="error">{{ error }}</p>
-
-        <!-- Key list -->
-        <p v-if="isLoading" class="muted">Loading...</p>
-        <p v-else-if="!apiKeys.length" class="muted">No API keys yet.</p>
-        <ul v-else class="points-ul">
-          <li v-for="key in apiKeys" :key="key.id">
-            <div class="key-info">
-              <span class="key-name">{{ key.name }}</span>
-              <code class="key-prefix">{{ key.keyPrefix }}...</code>
-              <span class="muted key-date">{{ formatDate(key.createdAt) }}</span>
-            </div>
-            <div class="row-actions">
-              <button class="btn-ghost btn-danger" @click="onRevoke(key.id)">Revoke</button>
-            </div>
-          </li>
-        </ul>
-      </section>
-      <footer class="modal-footer">
-        <button @click="$emit('close')">Close</button>
-      </footer>
+    <!-- Create form -->
+    <div class="create-row">
+      <input
+        v-model.trim="newName"
+        type="text"
+        placeholder="Key name (e.g. laptop)"
+        maxlength="64"
+        @keyup.enter="onCreate"
+      />
+      <button class="btn-primary" :disabled="!newName || creating" @click="onCreate">
+        {{ creating ? '...' : 'Create' }}
+      </button>
     </div>
+
+    <!-- Newly created key (show once) -->
+    <div v-if="justCreatedKey" class="created-key-banner">
+      <div class="setting-title">New key created — copy it now</div>
+      <div class="key-display">
+        <code>{{ justCreatedKey }}</code>
+        <button class="btn-ghost" @click="copyKey">{{ copied ? 'Copied' : 'Copy' }}</button>
+      </div>
+    </div>
+
+    <!-- Error -->
+    <p v-if="error" class="error">{{ error }}</p>
+
+    <!-- Key list -->
+    <p v-if="isLoading" class="muted">Loading...</p>
+    <p v-else-if="!apiKeys.length" class="muted">No API keys yet.</p>
+    <ul v-else class="points-ul">
+      <li v-for="key in apiKeys" :key="key.id">
+        <div class="key-info">
+          <span class="key-name">{{ key.name }}</span>
+          <code class="key-prefix">{{ key.keyPrefix }}...</code>
+          <span class="muted key-date">{{ formatDate(key.createdAt) }}</span>
+        </div>
+        <div class="row-actions">
+          <button class="btn-ghost btn-danger" @click="onRevoke(key.id)">Revoke</button>
+        </div>
+      </li>
+    </ul>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useApiKeys } from '@/composables/useApiKeys'
-
-// eslint-disable-next-line no-undef
-defineEmits(['close'])
 
 const { apiKeys, isLoading, error, load, create, revoke } = useApiKeys()
 
@@ -74,7 +61,6 @@ const justCreatedKey = ref('')
 const copied = ref(false)
 
 onMounted(load)
-onBeforeUnmount(() => { justCreatedKey.value = '' })
 
 async function onCreate() {
   if (!newName.value || newName.value.length > 64) return

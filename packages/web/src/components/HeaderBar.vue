@@ -1,34 +1,27 @@
 <script setup>
-import { ref } from "vue";
-import { SignedIn, UserButton } from "@clerk/vue";
-import ApiKeyModal from "@/components/modals/ApiKeyModal.vue";
+import { SignedIn } from "@clerk/vue";
+import UserMenu from "@/components/UserMenu.vue";
 import { isClerkEnabled } from "@/services/clerk";
 
 // The signed-out redirect is handled in App.vue alongside the content gate.
 const clerkEnabled = isClerkEnabled();
-
-const showApiKeyModal = ref(false);
 </script>
 
 <template>
   <div class="header-bar">
-    <div class="brand">
+    <router-link to="/" class="brand" aria-label="Go to home">
       <img src="/logo-transparent.svg" alt="Season Sprint logo" class="brand-logo" />
       <span class="brand-text"><span class="brand-accent">THE</span>&nbsp;FINALS</span> <span class="brand-sep">|</span> <span class="brand-text">Season Sprint</span>
-    </div>
+    </router-link>
     <div class="user-actions">
-      <button class="btn-ghost api-key-btn" @click="showApiKeyModal = true">API Keys</button>
       <template v-if="clerkEnabled">
         <SignedIn>
-          <UserButton />
+          <UserMenu />
         </SignedIn>
       </template>
-      <span v-else class="dev-auth-pill">Dev auth mode</span>
+      <UserMenu v-else dev />
     </div>
   </div>
-  <Teleport to="body">
-    <ApiKeyModal v-if="showApiKeyModal" @close="showApiKeyModal = false" />
-  </Teleport>
 </template>
 
 <script>
@@ -87,6 +80,8 @@ export default {
   text-shadow: 0 0 24px color-mix(in oklab, var(--primary) 40%, transparent);
   font-size: clamp(12px, 3.5vw, 16px);
   min-width: 0;
+  text-decoration: none;
+  cursor: pointer;
 }
 
 .brand-text:first-of-type {
@@ -120,20 +115,6 @@ export default {
 
 .brand-accent {
   color: var(--primary);
-}
-
-.api-key-btn {
-  font-size: 11px;
-  min-height: 30px;
-  padding: 4px 10px;
-}
-
-.dev-auth-pill {
-  font-size: 12px;
-  color: var(--muted);
-  border: 1px solid color-mix(in oklab, var(--primary) 20%, var(--surface));
-  border-radius: 999px;
-  padding: 4px 8px;
 }
 
 .actions {

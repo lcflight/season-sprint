@@ -17,7 +17,7 @@
     <ClerkLoaded>
       <SignedIn>
         <main class="container">
-          <ModeSwitcher />
+          <ModeSwitcher v-if="$route.meta.modeSwitcher" />
           <router-view />
         </main>
       </SignedIn>
@@ -27,7 +27,7 @@
     </ClerkLoaded>
   </template>
   <main v-else class="container">
-    <ModeSwitcher />
+    <ModeSwitcher v-if="$route.meta.modeSwitcher" />
     <router-view />
   </main>
   <footer class="site-footer" role="contentinfo">
