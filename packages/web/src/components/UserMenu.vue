@@ -124,6 +124,7 @@ onBeforeUnmount(() => {
       type="button"
       :aria-expanded="open"
       aria-haspopup="menu"
+      aria-controls="user-menu-panel"
       :title="displayName"
       @click="toggle"
     >
@@ -138,7 +139,7 @@ onBeforeUnmount(() => {
     </button>
 
     <Transition name="menu-fade">
-      <div v-if="open" class="menu-panel" role="menu">
+      <div v-if="open" id="user-menu-panel" class="menu-panel" role="menu">
         <div class="menu-header">
           <img
             v-if="imageUrl && !imageFailed"

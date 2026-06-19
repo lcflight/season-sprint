@@ -24,35 +24,6 @@ const clerkEnabled = isClerkEnabled();
   </div>
 </template>
 
-<script>
-import { loadSeasonJson } from "@/utils/season";
-
-export default {
-  name: "HeaderBar",
-  data() {
-    return {
-      seasonInfo: null,
-      seasonError: null,
-      abortCtl: null,
-    };
-  },
-  async created() {
-    try {
-      this.abortCtl = new AbortController();
-      const data = await loadSeasonJson(this.abortCtl.signal);
-      this.seasonInfo = data?.currentSeason || null;
-    } catch (e) {
-      this.seasonError = e?.message || String(e);
-    }
-  },
-  beforeUnmount() {
-    if (this.abortCtl && typeof this.abortCtl.abort === "function") {
-      this.abortCtl.abort();
-    }
-  },
-};
-</script>
-
 <style scoped>
 .header-bar {
   position: sticky;
