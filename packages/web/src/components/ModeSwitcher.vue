@@ -4,6 +4,17 @@
     <router-link v-if="flags.ranked" to="/ranked" class="mode-seg"
       >Ranked</router-link
     >
+    <!-- When the flag is off, Ranked is shown disabled rather than hidden, so
+         players can see it's on the way. -->
+    <span
+      v-else
+      class="mode-seg is-disabled"
+      aria-disabled="true"
+      title="Ranked is coming soon"
+    >
+      Ranked
+      <span class="mode-soon">Soon</span>
+    </span>
   </nav>
 </template>
 
@@ -58,6 +69,28 @@ const { flags } = useFlags();
   background: linear-gradient(180deg, #ffd400 0%, #ffea00 100%);
   border-color: var(--ring-strong);
   box-shadow: 0 8px 24px rgba(255, 212, 0, 0.28);
+}
+
+/* Disabled "coming soon" segment — visibly inert: muted, no pointer, and it
+   ignores the hover treatment above. */
+.mode-seg.is-disabled,
+.mode-seg.is-disabled:hover {
+  gap: 6px;
+  color: color-mix(in oklab, var(--muted) 70%, transparent);
+  background: transparent;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.mode-soon {
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: var(--primary);
+  background: color-mix(in oklab, var(--primary) 16%, transparent);
+  border: 1px solid color-mix(in oklab, var(--primary) 30%, transparent);
 }
 
 @media (prefers-reduced-motion: no-preference) {

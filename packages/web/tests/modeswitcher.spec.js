@@ -43,10 +43,21 @@ describe('ModeSwitcher segments', () => {
     expect(html).not.toContain('Admin')
   })
 
-  it('hides the Ranked link until the ranked flag is on', async () => {
+  it('shows Ranked as a disabled "coming soon" segment until the flag is on', async () => {
+    // Flag off: Ranked is visible but inert — no link to /ranked, marked
+    // disabled with a "Soon" badge.
     flags.ranked = false
-    expect(await render()).not.toContain('/ranked')
+    const off = await render()
+    expect(off).not.toContain('href="/ranked"')
+    expect(off).toContain('Ranked')
+    expect(off).toContain('aria-disabled="true"')
+    expect(off).toContain('Soon')
+
+    // Flag on: Ranked becomes a real link with no disabled markers.
     flags.ranked = true
-    expect(await render()).toContain('/ranked')
+    const on = await render()
+    expect(on).toContain('href="/ranked"')
+    expect(on).not.toContain('aria-disabled="true"')
+    expect(on).not.toContain('Soon')
   })
 })

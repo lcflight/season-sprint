@@ -1,10 +1,15 @@
 <script setup>
+import { useRoute } from "vue-router";
 import { SignedIn } from "@clerk/vue";
 import UserMenu from "@/components/UserMenu.vue";
+import ModeSwitcher from "@/components/ModeSwitcher.vue";
 import { isClerkEnabled } from "@/services/clerk";
 
 // The signed-out redirect is handled in App.vue alongside the content gate.
 const clerkEnabled = isClerkEnabled();
+// The mode switcher lives in the title bar, shown only on routes that opt in
+// via `meta.modeSwitcher` (World Tour / Ranked).
+const route = useRoute();
 </script>
 
 <template>
@@ -13,6 +18,7 @@ const clerkEnabled = isClerkEnabled();
       <img src="/logo-transparent.svg" alt="Season Sprint logo" class="brand-logo" />
       <span class="brand-text"><span class="brand-accent">THE</span>&nbsp;FINALS</span> <span class="brand-sep">|</span> <span class="brand-text">Season Sprint</span>
     </router-link>
+    <ModeSwitcher v-if="route.meta.modeSwitcher" class="header-mode" />
     <div class="user-actions">
       <template v-if="clerkEnabled">
         <SignedIn>
@@ -42,6 +48,7 @@ const clerkEnabled = isClerkEnabled();
 
 .brand {
   display: flex;
+  flex: 1 1 0;
   align-items: center;
   gap: 10px;
   font-weight: 800;
@@ -86,6 +93,32 @@ const clerkEnabled = isClerkEnabled();
 
 .brand-accent {
   color: var(--primary);
+}
+
+/* Mode switcher sits centered in the title bar; size it to its segments
+   rather than the full-width pill it uses when standalone. */
+.header-mode {
+  flex: 0 0 auto;
+}
+.header-mode :deep(.mode-switch) {
+  width: auto;
+  margin: 0;
+}
+
+.user-actions {
+  display: flex;
+  flex: 1 1 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+@media (max-width: 640px) {
+  .header-mode :deep(.mode-seg) {
+    min-height: 32px;
+    padding: 0 10px;
+    font-size: 12px;
+  }
 }
 
 .actions {
