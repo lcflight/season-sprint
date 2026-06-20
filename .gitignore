@@ -27,6 +27,7 @@ pnpm-debug.log*
 
 # Local tracker state
 packages/local-linux/.last-wtp
+packages/local-linux/.last-rank
 packages/local-linux/.capture-tmp.png
 packages/local-linux/tracker.log
 packages/local-linux/tracker.log.ocr_err
