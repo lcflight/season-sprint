@@ -30,11 +30,13 @@ packages/local-linux/.last-wtp
 packages/local-linux/.capture-tmp.png
 packages/local-linux/tracker.log
 packages/local-linux/tracker.log.ocr_err
+packages/local-linux/watcher.log
 packages/local-linux/screenshots/
 packages/local-linux/debug_captures/
 
 # Local tracker build artifacts
 packages/local-linux/season-tracker
+packages/local-linux/season-watcher
 packages/local-linux/bench_c
 packages/local-linux/bench_ocr.py
 packages/local-linux/bench_pipeline.py
