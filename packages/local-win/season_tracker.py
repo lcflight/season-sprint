@@ -1,7 +1,7 @@
 """
 season_tracker.py — Proof-of-concept Windows tracker for Season Sprint.
 
-Cross-platform Python port of packages/local/season-tracker.c. Polls a
+Cross-platform Python port of packages/local-linux/season-tracker.c. Polls a
 monitor at a fixed interval, runs EasyOCR on the bottom-centre region
 to find "WORLD TOUR POINTS", and pushes changes to the Season Sprint
 server.
@@ -323,7 +323,7 @@ def _grab_points_region(sct: mss.base.MSSBase, monitor_index: int) -> np.ndarray
 def parse_wtp_from_ocr(results) -> Optional[int]:
     """Given EasyOCR readtext() results, return the first 'current points'
     number located spatially below a 'WORLD TOUR POINTS' header. Mirrors
-    the logic in packages/local/ocr_preprocess.py."""
+    the logic in packages/local-linux/ocr_preprocess.py."""
     header_bbox = None
     for bbox, text, _conf in results:
         up = text.upper()
