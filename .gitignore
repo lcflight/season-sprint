@@ -26,18 +26,18 @@ pnpm-debug.log*
 /generated/prisma
 
 # Local tracker state
-packages/local/.last-wtp
-packages/local/.capture-tmp.png
-packages/local/tracker.log
-packages/local/tracker.log.ocr_err
-packages/local/screenshots/
-packages/local/debug_captures/
+packages/local-linux/.last-wtp
+packages/local-linux/.capture-tmp.png
+packages/local-linux/tracker.log
+packages/local-linux/tracker.log.ocr_err
+packages/local-linux/screenshots/
+packages/local-linux/debug_captures/
 
 # Local tracker build artifacts
-packages/local/season-tracker
-packages/local/bench_c
-packages/local/bench_ocr.py
-packages/local/bench_pipeline.py
+packages/local-linux/season-tracker
+packages/local-linux/bench_c
+packages/local-linux/bench_ocr.py
+packages/local-linux/bench_pipeline.py
 
 # Windows tracker (Python) — venv, state, bytecode, installer output, logs
 packages/local-win/.venv/

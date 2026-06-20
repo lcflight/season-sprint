@@ -61,7 +61,7 @@ secret the workflow is a no-op and the page still refreshes on the next deploy.
 Served from this folder at `/install.sh`. The one-liner
 `curl -fsSL https://www.seasonsprint.com/install.sh | bash` downloads the latest
 `season-sprint-linux.tar.gz` release asset (built by `.github/workflows/build-linux.yml`
-from `packages/local/`), extracts it, and hands off to the bundled
+from `packages/local-linux/`), extracts it, and hands off to the bundled
 `season-tracker.sh`, which installs deps + EasyOCR, compiles the tracker, and
 configures the Steam launch option.
 
