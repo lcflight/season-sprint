@@ -478,6 +478,14 @@ static int season_num_from_name(const char *name) {
     return -1;
 }
 
+/* Format an epoch as a UTC YYYY-MM-DD date, matching the DB's date convention
+ * (season end dates are stored at UTC midnight). */
+static void fmt_day_utc(time_t t, char *out, size_t sz) {
+    struct tm tm;
+    gmtime_r(&t, &tm);
+    strftime(out, sz, "%Y-%m-%d", &tm);
+}
+
 /* ── Notification ──────────────────────────────────────────────────────────── */
 
 /* Raise a persistent desktop notification (critical urgency, no expiry). */
@@ -511,17 +519,24 @@ static int compare_and_alert(const Config *cfg, int screen_days, int screen_seas
         return -1;
 
     int db_season = season_num_from_name(db_name);
+    time_t now = time(NULL);
+
+    /* The end date the in-game countdown implies: today + days-left. */
+    char want_day[16] = {0};
+    fmt_day_utc(now + (time_t)screen_days * 86400, want_day, sizeof(want_day));
 
     /* Ongoing season (no end date) — can't verify the countdown. */
     if (!end_iso[0]) {
-        logmsg("Screen: Season %d ends in %d days. DB '%s' has no end date "
-               "(ongoing) — cannot verify.", screen_season, screen_days, db_name);
+        logmsg("Screen: Season %d ends in %d days (~%s). DB '%s' has no end date "
+               "(ongoing) — cannot verify.",
+               screen_season, screen_days, want_day, db_name);
         char body[512];
         snprintf(body, sizeof(body),
-                 "The game shows the season ending in %d day%s, but the "
-                 "database has no end date for %s. The season data may be stale.",
-                 screen_days, screen_days == 1 ? "" : "s",
-                 db_name[0] ? db_name : "the current season");
+                 "Database: no end date for %s.\n"
+                 "In-game: ends in %d day%s (around %s).\n"
+                 "The season data may be stale.",
+                 db_name[0] ? db_name : "the current season",
+                 screen_days, screen_days == 1 ? "" : "s", want_day);
         notify("Season end date missing", body);
         return 0;
     }
@@ -532,14 +547,13 @@ static int compare_and_alert(const Config *cfg, int screen_days, int screen_seas
         return -1;
     }
 
-    time_t now = time(NULL);
     double secs = difftime(end_epoch, now);
     int db_floor = (int)floor(secs / 86400.0);
     int db_ceil  = (int)ceil(secs / 86400.0);
 
-    /* A YYYY-MM-DD slice of the end date for human-readable messages. */
-    char end_day[16] = {0};
-    snprintf(end_day, sizeof(end_day), "%.10s", end_iso);
+    /* A YYYY-MM-DD slice of the DB end date for human-readable messages. */
+    char db_day[16] = {0};
+    snprintf(db_day, sizeof(db_day), "%.10s", end_iso);
 
     int days_match  = (abs(screen_days - db_floor) <= DAYS_TOLERANCE) ||
                       (abs(screen_days - db_ceil)  <= DAYS_TOLERANCE);
@@ -547,30 +561,33 @@ static int compare_and_alert(const Config *cfg, int screen_days, int screen_seas
                         screen_season == db_season);
 
     if (days_match && season_match) {
-        logmsg("MATCH: screen Season %d ends in %d days; DB '%s' ends %s "
-               "(~%d days). All good.",
-               screen_season, screen_days, db_name, end_day, db_ceil);
+        logmsg("MATCH: screen Season %d ends in %d days (~%s); DB '%s' ends %s. "
+               "All good.",
+               screen_season, screen_days, want_day, db_name, db_day);
         return 0;
     }
 
     /* Mismatch — build a specific message and alert. */
-    logmsg("MISMATCH: screen Season %d ends in %d days; DB '%s' ends %s "
+    logmsg("MISMATCH: screen Season %d ends in %d days (~%s); DB '%s' ends %s "
            "(~%d-%d days). Notifying.",
-           screen_season, screen_days, db_name, end_day, db_floor, db_ceil);
+           screen_season, screen_days, want_day, db_name, db_day,
+           db_floor, db_ceil);
 
     char body[640];
     if (!season_match) {
         snprintf(body, sizeof(body),
                  "The game is on Season %d, but the database's current season "
-                 "is %s. The season data is out of date.",
-                 screen_season, db_name[0] ? db_name : "unknown");
+                 "is %s.\nDatabase end date: %s\nThe season data is out of date.",
+                 screen_season, db_name[0] ? db_name : "unknown", db_day);
     } else {
         snprintf(body, sizeof(body),
-                 "The game shows %s ending in %d day%s, but the database has it "
-                 "ending %s (about %d day%s away). The season data may be stale.",
-                 db_name[0] ? db_name : "the season",
-                 screen_days, screen_days == 1 ? "" : "s",
-                 end_day, db_ceil, db_ceil == 1 ? "" : "s");
+                 "%s end date doesn't match.\n"
+                 "Database says: %s\n"
+                 "Should be: %s (in-game shows %d day%s left)\n"
+                 "The season data may be stale.",
+                 db_name[0] ? db_name : "Season",
+                 db_day, want_day,
+                 screen_days, screen_days == 1 ? "" : "s");
     }
     notify("Season dates don't match", body);
     return 0;
