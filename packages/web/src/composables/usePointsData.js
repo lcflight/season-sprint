@@ -52,7 +52,10 @@ export function usePointsData({ isSeasonValid, seasonStart, seasonEnd, autoSetSe
     const prev = [...sortedPoints.value]
       .filter((p) => p.date < todayStr)
       .pop()
-    const prevY = prev ? prev.y : 0
+    // In ranked the first point is the placement rank, not earned progress, so
+    // when there's no prior point treat the placement as the baseline (0 gain)
+    // rather than a jump from 0. World Tour genuinely starts at 0.
+    const prevY = prev ? prev.y : (mode === 'ranked' ? todayPoint.value.y : 0)
     return Math.round((todayPoint.value.y - prevY) * 100) / 100
   })
 

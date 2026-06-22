@@ -262,6 +262,73 @@ describe('buildPointsEarnedData', () => {
       { date: '2025-01-02', y: -10 },
     ])
   })
+
+  it('measures the first point against a non-zero baseline (ranked placement)', () => {
+    // Placement at 20000; the placement day earns nothing, gains accrue after.
+    const points = [
+      { date: '2025-01-01', y: 20000 }, // placement
+      { date: '2025-01-03', y: 20500 },
+      { date: '2025-01-05', y: 21200 },
+    ]
+    const result = buildPointsEarnedData(points, 20000)
+    expect(result).toEqual([
+      { date: '2025-01-01', y: 0 },
+      { date: '2025-01-03', y: 500 },
+      { date: '2025-01-05', y: 700 },
+    ])
+  })
+})
+
+describe('ranked placement baseline', () => {
+  const seasonStart = '2025-01-01'
+  const seasonEnd = '2025-01-11'
+  const seasonStartMs = dateToMs(seasonStart)
+  const seasonEndMs = dateToMs(seasonEnd)
+  const xDomain = calcXDomain(seasonStart, seasonEnd, new Date(2025, 0, 1))
+  const scaleX = scaleXFactory(xDomain, width, padding)
+  // Wide y-domain to cover ranked RS values
+  const scaleY = scaleYFactory([0, 30000], height, padding)
+
+  it('average pace line is anchored at the placement point, not (start, 0)', () => {
+    // Placement 20000 on day 2, then +500/day. Baseline = placement point.
+    const points = [
+      { date: '2025-01-03', y: 20000 }, // day 2 — placement
+      { date: '2025-01-05', y: 21000 }, // day 4
+      { date: '2025-01-07', y: 22000 }, // day 6
+    ]
+    const baseline = { ms: dateToMs('2025-01-03'), y: 20000 }
+    const result = buildAveragePacePath(points, seasonStartMs, seasonEndMs, scaleX, scaleY, baseline)
+    // Line should START at the placement point (day 2, 20000), not (start, 0)
+    const x1 = scaleX('2025-01-03')
+    const y1 = scaleY(20000)
+    expect(result.startsWith(`M${x1},${y1}`)).toBe(true)
+    // ...and NOT at season start / zero
+    expect(result.startsWith(`M${scaleX(seasonStart)},${scaleY(0)}`)).toBe(false)
+  })
+
+  it('without a baseline it still anchors at (start, 0) — World Tour unchanged', () => {
+    const points = [
+      { date: '2025-01-03', y: 20000 },
+      { date: '2025-01-05', y: 21000 },
+    ]
+    const result = buildAveragePacePath(points, seasonStartMs, seasonEndMs, scaleX, scaleY)
+    expect(result.startsWith(`M${scaleX(seasonStart)},${scaleY(0)}`)).toBe(true)
+  })
+
+  it('deviation wedge fans out from the placement point', () => {
+    const points = [
+      { date: '2025-01-03', y: 20000 },
+      { date: '2025-01-05', y: 21000 },
+      { date: '2025-01-07', y: 22000 },
+    ]
+    const baseline = { ms: dateToMs('2025-01-03'), y: 20000 }
+    const result = buildDeviationWedgePath(points, seasonStartMs, seasonEndMs, scaleX, scaleY, baseline)
+    // Both wedge edges meet at the placement point (day 2, 20000)
+    const x1 = scaleX('2025-01-03')
+    const y0 = scaleY(20000)
+    expect(result.startsWith(`M${x1},${y0}`)).toBe(true)
+    expect(result.trimEnd().endsWith(`L${x1},${y0} Z`)).toBe(true)
+  })
 })
 
 describe('buildRequiredPaceData', () => {
