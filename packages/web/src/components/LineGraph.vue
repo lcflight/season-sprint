@@ -14,7 +14,8 @@
       Sign in to save and sync your data.
     </div>
 
-    <!-- Unified status: goal/progress, today's gain + live state, required pace -->
+    <!-- Unified status: goal/progress + required pace. Today's gain and live DB
+         status are overlaid in the graph corners (see chart-wrapper below). -->
     <section class="lg-status">
       <div class="controls" v-if="showGoalControl">
         <GoalControls
@@ -31,7 +32,44 @@
         />
       </div>
 
-      <div class="status-row" v-if="isSeasonValid">
+      <StatsPanel
+        v-if="isSeasonValid"
+        :required-per-day-zero="requiredPerDayZero"
+        :required-per-day-from-last="requiredPerDayFromLast"
+        :is-from-last-defined="isFromLastDefined"
+      />
+    </section>
+
+    <!-- Custom content below stats -->
+    <slot name="below-stats"></slot>
+
+    <!-- Import Modal -->
+    <ImportModal
+      v-if="showImportModal"
+      :auto-set-season-from-import="autoSetSeasonFromImport"
+      :simplify-import="simplifyImport"
+      @update:autoSetSeasonFromImport="(v) => (autoSetSeasonFromImport = v)"
+      @update:simplifyImport="(v) => (simplifyImport = v)"
+      @import-data="onImportedRows"
+      @close="closeImportModal"
+    />
+
+
+    <!-- Points Modal -->
+    <PointsModal
+      v-if="showPointsModal"
+      :points="points"
+      :sorted-points-reverse="sortedPointsReverse"
+      @save-edit="onSaveEdit"
+      @remove-point="removePoint"
+      @close="closePointsModal"
+    />
+
+    <p v-if="!isSeasonValid" class="error">Season start must be before end.</p>
+
+    <div class="chart-wrapper" v-if="isSeasonValid">
+      <!-- In-graph overlays: today's gain (top-left), live DB status (top-right) -->
+      <div class="graph-overlay">
         <div class="today-progress">
           <template v-if="todayPoint">
             <span class="today-label">Today</span>
@@ -71,43 +109,6 @@
           </svg>
         </div>
       </div>
-
-      <StatsPanel
-        v-if="isSeasonValid"
-        :required-per-day-zero="requiredPerDayZero"
-        :required-per-day-from-last="requiredPerDayFromLast"
-        :is-from-last-defined="isFromLastDefined"
-      />
-    </section>
-
-    <!-- Custom content below stats -->
-    <slot name="below-stats"></slot>
-
-    <!-- Import Modal -->
-    <ImportModal
-      v-if="showImportModal"
-      :auto-set-season-from-import="autoSetSeasonFromImport"
-      :simplify-import="simplifyImport"
-      @update:autoSetSeasonFromImport="(v) => (autoSetSeasonFromImport = v)"
-      @update:simplifyImport="(v) => (simplifyImport = v)"
-      @import-data="onImportedRows"
-      @close="closeImportModal"
-    />
-
-
-    <!-- Points Modal -->
-    <PointsModal
-      v-if="showPointsModal"
-      :points="points"
-      :sorted-points-reverse="sortedPointsReverse"
-      @save-edit="onSaveEdit"
-      @remove-point="removePoint"
-      @close="closePointsModal"
-    />
-
-    <p v-if="!isSeasonValid" class="error">Season start must be before end.</p>
-
-    <div class="chart-wrapper" v-if="isSeasonValid">
       <button
         v-if="isOutOfDefault"
         class="recenter-btn"
@@ -874,17 +875,34 @@ try {
   margin-bottom: 12px;
 }
 
-.status-row {
+/* Overlay pinned across the top of the graph: today's gain on the left,
+   live DB status on the right. pointer-events stay off the container so chart
+   pan/zoom gestures pass through, but the badges themselves keep their tooltip. */
+.graph-overlay {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  right: 8px;
+  z-index: 10;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  flex-wrap: wrap;
+  pointer-events: none;
+}
+.graph-overlay .today-progress,
+.graph-overlay .live-indicator {
+  pointer-events: auto;
+  background: color-mix(in oklab, var(--surface) 78%, transparent);
+  border: 1px solid color-mix(in oklab, var(--primary) 14%, var(--surface));
+  border-radius: 8px;
+  backdrop-filter: blur(2px);
 }
 
 .live-indicator {
   display: inline-flex;
   align-items: center;
+  padding: 6px;
 }
 .live-db {
   display: block;
