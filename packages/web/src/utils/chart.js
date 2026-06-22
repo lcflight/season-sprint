@@ -62,11 +62,15 @@ export function buildAveragePacePath(pointsInSeason, seasonStartMs, seasonEndMs,
   const baseY = baseline?.y ?? 0
 
   // Convert points to (dayOffset, yOffset) pairs relative to the baseline
-  // anchor, plus the anchor itself at the origin (0, 0).
+  // anchor, plus the anchor itself at the origin (0, 0). A point that coincides
+  // with the anchor (e.g. the ranked placement point) is skipped — the synthetic
+  // origin already represents it, so it must not be counted twice.
   const pts = [{ x: 0, y: 0 }]
   for (const p of pointsInSeason) {
     const day = (dateToMs(p.date) - baseMs) / MS_PER_DAY
-    pts.push({ x: day, y: p.y - baseY })
+    const yOff = p.y - baseY
+    if (day === 0 && yOff === 0) continue
+    pts.push({ x: day, y: yOff })
   }
 
   // Through-origin least-squares regression: y = slope * x
@@ -99,11 +103,16 @@ export function buildDeviationWedgePath(pointsInSeason, seasonStartMs, seasonEnd
   const baseMs = baseline?.ms ?? seasonStartMs
   const baseY = baseline?.y ?? 0
 
-  // Convert to (dayOffset, yOffset) relative to the baseline, plus origin
+  // Convert to (dayOffset, yOffset) relative to the baseline, plus origin. The
+  // point coinciding with the anchor (e.g. the ranked placement point) is
+  // skipped: it is the regression anchor, not a variance-bearing sample, so
+  // counting it would inflate the sample size and shrink the wedge.
   const pts = [{ x: 0, y: 0 }]
   for (const p of pointsInSeason) {
     const day = (dateToMs(p.date) - baseMs) / MS_PER_DAY
-    pts.push({ x: day, y: p.y - baseY })
+    const yOff = p.y - baseY
+    if (day === 0 && yOff === 0) continue
+    pts.push({ x: day, y: yOff })
   }
 
   // Through-origin regression: slope = Σ(x·y) / Σ(x²)
