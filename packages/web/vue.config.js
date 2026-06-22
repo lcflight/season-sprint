@@ -8,6 +8,14 @@ dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 
 module.exports = defineConfig({
   transpileDependencies: true,
+  // Browser tab title (and the <noscript> fallback message). Without this,
+  // html-webpack-plugin falls back to the package name ("web").
+  chainWebpack: (config) => {
+    config.plugin("html").tap((args) => {
+      args[0].title = "Season Sprint — THE FINALS World Tour tracker";
+      return args;
+    });
+  },
   configureWebpack: {
     plugins: [
       new webpack.DefinePlugin({
