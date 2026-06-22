@@ -154,6 +154,14 @@ export function buildDeviationWedgePath(pointsInSeason, seasonStartMs, seasonEnd
   return `M${x1},${y0} L${x2},${yU} L${x2},${yL} L${x1},${y0} Z`
 }
 
+// Required points/day to reach the goal from a baseline anchor by season end,
+// i.e. the slope of the baseline→goal projection. World Tour anchors at
+// (seasonStart, 0); ranked anchors at the placement point.
+export function requiredPerDayFromBaseline(goalWinPoints, baselineY, baselineMs, seasonEndMs) {
+  const days = Math.max(1, Math.round((seasonEndMs - baselineMs) / MS_PER_DAY))
+  return (goalWinPoints - baselineY) / days
+}
+
 export function buildRequiredPaceData(sortedPoints, goalWinPoints, seasonEndMs) {
   const out = []
   for (const p of sortedPoints) {

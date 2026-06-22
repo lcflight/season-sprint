@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { calcXDomain, calcYDomain, scaleXFactory, scaleYFactory, buildPathD, buildXTicks, buildAveragePacePath, buildDeviationWedgePath, buildPointsEarnedData, buildRequiredPaceData } from '@/utils/chart'
+import { calcXDomain, calcYDomain, scaleXFactory, scaleYFactory, buildPathD, buildXTicks, buildAveragePacePath, buildDeviationWedgePath, buildPointsEarnedData, buildRequiredPaceData, requiredPerDayFromBaseline } from '@/utils/chart'
 import { dateToMs } from '@/utils/date'
 
 const width = 600
@@ -328,6 +328,25 @@ describe('ranked placement baseline', () => {
     const y0 = scaleY(20000)
     expect(result.startsWith(`M${x1},${y0}`)).toBe(true)
     expect(result.trimEnd().endsWith(`L${x1},${y0} Z`)).toBe(true)
+  })
+
+  it('required/day from baseline matches the placement→goal slope (and 0→goal for World Tour)', () => {
+    const goal = 30000
+    // World Tour: baseline (seasonStart, 0) over the 10-day season → goal / 10
+    const wt = requiredPerDayFromBaseline(goal, 0, seasonStartMs, seasonEndMs)
+    expect(wt).toBe(goal / 10)
+
+    // Ranked: placement 20000 on day 2 → (30000 - 20000) over the 8 days left
+    const placementMs = dateToMs('2025-01-03')
+    const ranked = requiredPerDayFromBaseline(goal, 20000, placementMs, seasonEndMs)
+    expect(ranked).toBe((30000 - 20000) / 8)
+  })
+
+  it('required/day clamps the day count to at least 1', () => {
+    // Baseline at season end → 0 days left, must not divide by zero
+    const result = requiredPerDayFromBaseline(30000, 20000, seasonEndMs, seasonEndMs)
+    expect(result).toBe(30000 - 20000)
+    expect(Number.isFinite(result)).toBe(true)
   })
 })
 

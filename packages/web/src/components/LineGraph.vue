@@ -385,6 +385,7 @@ import {
   buildDeviationWedgePath,
   buildRequiredPaceData,
   buildPointsEarnedData,
+  requiredPerDayFromBaseline,
 } from "@/utils/chart";
 import { loadSeasonJson } from "@/utils/season";
 import { buildRankBands } from "@/utils/rankColors";
@@ -674,16 +675,12 @@ const paceRequiredPath = computed(() => buildPathD(scaledPaceRequired.value));
 const paceEarnedPath = computed(() => buildPathD(scaledPaceEarned.value));
 
 // Pace stats
-const daysInSeason = computed(() => {
-  if (!isSeasonValid.value) return 1;
-  const [min, max] = xDomain.value;
-  const days = (max - min) / MS_PER_DAY;
-  return Math.max(1, Math.round(days));
-});
-
 const requiredPerDayZero = computed(() => {
-  // slope of the zero→goal projection per day
-  return goalWinPoints.value / daysInSeason.value;
+  // Slope of the baseline→goal projection per day, matching pathGoalFromZero.
+  // World Tour anchors at (seasonStart, 0) → goal over the whole season. Ranked
+  // anchors at the placement point → (goal - placement) over days since placement.
+  const { ms, y } = paceBaseline.value;
+  return requiredPerDayFromBaseline(goalWinPoints.value, y, ms, xDomain.value[1]);
 });
 
 const isFromLastDefined = computed(
