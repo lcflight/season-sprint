@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { calcXDomain, calcYDomain, scaleXFactory, scaleYFactory, buildPathD, buildXTicks, buildAveragePacePath, buildDeviationWedgePath, buildPointsEarnedData, buildRequiredPaceData, requiredPerDayFromBaseline } from '@/utils/chart'
+import { calcXDomain, calcYDomain, calcPaceYDomain, scaleXFactory, scaleYFactory, buildPathD, buildXTicks, buildAveragePacePath, buildDeviationWedgePath, buildPointsEarnedData, buildRequiredPaceData, requiredPerDayFromBaseline } from '@/utils/chart'
 import { dateToMs } from '@/utils/date'
 
 const width = 600
@@ -35,6 +35,29 @@ describe('chart utils', () => {
     const xDomain = calcXDomain('2025-01-01', '2025-01-05', new Date(2025,0,1))
     const ticks = buildXTicks(xDomain, width, padding, 4)
     expect(ticks.length).toBe(5)
+  })
+})
+
+describe('calcPaceYDomain', () => {
+  it('returns [0, 1] with no data', () => {
+    expect(calcPaceYDomain([])).toEqual([0, 1])
+  })
+
+  it('keeps the floor at 0 for all-positive values (World Tour)', () => {
+    expect(calcPaceYDomain([10, 40, 25])).toEqual([0, 40])
+  })
+
+  it('drops below 0 when values are negative (ranked RS loss)', () => {
+    // Earned losses must render below the zero line, not clip off the bottom
+    expect(calcPaceYDomain([-30, 50, -10])).toEqual([-30, 50])
+  })
+
+  it('keeps 0 in view when every value is negative', () => {
+    expect(calcPaceYDomain([-5, -20])).toEqual([-20, 0])
+  })
+
+  it('avoids a zero-height domain when all values are 0', () => {
+    expect(calcPaceYDomain([0, 0])).toEqual([0, 1])
   })
 })
 

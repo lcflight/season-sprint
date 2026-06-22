@@ -270,16 +270,22 @@
             :x1="padding" :y1="paceTop"
             :x2="padding" :y2="paceBottom"
           />
-          <!-- Pace grid (single midline + vertical ticks) -->
+          <!-- Pace grid (vertical ticks) -->
           <g class="grid">
-            <line
-              :x1="padding" :x2="width - padding"
-              :y1="paceTop + paceHeight / 2" :y2="paceTop + paceHeight / 2"
-            />
             <template v-for="(tick, i) in xTicks" :key="`pv-${i}`">
               <line :x1="tick.x" :x2="tick.x" :y1="paceTop" :y2="paceBottom" />
             </template>
           </g>
+          <!-- Zero reference line: above = net gain, below = net loss -->
+          <line
+            class="pace-zero-line"
+            :x1="padding" :x2="width - padding"
+            :y1="paceScaleY(0)" :y2="paceScaleY(0)"
+          />
+          <text
+            class="pace-zero-label"
+            :x="padding + 2" :y="paceScaleY(0) - 3"
+          >0</text>
           <!-- Required pace line -->
           <path v-if="paceRequiredPath" :d="paceRequiredPath" class="pace-line pace-line-required" />
           <line v-if="scaledPaceRequired.length"
@@ -377,6 +383,7 @@ import {
   MS_PER_DAY,
   calcXDomain,
   calcYDomain,
+  calcPaceYDomain,
   scaleXFactory,
   scaleYFactory,
   buildPathD,
@@ -649,14 +656,12 @@ const paceEarnedData = computed(() =>
   buildPointsEarnedData(sortedPointsInSeason.value, paceBaseline.value.y)
 );
 
-const paceYDomain = computed(() => {
-  const allY = [
+const paceYDomain = computed(() =>
+  calcPaceYDomain([
     ...paceRequiredData.value.map(p => p.y),
     ...paceEarnedData.value.map(p => p.y),
-  ];
-  const max = allY.length ? Math.max(0, ...allY) : 1;
-  return [0, max || 1];
-});
+  ])
+);
 
 const paceScaleY = (y) => {
   const [min, max] = paceYDomain.value;
@@ -1218,6 +1223,19 @@ svg.nav-disabled {
 .pace-axis {
   stroke: color-mix(in oklab, var(--primary) 35%, #1f2937);
   stroke-width: 1.25;
+}
+
+.pace-zero-line {
+  stroke: color-mix(in oklab, var(--primary) 30%, #6b7280);
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+}
+
+.pace-zero-label {
+  fill: color-mix(in oklab, var(--primary) 45%, #9ca3af);
+  font-size: 8px;
+  font-weight: 600;
+  pointer-events: none;
 }
 
 .pace-line {
