@@ -51,19 +51,26 @@ export function buildPathD(pointsScaled) {
   return pointsScaled.reduce((d, p, i) => d + `${i === 0 ? 'M' : ' L'}${p.x},${p.y}`, '')
 }
 
-export function buildAveragePacePath(pointsInSeason, seasonStartMs, seasonEndMs, scaleX, scaleY) {
+// `baseline` is the anchor the pace line is drawn from: { ms, y }. For World
+// Tour it is season start at 0 points; for ranked it is the placement point
+// (first recorded point) so the line measures gains *since placement* rather
+// than from 0. Defaults preserve the original season-start/zero behavior.
+export function buildAveragePacePath(pointsInSeason, seasonStartMs, seasonEndMs, scaleX, scaleY, baseline = { ms: seasonStartMs, y: 0 }) {
   if (!pointsInSeason.length) return ''
 
-  // Convert points to (dayOffset, y) pairs, including an implicit origin (0, 0)
+  const baseMs = baseline?.ms ?? seasonStartMs
+  const baseY = baseline?.y ?? 0
+
+  // Convert points to (dayOffset, yOffset) pairs relative to the baseline
+  // anchor, plus the anchor itself at the origin (0, 0).
   const pts = [{ x: 0, y: 0 }]
   for (const p of pointsInSeason) {
-    const day = (dateToMs(p.date) - seasonStartMs) / MS_PER_DAY
-    pts.push({ x: day, y: p.y })
+    const day = (dateToMs(p.date) - baseMs) / MS_PER_DAY
+    pts.push({ x: day, y: p.y - baseY })
   }
 
   // Through-origin least-squares regression: y = slope * x
-  // Anchors the line at (0, 0) = season start with 0 points.
-  // slope = Σ(x·y) / Σ(x²)
+  // Anchors the line at the baseline. slope = Σ(x·y) / Σ(x²)
   let sumXX = 0, sumXY = 0
   for (const p of pts) {
     sumXX += p.x * p.x
@@ -72,33 +79,31 @@ export function buildAveragePacePath(pointsInSeason, seasonStartMs, seasonEndMs,
   if (sumXX === 0) return ''
 
   const slope = sumXY / sumXX
-  const totalDays = (seasonEndMs - seasonStartMs) / MS_PER_DAY
-  const yAtEnd = slope * totalDays
+  const totalDays = (seasonEndMs - baseMs) / MS_PER_DAY
+  const yAtEnd = baseY + slope * totalDays
 
-  console.log('[avg-pace]', {
-    points: pts,
-    slope: slope.toFixed(2) + ' pts/day',
-    yAtEnd,
-    totalDays,
-  })
-
-  const startDateStr = msToDateInput(seasonStartMs)
+  const startDateStr = msToDateInput(baseMs)
   const endDateStr = msToDateInput(seasonEndMs)
   const x1 = scaleX(startDateStr)
-  const y1 = scaleY(0)
+  const y1 = scaleY(baseY)
   const x2 = scaleX(endDateStr)
   const y2 = scaleY(yAtEnd)
   return `M${x1},${y1} L${x2},${y2}`
 }
 
-export function buildDeviationWedgePath(pointsInSeason, seasonStartMs, seasonEndMs, scaleX, scaleY) {
+// See buildAveragePacePath for `baseline`. The wedge is anchored at the same
+// point so its uncertainty band fans out from the baseline, not from 0.
+export function buildDeviationWedgePath(pointsInSeason, seasonStartMs, seasonEndMs, scaleX, scaleY, baseline = { ms: seasonStartMs, y: 0 }) {
   if (pointsInSeason.length < 2) return ''
 
-  // Convert to (dayOffset, y) with implicit origin
+  const baseMs = baseline?.ms ?? seasonStartMs
+  const baseY = baseline?.y ?? 0
+
+  // Convert to (dayOffset, yOffset) relative to the baseline, plus origin
   const pts = [{ x: 0, y: 0 }]
   for (const p of pointsInSeason) {
-    const day = (dateToMs(p.date) - seasonStartMs) / MS_PER_DAY
-    pts.push({ x: day, y: p.y })
+    const day = (dateToMs(p.date) - baseMs) / MS_PER_DAY
+    pts.push({ x: day, y: p.y - baseY })
   }
 
   // Through-origin regression: slope = Σ(x·y) / Σ(x²)
@@ -124,8 +129,8 @@ export function buildDeviationWedgePath(pointsInSeason, seasonStartMs, seasonEnd
   // Approximates t-distribution critical value for small samples.
   const tFactor = n <= 2 ? 4.303 : n <= 3 ? 3.182 : n <= 5 ? 2.776 : n <= 10 ? 2.228 : 1.96
 
-  const totalDays = (seasonEndMs - seasonStartMs) / MS_PER_DAY
-  const startDateStr = msToDateInput(seasonStartMs)
+  const totalDays = (seasonEndMs - baseMs) / MS_PER_DAY
+  const startDateStr = msToDateInput(baseMs)
   const endDateStr = msToDateInput(seasonEndMs)
   const x1 = scaleX(startDateStr)
   const x2 = scaleX(endDateStr)
@@ -138,15 +143,23 @@ export function buildDeviationWedgePath(pointsInSeason, seasonStartMs, seasonEnd
   const projectedMag = Math.abs(projected)
   const minDeviation = n <= 3 ? projectedMag * 0.3 : n <= 6 ? projectedMag * 0.15 : projectedMag * 0.05
   const deviation = Math.max(stdDev * tFactor, minDeviation)
-  const yUpperEnd = slope * totalDays + deviation
-  const yLowerEnd = Math.max(0, slope * totalDays - deviation)
+  const yUpperEnd = baseY + slope * totalDays + deviation
+  const yLowerEnd = Math.max(0, baseY + slope * totalDays - deviation)
 
-  // Polygon: origin → upper end → lower end → origin → close
-  const y0 = scaleY(0)
+  // Polygon: baseline anchor → upper end → lower end → anchor → close
+  const y0 = scaleY(baseY)
   const yU = scaleY(yUpperEnd)
   const yL = scaleY(yLowerEnd)
 
   return `M${x1},${y0} L${x2},${yU} L${x2},${yL} L${x1},${y0} Z`
+}
+
+// Required points/day to reach the goal from a baseline anchor by season end,
+// i.e. the slope of the baseline→goal projection. World Tour anchors at
+// (seasonStart, 0); ranked anchors at the placement point.
+export function requiredPerDayFromBaseline(goalWinPoints, baselineY, baselineMs, seasonEndMs) {
+  const days = Math.max(1, Math.round((seasonEndMs - baselineMs) / MS_PER_DAY))
+  return (goalWinPoints - baselineY) / days
 }
 
 export function buildRequiredPaceData(sortedPoints, goalWinPoints, seasonEndMs) {
@@ -159,8 +172,11 @@ export function buildRequiredPaceData(sortedPoints, goalWinPoints, seasonEndMs) 
   return out
 }
 
-export function buildPointsEarnedData(sortedPoints) {
-  let prev = 0
+// `baselineY` is the value the first point is measured against. Defaults to 0
+// (World Tour starts at 0). In ranked, pass the placement value so the
+// placement day shows 0 earned rather than the full placement total.
+export function buildPointsEarnedData(sortedPoints, baselineY = 0) {
+  let prev = baselineY
   return sortedPoints.map(p => {
     const delta = p.y - prev
     prev = p.y

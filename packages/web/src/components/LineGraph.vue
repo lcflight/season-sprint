@@ -241,6 +241,13 @@
             class="proj proj-average-pace"
           />
 
+          <!-- Ranked: flat baseline from season start to the placement point -->
+          <path
+            v-if="placementBaselinePath"
+            :d="placementBaselinePath"
+            class="placement-baseline"
+          />
+
           <!-- Path -->
           <path v-if="pathD" :d="pathD" class="line" />
 
@@ -378,6 +385,7 @@ import {
   buildDeviationWedgePath,
   buildRequiredPaceData,
   buildPointsEarnedData,
+  requiredPerDayFromBaseline,
 } from "@/utils/chart";
 import { loadSeasonJson } from "@/utils/season";
 import { buildRankBands } from "@/utils/rankColors";
@@ -518,12 +526,27 @@ const scaledPoints = computed(() =>
   sortedPointsInSeason.value.map((p) => ({ x: scaleX(p.date), y: scaleY(p.y) }))
 );
 
-// Build path points with a synthetic baseline at season start (y=0) when
-// the first in-season point occurs after the season start. This extends the
-// blue line visually back to day zero without adding a visible point.
+// Anchor that pace/projection math is measured from. World Tour starts every
+// season at 0, so the anchor is (seasonStart, 0). Ranked starts at a placement
+// rank, so the anchor is the first recorded point — pace, projections and
+// "points earned" then measure progress *since placement*, not from 0.
+const paceBaseline = computed(() => {
+  const sp = sortedPointsInSeason.value;
+  if (props.mode === "ranked" && sp.length) {
+    return { ms: dateToMs(sp[0].date), dateStr: sp[0].date, y: Number(sp[0].y) || 0 };
+  }
+  return { ms: xDomain.value[0], dateStr: seasonStart.value, y: 0 };
+});
+
+// Build path points with a synthetic baseline at season start (y=0) when the
+// first in-season point occurs after the season start. This extends the blue
+// line visually back to day zero without adding a visible point. Ranked is
+// exempt: its line starts at the placement point, with the pre-placement span
+// drawn as a separate flat baseline (see placementBaselinePath).
 const scaledPathPoints = computed(() => {
   const sp = scaledPoints.value;
   if (!sp.length) return sp;
+  if (props.mode === "ranked") return sp;
   const seasonStartMs = dateToMs(seasonStart.value);
   const firstMs = dateToMs(sortedPointsInSeason.value[0].date);
   if (isFinite(seasonStartMs) && isFinite(firstMs) && firstMs > seasonStartMs) {
@@ -534,6 +557,21 @@ const scaledPathPoints = computed(() => {
 });
 
 const pathD = computed(() => buildPathD(scaledPathPoints.value));
+
+// Ranked only: a flat line from season start across to the placement point at
+// the placement RS, making it clear the climb begins at placement (not 0).
+const placementBaselinePath = computed(() => {
+  if (props.mode !== "ranked") return "";
+  const sp = sortedPointsInSeason.value;
+  if (!sp.length) return "";
+  const seasonStartMs = dateToMs(seasonStart.value);
+  const firstMs = dateToMs(sp[0].date);
+  if (!(isFinite(seasonStartMs) && isFinite(firstMs) && firstMs > seasonStartMs)) return "";
+  const x1 = scaleX(seasonStart.value);
+  const x2 = scaleX(sp[0].date);
+  const y = scaleY(Number(sp[0].y) || 0);
+  return `M${x1},${y} L${x2},${y}`;
+});
 
 // Rank info based on goalOptions thresholds
 const goalOptionsRef = computed(() => props.goalOptions);
@@ -554,8 +592,8 @@ const {
 // Projection paths
 const pathGoalFromZero = computed(() => {
   if (!isSeasonValid.value) return "";
-  const x1 = scaleX(seasonStart.value);
-  const y1 = scaleY(0);
+  const x1 = scaleX(paceBaseline.value.dateStr);
+  const y1 = scaleY(paceBaseline.value.y);
   const x2 = scaleX(seasonEnd.value);
   const y2 = scaleY(goalWinPoints.value);
   return `M${x1},${y1} L${x2},${y2}`;
@@ -582,7 +620,8 @@ const pathAveragePace = computed(() => {
     xDomain.value[0],
     xDomain.value[1],
     scaleX,
-    scaleY
+    scaleY,
+    paceBaseline.value
   );
 });
 
@@ -593,7 +632,8 @@ const pathDeviationWedge = computed(() => {
     xDomain.value[0],
     xDomain.value[1],
     scaleX,
-    scaleY
+    scaleY,
+    paceBaseline.value
   );
 });
 
@@ -606,7 +646,7 @@ const paceRequiredData = computed(() => {
 });
 
 const paceEarnedData = computed(() =>
-  buildPointsEarnedData(sortedPointsInSeason.value)
+  buildPointsEarnedData(sortedPointsInSeason.value, paceBaseline.value.y)
 );
 
 const paceYDomain = computed(() => {
@@ -635,16 +675,12 @@ const paceRequiredPath = computed(() => buildPathD(scaledPaceRequired.value));
 const paceEarnedPath = computed(() => buildPathD(scaledPaceEarned.value));
 
 // Pace stats
-const daysInSeason = computed(() => {
-  if (!isSeasonValid.value) return 1;
-  const [min, max] = xDomain.value;
-  const days = (max - min) / MS_PER_DAY;
-  return Math.max(1, Math.round(days));
-});
-
 const requiredPerDayZero = computed(() => {
-  // slope of the zero→goal projection per day
-  return goalWinPoints.value / daysInSeason.value;
+  // Slope of the baseline→goal projection per day, matching pathGoalFromZero.
+  // World Tour anchors at (seasonStart, 0) → goal over the whole season. Ranked
+  // anchors at the placement point → (goal - placement) over days since placement.
+  const { ms, y } = paceBaseline.value;
+  return requiredPerDayFromBaseline(goalWinPoints.value, y, ms, xDomain.value[1]);
 });
 
 const isFromLastDefined = computed(
@@ -1140,6 +1176,14 @@ svg.nav-disabled {
   filter: drop-shadow(
     0 0 6px color-mix(in oklab, var(--accent) 60%, transparent)
   );
+}
+
+.placement-baseline {
+  fill: none;
+  stroke: color-mix(in oklab, var(--accent) 55%, #9ca3af);
+  stroke-width: 2;
+  stroke-dasharray: 4 5;
+  opacity: 0.55;
 }
 
 .proj {
