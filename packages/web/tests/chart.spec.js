@@ -330,6 +330,30 @@ describe('ranked placement baseline', () => {
     expect(result.trimEnd().endsWith(`L${x1},${y0} Z`)).toBe(true)
   })
 
+  it('treats the placement point as the anchor only, not a counted sample', () => {
+    // The placement point coincides with the baseline. Whether or not it appears
+    // in the input, the wedge must be identical — it's the anchor, not a sample.
+    // (If it were double-counted, the extra zero-residual point would inflate n
+    // and shrink the band.)
+    const baseline = { ms: dateToMs('2025-01-03'), y: 20000 }
+    const withPlacement = [
+      { date: '2025-01-03', y: 20000 }, // placement == baseline
+      { date: '2025-01-05', y: 21000 },
+      { date: '2025-01-07', y: 22000 },
+    ]
+    const withoutPlacement = [
+      { date: '2025-01-05', y: 21000 },
+      { date: '2025-01-07', y: 22000 },
+    ]
+    const a = buildDeviationWedgePath(withPlacement, seasonStartMs, seasonEndMs, scaleX, scaleY, baseline)
+    const b = buildDeviationWedgePath(withoutPlacement, seasonStartMs, seasonEndMs, scaleX, scaleY, baseline)
+    expect(a).toBe(b)
+    // Same invariance holds for the average-pace line.
+    const pa = buildAveragePacePath(withPlacement, seasonStartMs, seasonEndMs, scaleX, scaleY, baseline)
+    const pb = buildAveragePacePath(withoutPlacement, seasonStartMs, seasonEndMs, scaleX, scaleY, baseline)
+    expect(pa).toBe(pb)
+  })
+
   it('required/day from baseline matches the placement→goal slope (and 0→goal for World Tour)', () => {
     const goal = 30000
     // World Tour: baseline (seasonStart, 0) over the 10-day season → goal / 10
