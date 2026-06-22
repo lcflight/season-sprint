@@ -20,6 +20,16 @@ export function calcYDomain(points, goalWinPoints) {
   return [min, upper]
 }
 
+// Y-domain for the pace sub-graph. Always includes 0 so the zero reference line
+// is meaningful, and allows a negative floor so ranked RS losses (negative
+// earned/required values) render below the line instead of clipping off-bottom.
+export function calcPaceYDomain(allY) {
+  if (!allY.length) return [0, 1]
+  const max = Math.max(0, ...allY)
+  const min = Math.min(0, ...allY)
+  return max === min ? [min, min + 1] : [min, max]
+}
+
 export function roundTidy(n) {
   if (!isFinite(n)) return 0
   const absn = Math.abs(n)
