@@ -24,6 +24,10 @@ pnpm -F landing build    # regenerate releases.json from the latest GitHub relea
 - `styles.css` — THE FINALS-inspired theme (mirrors `packages/web`)
 - `assets/logo.svg` — brand logo (copied from `packages/web/public/logo.svg`)
 - `favicon.ico`
+- `robots.txt` — allows all crawlers, points to the sitemap
+- `sitemap.xml` — lists `/` and `/downloads` for search engines
+- `google*.html` — Google Search Console site-verification file (keep
+  permanently; deleting it un-verifies the property)
 
 All app CTAs point at `https://app.seasonsprint.com`. The "Get the apps" CTA and
 the Linux/Android/Windows platform tiles point at `/downloads`.
