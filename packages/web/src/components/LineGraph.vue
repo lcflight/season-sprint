@@ -296,11 +296,24 @@
             :x2="width - padding"
             :y2="scaledPaceRequired[scaledPaceRequired.length - 1].y"
           />
-          <!-- Points earned line -->
-          <path v-if="paceEarnedPath" :d="paceEarnedPath" class="pace-line pace-line-earned" />
-          <g v-for="(p, i) in scaledPaceEarned" :key="'ppe-' + i" class="pace-point pace-point-earned">
-            <circle :cx="p.x" :cy="p.y" r="2.5" />
-          </g>
+          <!-- Points earned per day: bars (default) or line -->
+          <template v-if="paceEarnedStyle === 'bars'">
+            <rect
+              v-for="(b, i) in scaledPaceEarnedBars"
+              :key="'peb-' + i"
+              class="pace-bar-earned"
+              :x="b.x"
+              :y="b.y"
+              :width="b.width"
+              :height="b.height"
+            />
+          </template>
+          <template v-else>
+            <path v-if="paceEarnedPath" :d="paceEarnedPath" class="pace-line pace-line-earned" />
+            <g v-for="(p, i) in scaledPaceEarned" :key="'ppe-' + i" class="pace-point pace-point-earned">
+              <circle :cx="p.x" :cy="p.y" r="2.5" />
+            </g>
+          </template>
           <!-- Pace Y axis label -->
           <text
             class="axis-label"
@@ -314,7 +327,7 @@
             <tspan class="pace-legend-required">-- required</tspan>
           </text>
           <text class="pace-legend" :x="width - padding - 4" :y="paceTop + 22" text-anchor="end">
-            <tspan class="pace-legend-earned">-- earned</tspan>
+            <tspan class="pace-legend-earned">{{ paceEarnedStyle === 'bars' ? '▮ earned' : '-- earned' }}</tspan>
           </text>
         </g>
 
@@ -442,6 +455,7 @@ const {
   showAveragePace,
   showDeviationWedge,
   showPaceGraph,
+  paceEarnedStyle,
   loadSettings,
 } = useGraphSettings(props.storageKey);
 
@@ -497,6 +511,7 @@ const {
   paceScaleY,
   scaledPaceRequired,
   scaledPaceEarned,
+  scaledPaceEarnedBars,
   paceRequiredPath,
   paceEarnedPath,
   requiredPerDayZero,
