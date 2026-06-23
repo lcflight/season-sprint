@@ -37,7 +37,7 @@
             </template>
             <template v-else>
               <span>({{ pt.date }} , {{ pt.y }} pts)</span>
-              <div class="row-actions">
+              <div class="row-actions" v-if="!readOnly">
                 <button
                   class="btn-primary"
                   @click="openEdit(getOriginalIndex(pt))"
@@ -70,6 +70,8 @@ import { isValidDateStr } from '@/utils/date'
 const props = defineProps({
   points: { type: Array, required: true },
   sortedPointsReverse: { type: Array, required: true },
+  // When true (viewing a past season), the list is view-only: edit/remove hidden.
+  readOnly: { type: Boolean, default: false },
 })
 
 // eslint-disable-next-line no-undef

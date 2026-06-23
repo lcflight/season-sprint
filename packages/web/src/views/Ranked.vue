@@ -10,11 +10,26 @@
           yAxisLabel="Rank Score"
           unit="RS"
           :goalOptions="rankedThresholds"
+          season-controls-to="#season-controls-ranked"
           @win-points="onRankScore"
+          @read-only="onReadOnly"
         />
       </template>
       <template #aside>
-        <SetPointsCard @add-at-date="addCustom" @add-today="addToday" />
+        <!-- Season picker + overlay teleport here from LineGraph -->
+        <div class="season-card">
+          <div class="season-card-header">Seasons</div>
+          <div id="season-controls-ranked"></div>
+        </div>
+        <SetPointsCard
+          v-if="!readOnly"
+          @add-at-date="addCustom"
+          @add-today="addToday"
+        />
+        <p v-else class="past-season-note">
+          Viewing a past season — read-only. Switch back to the current season to
+          log points.
+        </p>
       </template>
     </ModeLayout>
   </section>
@@ -62,9 +77,15 @@ export default {
     const { rankInfo, toNext, progressPct } = useRankInfo(rankScore, thresholds)
     return { rankScore, rankedThresholds: RANKED_THRESHOLDS, rankInfo, toNext, progressPct }
   },
+  data() {
+    return { readOnly: false }
+  },
   methods: {
     onRankScore(v) {
       this.rankScore = Number(v) || 0
+    },
+    onReadOnly(v) {
+      this.readOnly = !!v
     },
     addCustom({ date, y }) {
       const graph = this.$refs.graphRef
@@ -81,3 +102,25 @@ export default {
   },
 }
 </script>
+
+<style scoped>
+.past-season-note {
+  font-size: 0.85rem;
+  opacity: 0.75;
+  line-height: 1.4;
+}
+.season-card {
+  border: 1px solid color-mix(in oklab, var(--primary) 18%, var(--surface));
+  border-radius: 12px;
+  padding: 12px;
+  background: color-mix(in oklab, var(--surface) 90%, #000);
+}
+.season-card-header {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  font-weight: 900;
+  margin-bottom: 8px;
+}
+</style>

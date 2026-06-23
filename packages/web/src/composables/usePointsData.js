@@ -19,7 +19,10 @@ import { connectLiveUpdates } from '@/services/liveUpdates'
  * @param {import('vue').Ref<string>} opts.seasonEnd
  * @param {import('vue').Ref<boolean>} opts.autoSetSeasonFromImport
  */
-export function usePointsData({ isSeasonValid, seasonStart, seasonEnd, autoSetSeasonFromImport, mode = 'world-tour' }) {
+export function usePointsData({ isSeasonValid, seasonStart, seasonEnd, autoSetSeasonFromImport, mode = 'world-tour', isReadOnly }) {
+  // When viewing a previous (read-only) season, all mutations are inert — the
+  // graph still shows that season's data, but nothing can be edited or saved.
+  const readOnly = () => !!(isReadOnly && isReadOnly.value)
   // Live events carry a `mode`; ignore any that belong to a different graph.
   // Treat a missing mode as 'world-tour' for backward-compat with old payloads.
   const matchesMode = (payload) => (payload?.mode ?? 'world-tour') === mode
@@ -152,6 +155,7 @@ export function usePointsData({ isSeasonValid, seasonStart, seasonEnd, autoSetSe
   }
 
   async function addPointAtDate(dateStr, yVal) {
+    if (readOnly()) return
     if (!isSeasonValid.value) return
     if (!isValidDateStr(dateStr)) return
     const yNum = Number(yVal)
@@ -172,6 +176,7 @@ export function usePointsData({ isSeasonValid, seasonStart, seasonEnd, autoSetSe
   }
 
   async function removePoint(index) {
+    if (readOnly()) return
     const point = points[index]
     points.splice(index, 1)
     if (point?.remoteId) {
@@ -185,6 +190,7 @@ export function usePointsData({ isSeasonValid, seasonStart, seasonEnd, autoSetSe
   }
 
   async function onSaveEdit({ index, date, y }) {
+    if (readOnly()) return
     const yNum = Number(y)
     if (!isFinite(yNum)) return
     points[index] = { ...points[index], date, y: yNum }
@@ -198,6 +204,7 @@ export function usePointsData({ isSeasonValid, seasonStart, seasonEnd, autoSetSe
   }
 
   async function clearPoints() {
+    if (readOnly()) return
     points.splice(0, points.length)
     try {
       const authHeader = await getAuthorizationHeader()
@@ -208,6 +215,7 @@ export function usePointsData({ isSeasonValid, seasonStart, seasonEnd, autoSetSe
   }
 
   async function onImportedRows(rows) {
+    if (readOnly()) return
     if (!Array.isArray(rows) || !rows.length) return
     points.splice(0, points.length, ...rows)
     if (autoSetSeasonFromImport.value) {
@@ -238,6 +246,7 @@ export function usePointsData({ isSeasonValid, seasonStart, seasonEnd, autoSetSe
   }
 
   async function addWinPoints(value) {
+    if (readOnly()) return
     const val = Number(value)
     if (!isFinite(val)) return
     const today = formatDate(new Date())
@@ -257,6 +266,7 @@ export function usePointsData({ isSeasonValid, seasonStart, seasonEnd, autoSetSe
   }
 
   async function incrementWinPoints(increment) {
+    if (readOnly()) return
     const inc = Number(increment)
     if (!isFinite(inc)) return
     const today = formatDate(new Date())

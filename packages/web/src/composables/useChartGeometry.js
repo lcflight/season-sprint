@@ -14,6 +14,7 @@ import {
   buildRequiredPaceData,
   buildPointsEarnedData,
   requiredPerDayFromBaseline,
+  mapOverlayByDayOfSeason,
 } from "@/utils/chart";
 import { buildRankBands } from "@/utils/rankColors";
 
@@ -30,6 +31,9 @@ import { buildRankBands } from "@/utils/rankColors";
  * - seasonStart/seasonEnd/goalWinPoints: persisted graph settings (refs)
  * - isSeasonValid: ref, true when start < end
  * - points: reactive raw point array; sortedPoints: date-sorted computed
+ * - overlayStart/overlayEnd: optional refs for a previous season to overlay,
+ *   aligned by day-of-season onto the viewed (seasonStart/seasonEnd) window.
+ *   Null/undefined when no overlay is active.
  */
 export function useChartGeometry({
   width,
@@ -47,6 +51,8 @@ export function useChartGeometry({
   isSeasonValid,
   points,
   sortedPoints,
+  overlayStart,
+  overlayEnd,
 }) {
   const xDomain = computed(() =>
     calcXDomain(seasonStart.value, seasonEnd.value, today)
@@ -61,8 +67,28 @@ export function useChartGeometry({
     });
   });
 
+  // Previous-season points filtered to the overlay window (raw, date-sorted).
+  // These get re-mapped by day-of-season for display, but their y-values also
+  // feed the y-domain so a higher past season isn't clipped off the top.
+  const overlayPointsRaw = computed(() => {
+    const start = overlayStart?.value;
+    const end = overlayEnd?.value;
+    if (!start || !end) return [];
+    const min = dateToMs(start);
+    const max = dateToMs(end);
+    return points
+      .filter((p) => {
+        const ms = dateToMs(p.date);
+        return isFinite(ms) && ms >= min && ms <= max;
+      })
+      .sort((a, b) => dateToMs(a.date) - dateToMs(b.date));
+  });
+
   const yDomain = computed(() =>
-    calcYDomain(pointsInSeason.value, goalWinPoints.value)
+    calcYDomain(
+      [...pointsInSeason.value, ...overlayPointsRaw.value],
+      goalWinPoints.value
+    )
   );
 
   // Scales
@@ -117,6 +143,36 @@ export function useChartGeometry({
   });
 
   const pathD = computed(() => buildPathD(scaledPathPoints.value));
+
+  // Overlay: a previous season's line, re-mapped so its day 0 sits at the
+  // viewed season's start, then scaled with the same axes. World Tour gets the
+  // same synthetic day-0 baseline (y=0) the main line uses; ranked starts at
+  // its first recorded point.
+  const overlayMapped = computed(() =>
+    mapOverlayByDayOfSeason(
+      overlayPointsRaw.value,
+      dateToMs(overlayStart?.value),
+      dateToMs(seasonStart.value),
+      dateToMs(seasonEnd.value)
+    )
+  );
+
+  const overlayScaledPoints = computed(() =>
+    overlayMapped.value.map((p) => ({ x: scaleX(p.date), y: scaleY(p.y) }))
+  );
+
+  const overlayPathPoints = computed(() => {
+    const sp = overlayScaledPoints.value;
+    if (!sp.length || mode === "ranked") return sp;
+    const overlayStartMs = dateToMs(overlayStart?.value);
+    const firstMs = dateToMs(overlayPointsRaw.value[0]?.date);
+    if (isFinite(overlayStartMs) && isFinite(firstMs) && firstMs > overlayStartMs) {
+      return [{ x: scaleX(seasonStart.value), y: scaleY(0) }, ...sp];
+    }
+    return sp;
+  });
+
+  const overlayPathD = computed(() => buildPathD(overlayPathPoints.value));
 
   // Ranked only: a flat line from season start across to the placement point at
   // the placement RS, making it clear the climb begins at placement (not 0).
@@ -286,6 +342,8 @@ export function useChartGeometry({
     paceBaseline,
     scaledPathPoints,
     pathD,
+    overlayScaledPoints,
+    overlayPathD,
     placementBaselinePath,
     pathGoalFromZero,
     pathGoalFromLast,

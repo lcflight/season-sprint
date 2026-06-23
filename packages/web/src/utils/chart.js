@@ -203,6 +203,24 @@ export function buildPointsEarnedData(sortedPoints, baselineY = 0) {
   })
 }
 
+// Re-maps a previous season's points onto the viewed season's x-axis by
+// day-of-season, so day 0 of each season lines up (e.g. "where was I on day 12
+// last season vs this one"). Returns raw { date, y } pairs the caller scales
+// with the viewed season's scaleX/scaleY. Points whose elapsed day falls past
+// the viewed season's end are dropped rather than clamped to the right edge.
+export function mapOverlayByDayOfSeason(overlayPoints, overlayStartMs, viewedStartMs, viewedEndMs) {
+  const out = []
+  if (!isFinite(overlayStartMs) || !isFinite(viewedStartMs)) return out
+  for (const p of overlayPoints) {
+    const ms = dateToMs(p.date)
+    if (!isFinite(ms)) continue
+    const mappedMs = viewedStartMs + (ms - overlayStartMs)
+    if (isFinite(viewedEndMs) && mappedMs > viewedEndMs) continue
+    out.push({ date: msToDateInput(mappedMs), y: p.y })
+  }
+  return out
+}
+
 export function buildXTicks(xDomain, width, padding, n = 4) {
   const plotWidth = width - padding * 2
   const [min, max] = xDomain
