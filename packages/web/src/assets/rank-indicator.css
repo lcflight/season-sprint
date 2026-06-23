@@ -3,7 +3,12 @@
   border: 1px solid color-mix(in oklab, var(--primary) 20%, var(--surface));
   border-radius: 10px;
   padding: 10px 12px;
-  background: color-mix(in oklab, var(--surface) 92%, black);
+  background: #000;
+  /* Span the full width of the controls area (its own row when sharing a flex
+     container with the goal-rank select). */
+  width: 100%;
+  flex: 1 0 100%;
+  box-sizing: border-box;
 }
 .rank-header {
   display: flex;

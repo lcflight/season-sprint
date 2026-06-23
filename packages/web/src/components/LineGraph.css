@@ -92,6 +92,19 @@
   color: var(--muted);
 }
 
+.readonly-badge {
+  margin-left: 10px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: color-mix(in oklab, var(--primary) 16%, transparent);
+  vertical-align: middle;
+}
+
 .controls {
   display: flex;
   gap: 12px;
@@ -376,6 +389,20 @@ svg.nav-disabled {
 .point circle {
   fill: var(--danger);
   filter: drop-shadow(0 0 4px rgba(255, 61, 127, 0.65));
+}
+
+/* Previous-season overlay line + points (faint, dashed, behind current line) */
+.overlay-line {
+  fill: none;
+  stroke: var(--primary);
+  stroke-width: 2;
+  stroke-dasharray: 5 5;
+  opacity: 0.55;
+}
+
+.overlay-point circle {
+  fill: var(--primary);
+  opacity: 0.5;
 }
 
 /* Pace graph */

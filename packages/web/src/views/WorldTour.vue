@@ -8,12 +8,25 @@
           gamemode="World Tour"
           :goalOptions="thresholds"
           headerDisclaimer="Based on World Tour wiki thresholds."
+          season-controls-to="#season-controls-world-tour"
           @win-points="onWinPoints"
+          @read-only="onReadOnly"
         />
       </template>
       <template #aside>
-        <PointsCheatsheet :values="quickAddValues" @quick-add="onQuickAdd" />
-        <SetPointsCard @add-at-date="addCustom" @add-today="addToday" />
+        <!-- Season picker + overlay teleport here from LineGraph -->
+        <div class="season-card">
+          <div class="season-card-header">Seasons</div>
+          <div id="season-controls-world-tour"></div>
+        </div>
+        <template v-if="!readOnly">
+          <PointsCheatsheet :values="quickAddValues" @quick-add="onQuickAdd" />
+          <SetPointsCard @add-at-date="addCustom" @add-today="addToday" />
+        </template>
+        <p v-else class="past-season-note">
+          Viewing a past season — read-only. Switch back to the current season to
+          log points.
+        </p>
       </template>
     </ModeLayout>
   </section>
@@ -39,11 +52,15 @@ export default {
   data() {
     return {
       quickAddValues: { round1: 2, round2: 6, finalLose: 14, finalWin: 25 },
+      readOnly: false,
     };
   },
   methods: {
     onWinPoints(v) {
       this.winPoints = Number(v) || 0;
+    },
+    onReadOnly(v) {
+      this.readOnly = !!v;
     },
     onQuickAdd(inc) {
       const graph = this.$refs.graphRef;
@@ -68,3 +85,25 @@ export default {
   },
 };
 </script>
+
+<style scoped>
+.past-season-note {
+  font-size: 0.85rem;
+  opacity: 0.75;
+  line-height: 1.4;
+}
+.season-card {
+  border: 1px solid color-mix(in oklab, var(--primary) 18%, var(--surface));
+  border-radius: 12px;
+  padding: 12px;
+  background: color-mix(in oklab, var(--surface) 90%, #000);
+}
+.season-card-header {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  font-weight: 900;
+  margin-bottom: 8px;
+}
+</style>

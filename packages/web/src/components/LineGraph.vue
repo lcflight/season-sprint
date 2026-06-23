@@ -3,15 +3,52 @@
     <header class="lg-header">
       <h2 v-if="gamemode" class="lg-gamemode">{{ gamemode }}</h2>
       <h2 class="lg-season-title">
-        {{ headerTitle || seasonTitle || "Interactive Line Graph" }}
+        {{ displayTitle }}
+        <span v-if="isViewingPastSeason" class="readonly-badge">read-only</span>
       </h2>
       <div v-if="headerDisclaimer" class="lg-disclaimer">
         {{ headerDisclaimer }}
       </div>
     </header>
 
+    <!-- Season picker + previous-season overlay. Teleported into the aside
+         (under the points controls) when a target is provided; rendered inline
+         otherwise. State stays here — only the DOM moves. -->
+    <Teleport v-if="teleportControls" :to="seasonControlsTo">
+      <SeasonControls
+        :seasons="seasons"
+        :seasons-desc="seasonsDesc"
+        :overlay-options="overlayOptions"
+        :current-season-key="currentSeasonKey"
+        :selected="selectedSeasonKey"
+        :overlay="overlaySeasonKey"
+        :overlay-season="overlaySeason"
+        @update:selected="selectedSeasonKey = $event"
+        @update:overlay="overlaySeasonKey = $event"
+      />
+    </Teleport>
+    <SeasonControls
+      v-else-if="!seasonControlsTo"
+      :seasons="seasons"
+      :seasons-desc="seasonsDesc"
+      :overlay-options="overlayOptions"
+      :current-season-key="currentSeasonKey"
+      :selected="selectedSeasonKey"
+      :overlay="overlaySeasonKey"
+      :overlay-season="overlaySeason"
+      @update:selected="selectedSeasonKey = $event"
+      @update:overlay="overlaySeasonKey = $event"
+    />
+
     <div v-if="!isAuthenticated && !isLoading" class="status-banner auth-banner">
       Sign in to save and sync your data.
+    </div>
+
+    <div
+      v-if="isViewingPastSeason && isAuthenticated && !scaledPoints.length && !isLoading"
+      class="status-banner"
+    >
+      No data logged for {{ selectedSeason && selectedSeason.name }}.
     </div>
 
     <!-- Unified status: goal/progress + required pace. Today's gain and live DB
@@ -60,6 +97,7 @@
       v-if="showPointsModal"
       :points="points"
       :sorted-points-reverse="sortedPointsReverse"
+      :read-only="isViewingPastSeason"
       @save-edit="onSaveEdit"
       @remove-point="removePoint"
       @close="closePointsModal"
@@ -249,6 +287,16 @@
             class="placement-baseline"
           />
 
+          <!-- Previous-season overlay (aligned by day-of-season) -->
+          <path v-if="overlayPathD" :d="overlayPathD" class="overlay-line" />
+          <g
+            v-for="(p, idx) in overlayScaledPoints"
+            :key="'ov-' + idx"
+            class="overlay-point"
+          >
+            <circle :cx="p.x" :cy="p.y" r="2.5" />
+          </g>
+
           <!-- Path -->
           <path v-if="pathD" :d="pathD" class="line" />
 
@@ -369,13 +417,16 @@
         <button @click="exportCSV" :disabled="points.length === 0">
           Export CSV
         </button>
-        <button @click="openImportModal" :disabled="!isAuthenticated">
+        <button
+          @click="openImportModal"
+          :disabled="!isAuthenticated || isViewingPastSeason"
+        >
           Import CSV
         </button>
         <button
           class="btn-danger"
           @click="clearPoints"
-          :disabled="points.length === 0 || !isAuthenticated"
+          :disabled="points.length === 0 || !isAuthenticated || isViewingPastSeason"
         >
           Clear
         </button>
@@ -385,27 +436,27 @@
 </template>
 
 <script setup>
-import { computed, ref, watch, onMounted } from "vue";
+import { computed, ref, watch, onMounted, nextTick } from "vue";
 import { useAuth } from "@clerk/vue";
 import {
   dateToMs,
-  msToDateInput,
   formatDate,
 } from "@/utils/date";
 import { buildCSV } from "@/utils/csv";
-import { loadSeasonJson } from "@/utils/season";
 import { useRankInfo } from "@/composables/useRankInfo";
 import { usePanZoom } from "@/composables/usePanZoom";
 import { useGraphSettings } from "@/composables/useGraphSettings";
+import { useSeasons } from "@/composables/useSeasons";
 import { usePointsData } from "@/composables/usePointsData";
 import { useChartGeometry } from "@/composables/useChartGeometry";
 import GoalControls from "@/components/GoalControls.vue";
 import StatsPanel from "@/components/StatsPanel.vue";
+import SeasonControls from "@/components/SeasonControls.vue";
 import ImportModal from "@/components/modals/ImportModal.vue";
 import PointsModal from "@/components/modals/PointsModal.vue";
 
 // eslint-disable-next-line no-undef
-const emit = defineEmits(["win-points"]);
+const emit = defineEmits(["win-points", "read-only"]);
 
 // eslint-disable-next-line no-undef
 const props = defineProps({
@@ -422,6 +473,9 @@ const props = defineProps({
   // Y-axis label and progress unit (e.g. "Rank Score" / "RS" for Ranked).
   yAxisLabel: { type: String, default: "Total Win Points" },
   unit: { type: String, default: "WP" },
+  // CSS selector of an element (in the aside) to teleport the season controls
+  // into. When empty, the controls render inline under the header.
+  seasonControlsTo: { type: String, default: "" },
 });
 
 // Config
@@ -461,13 +515,88 @@ const {
 
 const svgHeight = computed(() => showPaceGraph.value ? svgHeightPace : height);
 
+// Season list (current + historical) for the picker and overlay.
+const { seasons, currentSeasonKey, load: loadSeasons } = useSeasons();
+
+// Which season the graph is centered on, and which (if any) is overlaid for
+// comparison. Not persisted — the graph always opens on the live season.
+const selectedSeasonKey = ref("");
+const overlaySeasonKey = ref("");
+
+// The teleport target (in the aside) is rendered by the parent and may not
+// exist until after this component mounts, so gate the Teleport on a post-mount
+// flag to avoid "failed to locate target" warnings.
+const controlsMounted = ref(false);
+const teleportControls = computed(
+  () => !!props.seasonControlsTo && controlsMounted.value
+);
+
+const currentSeason = computed(
+  () => seasons.value.find((s) => s.key === currentSeasonKey.value) || null
+);
+const selectedSeason = computed(
+  () => seasons.value.find((s) => s.key === selectedSeasonKey.value) || null
+);
+const overlaySeason = computed(
+  () => seasons.value.find((s) => s.key === overlaySeasonKey.value) || null
+);
+
+// True when looking at any season other than the live one — the graph becomes
+// read-only (a historical look-back, not an editable log).
+const isViewingPastSeason = computed(
+  () =>
+    !!selectedSeasonKey.value &&
+    !!currentSeasonKey.value &&
+    selectedSeasonKey.value !== currentSeasonKey.value
+);
+
+// The window the chart actually renders. For the live season this is the
+// persisted seasonStart/seasonEnd (unchanged behavior); for a past season it's
+// that season's fixed window.
+const viewedStart = computed(() =>
+  isViewingPastSeason.value && selectedSeason.value
+    ? selectedSeason.value.start
+    : seasonStart.value
+);
+const viewedEnd = computed(() =>
+  isViewingPastSeason.value && selectedSeason.value
+    ? selectedSeason.value.end
+    : seasonEnd.value
+);
+const overlayStart = computed(() =>
+  overlaySeason.value ? overlaySeason.value.start : null
+);
+const overlayEnd = computed(() =>
+  overlaySeason.value ? overlaySeason.value.end : null
+);
+
+// Season picker option lists.
+const seasonsDesc = computed(() => [...seasons.value].reverse());
+const overlayOptions = computed(() =>
+  seasonsDesc.value.filter((s) => s.key !== selectedSeasonKey.value)
+);
+
+const displayTitle = computed(() => {
+  if (isViewingPastSeason.value && selectedSeason.value)
+    return selectedSeason.value.name;
+  return props.headerTitle || seasonTitle.value || "Interactive Line Graph";
+});
+
 // Domains
 const isSeasonValid = computed(
   () =>
-    seasonStart.value &&
-    seasonEnd.value &&
-    dateToMs(seasonStart.value) < dateToMs(seasonEnd.value)
+    viewedStart.value &&
+    viewedEnd.value &&
+    dateToMs(viewedStart.value) < dateToMs(viewedEnd.value)
 );
+
+// Clear an overlay that collides with the newly selected season (can't overlay
+// a season on itself).
+watch(selectedSeasonKey, (key) => {
+  if (overlaySeasonKey.value === key) overlaySeasonKey.value = "";
+});
+
+watch(isViewingPastSeason, (v) => emit("read-only", v), { immediate: true });
 
 // Points data (API-backed CRUD)
 const {
@@ -489,7 +618,7 @@ const {
   onImportedRows,
   addWinPoints,
   incrementWinPoints,
-} = usePointsData({ isSeasonValid, seasonStart, seasonEnd, autoSetSeasonFromImport, mode: props.mode });
+} = usePointsData({ isSeasonValid, seasonStart, seasonEnd, autoSetSeasonFromImport, mode: props.mode, isReadOnly: isViewingPastSeason });
 
 // Modal state
 const showImportModal = ref(false);
@@ -502,6 +631,8 @@ const {
   rankBands,
   scaledPoints,
   pathD,
+  overlayScaledPoints,
+  overlayPathD,
   placementBaselinePath,
   pathGoalFromZero,
   pathGoalFromLast,
@@ -527,12 +658,14 @@ const {
   today,
   mode: props.mode,
   goalOptions: () => props.goalOptions,
-  seasonStart,
-  seasonEnd,
+  seasonStart: viewedStart,
+  seasonEnd: viewedEnd,
   goalWinPoints,
   isSeasonValid,
   points,
   sortedPoints,
+  overlayStart,
+  overlayEnd,
 });
 
 // Rank info based on goalOptions thresholds
@@ -653,30 +786,23 @@ watch(currentWinPoints, (v) => emit("win-points", v));
 onMounted(async () => {
   loadSettings();
   try {
-    const data = await loadSeasonJson();
-    if (
-      data &&
-      data.currentSeason &&
-      data.currentSeason.start &&
-      data.currentSeason.end
-    ) {
-      const startMs = new Date(data.currentSeason.start).getTime();
-      const endMs = new Date(data.currentSeason.end).getTime();
-      if (!isNaN(startMs) && !isNaN(endMs)) {
-        seasonStart.value = msToDateInput(startMs);
-        seasonEnd.value = msToDateInput(endMs);
-      }
-      if (
-        typeof data.currentSeason.name === "string" &&
-        data.currentSeason.name.trim()
-      ) {
-        const nm = String(data.currentSeason.name).trim();
-        seasonTitle.value = nm.startsWith("Season") ? nm : `Season ${nm}`;
-      }
+    await loadSeasons();
+    // Default the live season's window to the current season (unchanged
+    // behavior) and open the picker on it.
+    const cur = currentSeason.value;
+    if (cur) {
+      seasonStart.value = cur.start;
+      seasonEnd.value = cur.end;
+      seasonTitle.value = cur.name;
     }
+    selectedSeasonKey.value = currentSeasonKey.value;
   } catch (e) {
     // If fetch fails (e.g., CORS), keep existing defaults/state
   }
+  // Wait for the full tree (incl. the aside teleport target) to render before
+  // enabling the teleport.
+  await nextTick();
+  controlsMounted.value = true;
   // Load points from D1
   await loadPointsFromAPI();
   // Emit initial after load tick
