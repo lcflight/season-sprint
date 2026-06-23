@@ -203,6 +203,21 @@ export function buildPointsEarnedData(sortedPoints, baselineY = 0) {
   })
 }
 
+// Keys of the seasons the user has at least one point inside, where each
+// season is { key, startMs, endMs } and the window is inclusive. Used to gate
+// the season picker so we never offer a previous season with no data.
+export function seasonsWithDataKeys(points, seasons) {
+  const keys = new Set()
+  for (const s of seasons) {
+    const has = points.some((p) => {
+      const ms = dateToMs(p.date)
+      return isFinite(ms) && ms >= s.startMs && ms <= s.endMs
+    })
+    if (has) keys.add(s.key)
+  }
+  return keys
+}
+
 // Re-maps a previous season's points onto the viewed season's x-axis by
 // day-of-season, so day 0 of each season lines up (e.g. "where was I on day 12
 // last season vs this one"). Returns raw { date, y } pairs the caller scales

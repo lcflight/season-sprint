@@ -17,12 +17,14 @@
     <Teleport v-if="teleportControls" :to="seasonControlsTo">
       <SeasonControls
         :seasons="seasons"
-        :seasons-desc="seasonsDesc"
+        :season-options="seasonOptions"
         :overlay-options="overlayOptions"
         :current-season-key="currentSeasonKey"
         :selected="selectedSeasonKey"
         :overlay="overlaySeasonKey"
         :overlay-season="overlaySeason"
+        :disabled="seasonModuleDisabled"
+        :disabled-message="seasonDisabledMessage"
         @update:selected="selectedSeasonKey = $event"
         @update:overlay="overlaySeasonKey = $event"
       />
@@ -30,12 +32,14 @@
     <SeasonControls
       v-else-if="!seasonControlsTo"
       :seasons="seasons"
-      :seasons-desc="seasonsDesc"
+      :season-options="seasonOptions"
       :overlay-options="overlayOptions"
       :current-season-key="currentSeasonKey"
       :selected="selectedSeasonKey"
       :overlay="overlaySeasonKey"
       :overlay-season="overlaySeason"
+      :disabled="seasonModuleDisabled"
+      :disabled-message="seasonDisabledMessage"
       @update:selected="selectedSeasonKey = $event"
       @update:overlay="overlaySeasonKey = $event"
     />
@@ -443,6 +447,7 @@ import {
   formatDate,
 } from "@/utils/date";
 import { buildCSV } from "@/utils/csv";
+import { seasonsWithDataKeys } from "@/utils/chart";
 import { useRankInfo } from "@/composables/useRankInfo";
 import { usePanZoom } from "@/composables/usePanZoom";
 import { useGraphSettings } from "@/composables/useGraphSettings";
@@ -570,10 +575,34 @@ const overlayEnd = computed(() =>
   overlaySeason.value ? overlaySeason.value.end : null
 );
 
-// Season picker option lists.
+// Which seasons the user actually has logged data in (≥1 point in the season's
+// date window). Drives the picker so we never offer a previous season that
+// would render an empty graph.
+const dataSeasonKeys = computed(() => seasonsWithDataKeys(points, seasons.value));
+
+// Previous seasons (not the live one) the user has data for. When this is
+// empty there's nothing to explore yet, so the whole module is disabled.
+const pastSeasonsWithData = computed(() =>
+  seasons.value.filter(
+    (s) => s.key !== currentSeasonKey.value && dataSeasonKeys.value.has(s.key)
+  )
+);
+const seasonModuleDisabled = computed(() => pastSeasonsWithData.value.length === 0);
+const seasonDisabledMessage =
+  "Log points across more than the current season to unlock historical comparisons.";
+
+// Season picker option lists (newest first). The current season is always
+// selectable; past seasons appear only once they have data.
 const seasonsDesc = computed(() => [...seasons.value].reverse());
+const seasonOptions = computed(() =>
+  seasonsDesc.value.filter(
+    (s) => s.key === currentSeasonKey.value || dataSeasonKeys.value.has(s.key)
+  )
+);
 const overlayOptions = computed(() =>
-  seasonsDesc.value.filter((s) => s.key !== selectedSeasonKey.value)
+  seasonsDesc.value.filter(
+    (s) => s.key !== selectedSeasonKey.value && dataSeasonKeys.value.has(s.key)
+  )
 );
 
 const displayTitle = computed(() => {
@@ -594,6 +623,26 @@ const isSeasonValid = computed(
 // a season on itself).
 watch(selectedSeasonKey, (key) => {
   if (overlaySeasonKey.value === key) overlaySeasonKey.value = "";
+});
+
+// Keep selection/overlay valid if the available options change (e.g. data
+// loads in): fall back to the current season / no overlay.
+watch(seasonOptions, (opts) => {
+  if (
+    selectedSeasonKey.value &&
+    currentSeasonKey.value &&
+    !opts.some((s) => s.key === selectedSeasonKey.value)
+  ) {
+    selectedSeasonKey.value = currentSeasonKey.value;
+  }
+});
+watch(overlayOptions, (opts) => {
+  if (
+    overlaySeasonKey.value &&
+    !opts.some((s) => s.key === overlaySeasonKey.value)
+  ) {
+    overlaySeasonKey.value = "";
+  }
 });
 
 watch(isViewingPastSeason, (v) => emit("read-only", v), { immediate: true });

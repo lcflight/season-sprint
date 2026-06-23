@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { mapOverlayByDayOfSeason } from '@/utils/chart'
+import { mapOverlayByDayOfSeason, seasonsWithDataKeys } from '@/utils/chart'
 import { dateToMs } from '@/utils/date'
 
 // Two seasons on different calendar dates. The overlay should be re-mapped so
@@ -49,5 +49,36 @@ describe('mapOverlayByDayOfSeason', () => {
     ]
     const out = mapOverlayByDayOfSeason(overlay, prevStart, viewedStart, viewedEnd)
     expect(out.map((p) => p.y)).toEqual([7])
+  })
+})
+
+describe('seasonsWithDataKeys', () => {
+  const seasons = [
+    { key: 'S1', startMs: dateToMs('2025-01-01'), endMs: dateToMs('2025-01-31') },
+    { key: 'S2', startMs: dateToMs('2025-02-01'), endMs: dateToMs('2025-02-28') },
+    { key: 'S3', startMs: dateToMs('2025-03-01'), endMs: dateToMs('2025-03-31') },
+  ]
+
+  it('returns only seasons containing at least one point', () => {
+    const points = [
+      { date: '2025-01-10', y: 5 }, // S1
+      { date: '2025-03-15', y: 9 }, // S3
+    ]
+    const keys = seasonsWithDataKeys(points, seasons)
+    expect([...keys].sort()).toEqual(['S1', 'S3'])
+  })
+
+  it('is inclusive of season boundaries', () => {
+    const keys = seasonsWithDataKeys([{ date: '2025-01-31', y: 1 }], seasons)
+    expect(keys.has('S1')).toBe(true)
+  })
+
+  it('returns an empty set when there are no points', () => {
+    expect(seasonsWithDataKeys([], seasons).size).toBe(0)
+  })
+
+  it('ignores points outside every season window', () => {
+    const keys = seasonsWithDataKeys([{ date: '2024-12-15', y: 1 }], seasons)
+    expect(keys.size).toBe(0)
   })
 })

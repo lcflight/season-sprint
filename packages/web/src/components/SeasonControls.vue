@@ -1,32 +1,35 @@
 <template>
   <div v-if="seasons.length" class="lg-season-controls">
-    <label class="season-select">
-      <span>Season</span>
-      <select
-        :value="selected"
-        @change="$emit('update:selected', $event.target.value)"
-      >
-        <option v-for="s in seasonsDesc" :key="s.key" :value="s.key">
-          {{ s.name }}{{ s.key === currentSeasonKey ? " (current)" : "" }}
-        </option>
-      </select>
-    </label>
-    <label class="season-select">
-      <span>Compare</span>
-      <select
-        :value="overlay"
-        @change="$emit('update:overlay', $event.target.value)"
-      >
-        <option value="">None</option>
-        <option v-for="s in overlayOptions" :key="s.key" :value="s.key">
-          {{ s.name }}
-        </option>
-      </select>
-    </label>
-    <span v-if="overlaySeason" class="overlay-legend">
-      <span class="overlay-swatch"></span>{{ overlaySeason.name }} (overlay,
-      aligned by day)
-    </span>
+    <p v-if="disabled" class="season-locked">{{ disabledMessage }}</p>
+    <template v-else>
+      <label class="season-select">
+        <span>Season</span>
+        <select
+          :value="selected"
+          @change="$emit('update:selected', $event.target.value)"
+        >
+          <option v-for="s in seasonOptions" :key="s.key" :value="s.key">
+            {{ s.name }}{{ s.key === currentSeasonKey ? " (current)" : "" }}
+          </option>
+        </select>
+      </label>
+      <label class="season-select">
+        <span>Compare</span>
+        <select
+          :value="overlay"
+          @change="$emit('update:overlay', $event.target.value)"
+        >
+          <option value="">None</option>
+          <option v-for="s in overlayOptions" :key="s.key" :value="s.key">
+            {{ s.name }}
+          </option>
+        </select>
+      </label>
+      <span v-if="overlaySeason" class="overlay-legend">
+        <span class="overlay-swatch"></span>{{ overlaySeason.name }} (overlay,
+        aligned by day)
+      </span>
+    </template>
   </div>
 </template>
 
@@ -34,15 +37,21 @@
 // Presentational season picker + previous-season overlay selector. All state
 // lives in LineGraph; this is bound via :selected/:overlay and update events so
 // it can be teleported into the aside without owning any logic.
+//
+// `seasonOptions` / `overlayOptions` are pre-filtered by the parent to seasons
+// the user actually has data for. When there's no prior-season data at all the
+// module is `disabled` and only the explanatory message shows.
 // eslint-disable-next-line no-undef
 defineProps({
   seasons: { type: Array, default: () => [] },
-  seasonsDesc: { type: Array, default: () => [] },
+  seasonOptions: { type: Array, default: () => [] },
   overlayOptions: { type: Array, default: () => [] },
   currentSeasonKey: { type: String, default: "" },
   selected: { type: String, default: "" },
   overlay: { type: String, default: "" },
   overlaySeason: { type: Object, default: null },
+  disabled: { type: Boolean, default: false },
+  disabledMessage: { type: String, default: "" },
 })
 
 // eslint-disable-next-line no-undef
@@ -55,6 +64,13 @@ defineEmits(["update:selected", "update:overlay"])
   flex-direction: column;
   align-items: stretch;
   gap: 10px;
+}
+
+.season-locked {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--muted);
 }
 
 .season-select {
