@@ -412,6 +412,11 @@ svg.nav-disabled {
   filter: drop-shadow(0 0 4px color-mix(in oklab, var(--accent) 50%, transparent));
 }
 
+.pace-bar-earned {
+  fill: var(--accent);
+  opacity: 0.55;
+}
+
 .pace-point-required circle {
   fill: color-mix(in oklab, var(--primary) 55%, #9ca3af);
 }

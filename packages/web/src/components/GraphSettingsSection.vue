@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted } from "vue";
+import { computed, onMounted } from "vue";
 import { useGraphSettings } from "@/composables/useGraphSettings";
 
 // One mode's graph display settings. Binds directly to the per-mode
@@ -19,8 +19,17 @@ const {
   showAveragePace,
   showDeviationWedge,
   showPaceGraph,
+  paceEarnedStyle,
   loadSettings,
 } = useGraphSettings(props.storageKey);
+
+// Checkbox proxy over the 'bars' | 'line' style (checked = bars, the default).
+const earnedAsBars = computed({
+  get: () => paceEarnedStyle.value === "bars",
+  set: (v) => {
+    paceEarnedStyle.value = v ? "bars" : "line";
+  },
+});
 
 onMounted(loadSettings);
 </script>
@@ -128,6 +137,24 @@ onMounted(loadSettings);
           </label>
         </div>
       </div>
+
+      <Transition name="setting-slide">
+        <div v-if="showPaceGraph" class="setting-group setting-child">
+          <div class="setting-info">
+            <div class="setting-title">Points earned as bars</div>
+            <div class="setting-desc">
+              Draw the points-earned-per-day series as bars (like the mobile
+              apps) instead of a line.
+            </div>
+          </div>
+          <div class="setting-control">
+            <label class="toggle-row">
+              <input class="toggle" type="checkbox" v-model="earnedAsBars" />
+              <span class="toggle-text">Show earned points as bars</span>
+            </label>
+          </div>
+        </div>
+      </Transition>
     </div>
   </div>
 </template>

@@ -25,6 +25,9 @@ export function useGraphSettings(storageKey) {
   const showAveragePace = ref(false)
   const showDeviationWedge = ref(false)
   const showPaceGraph = ref(true)
+  // How the "points earned per day" series renders in the pace graph: 'bars'
+  // (default, matching the mobile apps) or 'line'.
+  const paceEarnedStyle = ref('bars')
 
   function buildKey() {
     return storageKey
@@ -45,6 +48,7 @@ export function useGraphSettings(storageKey) {
       showAveragePace: showAveragePace.value,
       showDeviationWedge: showDeviationWedge.value,
       showPaceGraph: showPaceGraph.value,
+      paceEarnedStyle: paceEarnedStyle.value,
     }
     saveStateWithKey(buildKey(), state)
   }
@@ -74,6 +78,8 @@ export function useGraphSettings(storageKey) {
       showDeviationWedge.value = parsed.showDeviationWedge
     if (typeof parsed.showPaceGraph === 'boolean')
       showPaceGraph.value = parsed.showPaceGraph
+    if (parsed.paceEarnedStyle === 'bars' || parsed.paceEarnedStyle === 'line')
+      paceEarnedStyle.value = parsed.paceEarnedStyle
   }
 
   // Auto-persist on changes
@@ -81,7 +87,7 @@ export function useGraphSettings(storageKey) {
     [seasonStart, seasonEnd, goalWinPoints, autoSetSeasonFromImport, simplifyImport],
     saveSettings
   )
-  watch([navSensitivity, enableNavigation, showRankOverlay, showAveragePace, showDeviationWedge, showPaceGraph], saveSettings)
+  watch([navSensitivity, enableNavigation, showRankOverlay, showAveragePace, showDeviationWedge, showPaceGraph, paceEarnedStyle], saveSettings)
 
   return {
     seasonStart,
@@ -97,6 +103,7 @@ export function useGraphSettings(storageKey) {
     showAveragePace,
     showDeviationWedge,
     showPaceGraph,
+    paceEarnedStyle,
     saveSettings,
     loadSettings,
   }

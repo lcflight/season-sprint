@@ -216,6 +216,19 @@ export function useChartGeometry({
   const paceRequiredPath = computed(() => buildPathD(scaledPaceRequired.value));
   const paceEarnedPath = computed(() => buildPathD(scaledPaceEarned.value));
 
+  // Bar variant of the "points earned per day" series: a rect per day, grown
+  // from the zero line up (gain) or down (loss). Matches the mobile apps.
+  const PACE_BAR_WIDTH = 5;
+  const scaledPaceEarnedBars = computed(() => {
+    const zeroY = paceScaleY(0);
+    return scaledPaceEarned.value.map((p) => ({
+      x: p.x - PACE_BAR_WIDTH / 2,
+      y: Math.min(p.y, zeroY),
+      width: PACE_BAR_WIDTH,
+      height: Math.abs(p.y - zeroY),
+    }));
+  });
+
   // Pace stats
   const requiredPerDayZero = computed(() => {
     // Slope of the baseline→goal projection per day, matching pathGoalFromZero.
@@ -270,6 +283,7 @@ export function useChartGeometry({
     paceScaleY,
     scaledPaceRequired,
     scaledPaceEarned,
+    scaledPaceEarnedBars,
     paceRequiredPath,
     paceEarnedPath,
     requiredPerDayZero,
