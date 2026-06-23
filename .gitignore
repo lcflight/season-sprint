@@ -35,12 +35,21 @@ packages/local-linux/watcher.log
 packages/local-linux/screenshots/
 packages/local-linux/debug_captures/
 
-# Local tracker build artifacts
+# Local tracker build artifacts + bytecode
 packages/local-linux/season-tracker
 packages/local-linux/season-watcher
+packages/local-linux/__pycache__/
+packages/local-linux/*.pyc
+
+# Local tracker OCR experiments / scratch (not part of the release; the only
+# shipped OCR file is ocr_preprocess.py — see package-linux.sh)
 packages/local-linux/bench_c
+packages/local-linux/bench_c.c
+packages/local-linux/bench_c_dbg
 packages/local-linux/bench_ocr.py
 packages/local-linux/bench_pipeline.py
+packages/local-linux/ocr_preprocess_test*.py
+packages/local-linux/ocr_test_results/
 
 # Windows tracker (Python) — venv, state, bytecode, installer output, logs
 packages/local-win/.venv/
