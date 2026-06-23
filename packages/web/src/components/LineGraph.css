@@ -1,0 +1,489 @@
+.line-graph {
+  max-width: 1000px;
+  margin: 0 auto;
+  text-align: left;
+}
+
+.lg-header {
+  margin-bottom: 8px;
+}
+
+/* Unified status block: goal/progress, today + live, required pace */
+.lg-status {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+/* Overlay pinned across the top of the graph: today's gain on the left,
+   live DB status on the right. pointer-events stay off the container so chart
+   pan/zoom gestures pass through, but the badges themselves keep their tooltip. */
+.graph-overlay {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  right: 8px;
+  z-index: 10;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  pointer-events: none;
+}
+.graph-overlay .today-progress,
+.graph-overlay .live-indicator {
+  pointer-events: auto;
+  background: color-mix(in oklab, var(--surface) 78%, transparent);
+  border: 1px solid color-mix(in oklab, var(--primary) 14%, var(--surface));
+  border-radius: 8px;
+  backdrop-filter: blur(2px);
+}
+
+.live-indicator {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px;
+}
+.live-db {
+  display: block;
+}
+/* Connected: steady green database. */
+.live-connected {
+  color: #22c55e;
+}
+/* Connecting: amber database, fading in and out. */
+.live-connecting {
+  color: #eab308;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .live-connecting .live-db {
+    animation: live-fade 1.2s ease-in-out infinite;
+  }
+}
+@keyframes live-fade {
+  0%,
+  100% {
+    opacity: 0.25;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+.lg-gamemode {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-strong);
+}
+.lg-season-title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-strong);
+}
+.lg-disclaimer {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.controls {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* The status block owns spacing via gap; reset child component margins. */
+.lg-status :deep(.stats) {
+  margin: 0;
+}
+.lg-status :deep(.rank-indicator) {
+  margin: 0;
+}
+
+.range-form,
+.add-form {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.add-form input,
+.range-form input {
+  width: 160px;
+}
+
+.divider {
+  width: 1px;
+  height: 24px;
+  background: color-mix(in oklab, var(--primary) 16%, var(--surface));
+  margin: 0 8px;
+}
+
+.quick-actions button {
+  margin-right: 8px;
+}
+
+/* Recenter button floats inside chart-wrapper */
+.recenter-btn {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  z-index: 10;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 8px;
+  background: color-mix(in oklab, var(--surface) 85%, #000);
+  border: 1px solid color-mix(in oklab, var(--primary) 30%, var(--surface));
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
+}
+.recenter-btn:hover {
+  background: color-mix(in oklab, var(--surface) 90%, #000);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.5), 0 0 0 3px var(--ring);
+}
+
+.quick-actions .spacer {
+  flex: 1;
+}
+
+.chart-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 12px;
+}
+
+.chart-actions .action-group {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.chart-actions .spacer {
+  flex: 1;
+}
+
+.btn-danger {
+  color: var(--danger);
+  border-color: color-mix(in oklab, var(--danger) 30%, var(--surface));
+}
+.btn-danger:hover {
+  border-color: color-mix(in oklab, var(--danger) 55%, var(--surface));
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.45),
+    0 0 0 3px color-mix(in oklab, var(--danger) 30%, transparent);
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin: 8px 0 12px;
+}
+
+.stat {
+  border: 1px solid color-mix(in oklab, var(--primary) 16%, var(--surface));
+  border-radius: 10px;
+  padding: 12px;
+  background: color-mix(in oklab, var(--surface) 85%, black);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02),
+    0 6px 24px rgba(0, 0, 0, 0.35);
+}
+
+.stat-label {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.stat-value {
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--text-strong);
+  text-shadow: 0 0 20px color-mix(in oklab, var(--primary) 35%, transparent);
+}
+
+
+.today-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  font-size: 13px;
+}
+.today-label {
+  color: var(--muted);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 12px;
+}
+.today-value {
+  color: var(--success);
+  font-weight: 800;
+}
+.today-value.today-loss {
+  color: var(--danger);
+}
+
+.status-banner {
+  padding: 10px 14px;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.auth-banner {
+  background: color-mix(in oklab, var(--warning, #f59e0b) 10%, var(--surface));
+  color: var(--muted);
+  border: 1px solid color-mix(in oklab, var(--warning, #f59e0b) 20%, var(--surface));
+}
+
+.chart-blurred {
+  filter: blur(4px);
+  opacity: 0.4;
+  transition: filter 0.3s, opacity 0.3s;
+  pointer-events: none;
+}
+
+.chart-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.chart-overlay-text {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  background: color-mix(in oklab, var(--surface) 80%, transparent);
+  padding: 10px 20px;
+  border-radius: 8px;
+}
+
+.chart-overlay-error {
+  color: #ff6b6b;
+}
+
+.error {
+  color: #ff6b6b;
+  margin: 4px 0 8px;
+}
+
+.chart-wrapper {
+  border: 1px solid color-mix(in oklab, var(--primary) 16%, var(--surface));
+  border-radius: 10px;
+  padding: 8px;
+  background: radial-gradient(
+      100% 100% at 0% 0%,
+      rgba(255, 212, 0, 0.05) 0%,
+      rgba(0, 0, 0, 0) 40%
+    ),
+    var(--surface);
+  position: relative;
+}
+
+svg {
+  width: 100%;
+  height: auto;
+  /* Enable custom gestures */
+  touch-action: none;
+  cursor: default;
+}
+
+svg.nav-disabled {
+  touch-action: auto;
+}
+
+.interaction-overlay {
+  fill: transparent;
+  cursor: grab;
+}
+.interaction-overlay:active {
+  cursor: grabbing;
+}
+
+.axes line {
+  stroke: color-mix(in oklab, var(--primary) 35%, #1f2937);
+  stroke-width: 1.25;
+}
+
+.rank-label {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
+.grid line {
+  stroke: color-mix(in oklab, var(--primary) 14%, #374151);
+  stroke-opacity: 0.5;
+  stroke-width: 1;
+}
+
+.line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2.5;
+  filter: drop-shadow(
+    0 0 6px color-mix(in oklab, var(--accent) 60%, transparent)
+  );
+}
+
+.placement-baseline {
+  fill: none;
+  stroke: color-mix(in oklab, var(--accent) 55%, #9ca3af);
+  stroke-width: 2;
+  stroke-dasharray: 4 5;
+  opacity: 0.55;
+}
+
+.proj {
+  fill: none;
+  stroke: color-mix(in oklab, var(--primary) 45%, #9ca3af);
+  stroke-width: 2;
+  stroke-dasharray: 6 6;
+}
+
+.proj-from-last {
+  stroke: var(--success);
+}
+
+.deviation-wedge {
+  fill: var(--accent);
+  opacity: 0.08;
+  stroke: none;
+}
+
+.proj-average-pace {
+  stroke: var(--accent);
+  stroke-dasharray: 4 4;
+  opacity: 0.5;
+}
+
+.point circle {
+  fill: var(--danger);
+  filter: drop-shadow(0 0 4px rgba(255, 61, 127, 0.65));
+}
+
+/* Pace graph */
+.pace-axis {
+  stroke: color-mix(in oklab, var(--primary) 35%, #1f2937);
+  stroke-width: 1.25;
+}
+
+.pace-zero-line {
+  stroke: color-mix(in oklab, var(--primary) 30%, #6b7280);
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+}
+
+.pace-zero-label {
+  fill: color-mix(in oklab, var(--primary) 45%, #9ca3af);
+  font-size: 8px;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+.pace-line {
+  fill: none;
+  stroke-width: 2;
+}
+
+.pace-line-required {
+  stroke: color-mix(in oklab, var(--primary) 45%, #9ca3af);
+  stroke-dasharray: 5 5;
+}
+
+.pace-line-earned {
+  stroke: var(--accent);
+  filter: drop-shadow(0 0 4px color-mix(in oklab, var(--accent) 50%, transparent));
+}
+
+.pace-point-required circle {
+  fill: color-mix(in oklab, var(--primary) 55%, #9ca3af);
+}
+
+.pace-point-earned circle {
+  fill: var(--accent);
+  filter: drop-shadow(0 0 3px color-mix(in oklab, var(--accent) 50%, transparent));
+}
+
+.pace-legend {
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.pace-legend-required {
+  fill: color-mix(in oklab, var(--primary) 55%, #9ca3af);
+}
+
+.pace-legend-earned {
+  fill: var(--accent);
+}
+
+.labels text {
+  font-size: 12px;
+  fill: var(--muted);
+}
+
+.axis-label {
+  font-size: 11px;
+  fill: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 700;
+}
+
+/* Positioned version for inside the graph wrapper */
+.rank-in-graph {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  max-width: min(460px, 60%);
+  z-index: 9;
+}
+
+/* ── Mobile (phone) ── */
+@media (max-width: 480px) {
+  .chart-actions {
+    flex-wrap: wrap;
+  }
+  .chart-actions .action-group {
+    flex: 1 1 auto;
+  }
+  .chart-actions button {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .chart-actions .spacer {
+    display: none;
+  }
+
+  .controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .status-banner {
+    font-size: 12px;
+    padding: 8px 12px;
+  }
+
+  .lg-header {
+    padding: 0 4px;
+  }
+}
