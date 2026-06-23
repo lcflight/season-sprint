@@ -42,7 +42,7 @@ describe('pace "points earned" style setting', () => {
 })
 
 describe('pace "points earned" bar geometry', () => {
-  function geometryFor(points) {
+  function geometryFor(points, { start = '2025-01-01', end = '2025-01-31' } = {}) {
     const sorted = [...points].sort((a, b) => a.date.localeCompare(b.date))
     return useChartGeometry({
       width: 600, height: 400, padding: 40,
@@ -50,8 +50,8 @@ describe('pace "points earned" bar geometry', () => {
       today: new Date('2025-01-15T00:00:00Z'),
       mode: 'world-tour',
       goalOptions: () => [],
-      seasonStart: ref('2025-01-01'),
-      seasonEnd: ref('2025-01-31'),
+      seasonStart: ref(start),
+      seasonEnd: ref(end),
       goalWinPoints: ref(1000),
       isSeasonValid: computed(() => true),
       points,
@@ -59,7 +59,7 @@ describe('pace "points earned" bar geometry', () => {
     })
   }
 
-  it('emits one bar per earned point, aligned to the line points and the zero baseline', () => {
+  it('emits one bar per earned point, uniform width, centered on the line points and zero baseline', () => {
     const g = geometryFor([{ date: '2025-01-05', y: 100 }, { date: '2025-01-10', y: 120 }])
     const bars = g.scaledPaceEarnedBars.value
     const line = g.scaledPaceEarned.value
@@ -67,12 +67,27 @@ describe('pace "points earned" bar geometry', () => {
 
     expect(bars.length).toBe(line.length)
     expect(bars.length).toBeGreaterThan(0)
+    const w = bars[0].width
+    expect(w).toBeGreaterThanOrEqual(2)
+    expect(w).toBeLessThanOrEqual(14)
     bars.forEach((b, i) => {
-      expect(b.width).toBe(5)
-      expect(b.x).toBeCloseTo(line[i].x - 2.5, 6) // centered on the same x as the line point
+      expect(b.width).toBeCloseTo(w, 6) // uniform across bars
+      expect(b.x).toBeCloseTo(line[i].x - w / 2, 6) // centered on the same x as the line point
       expect(b.y).toBeCloseTo(Math.min(line[i].y, zeroY), 6)
       expect(b.height).toBeCloseTo(Math.abs(line[i].y - zeroY), 6)
     })
+  })
+
+  it('scales bar width to the season length: longer season → narrower bars', () => {
+    const pts = [{ date: '2025-01-05', y: 100 }]
+    const short = geometryFor(pts, { start: '2025-01-01', end: '2025-01-09' })
+      .scaledPaceEarnedBars.value[0].width
+    const long = geometryFor(pts, { start: '2025-01-01', end: '2025-04-30' })
+      .scaledPaceEarnedBars.value[0].width
+
+    expect(long).toBeLessThan(short)
+    expect(long).toBeGreaterThanOrEqual(2)
+    expect(short).toBeLessThanOrEqual(14)
   })
 
   it('grows a positive daily gain upward from the zero line', () => {

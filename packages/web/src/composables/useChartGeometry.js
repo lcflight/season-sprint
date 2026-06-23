@@ -217,14 +217,29 @@ export function useChartGeometry({
   const paceEarnedPath = computed(() => buildPathD(scaledPaceEarned.value));
 
   // Bar variant of the "points earned per day" series: a rect per day, grown
-  // from the zero line up (gain) or down (loss). Matches the mobile apps.
-  const PACE_BAR_WIDTH = 5;
+  // from the zero line up (gain) or down (loss). Matches the mobile apps. Width
+  // tracks one day of the season axis (with a fill gap) so bars stay proportional
+  // — thinner on long seasons, wider on short ones — clamped to stay visible
+  // without overlapping.
+  const PACE_BAR_MIN_WIDTH = 2;
+  const PACE_BAR_MAX_WIDTH = 14;
+  const PACE_BAR_FILL = 0.7;
+  const paceBarWidth = computed(() => {
+    const [minMs, maxMs] = xDomain.value;
+    const seasonDays = Math.max(1, (maxMs - minMs) / MS_PER_DAY);
+    const dayWidth = (width - padding * 2) / seasonDays;
+    return Math.max(
+      PACE_BAR_MIN_WIDTH,
+      Math.min(PACE_BAR_MAX_WIDTH, dayWidth * PACE_BAR_FILL)
+    );
+  });
   const scaledPaceEarnedBars = computed(() => {
     const zeroY = paceScaleY(0);
+    const w = paceBarWidth.value;
     return scaledPaceEarned.value.map((p) => ({
-      x: p.x - PACE_BAR_WIDTH / 2,
+      x: p.x - w / 2,
       y: Math.min(p.y, zeroY),
-      width: PACE_BAR_WIDTH,
+      width: w,
       height: Math.abs(p.y - zeroY),
     }));
   });
