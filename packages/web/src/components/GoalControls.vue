@@ -20,6 +20,8 @@
         :to-next-label="toNextLabel"
         :unit="unit"
         :progress-pct="progressPct"
+        :goal-achieved="goalAchieved"
+        :goal-label="goalLabel"
       />
     </template>
     <template v-else>
@@ -62,6 +64,23 @@ const onNumericInput = (e) => {
 const reversedGoalOptions = computed(() =>
   [...props.goalOptions].map((opt, i) => ({ ...opt, originalIndex: i })).reverse()
 )
+
+// The selected goal rank (if any). Used to celebrate reaching the goal rather
+// than silently rolling the progress bar over toward the next rank up.
+const selectedGoal = computed(() => {
+  const idx = Number(props.selectedGoalIndex)
+  if (Array.isArray(props.goalOptions) && idx >= 0 && idx < props.goalOptions.length) {
+    return props.goalOptions[idx]
+  }
+  return null
+})
+
+const goalAchieved = computed(() => {
+  const goal = Number(selectedGoal.value?.points)
+  return Number.isFinite(goal) && Number(props.currentWinPoints) >= goal
+})
+
+const goalLabel = computed(() => selectedGoal.value?.badge || '')
 
 const pointsLabel = computed(() => `${(props.currentWinPoints?.toLocaleString?.() || props.currentWinPoints)} ${props.unit}`)
 const floorLabel = computed(() => `${(props.rankInfo.currentFloor?.toLocaleString?.() || props.rankInfo.currentFloor)} ${props.unit}`)

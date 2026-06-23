@@ -41,12 +41,23 @@
     color-mix(in oklab, var(--accent) 50%, var(--primary))
   );
 }
+.rank-progress .fill.achieved {
+  background: linear-gradient(90deg, #f5c542, #e8a317);
+}
 .rank-progress .labels {
   display: flex;
   justify-content: space-between;
   margin-top: 6px;
   color: var(--muted);
   font-size: 12px;
+}
+.rank-progress .labels.labels-achieved {
+  justify-content: center;
+}
+.rank-progress .goal-achieved {
+  color: #f5c542;
+  font-weight: 700;
+  letter-spacing: 0.02em;
 }
 .rank-note {
   margin-top: 8px;
