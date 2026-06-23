@@ -17,8 +17,8 @@ jobs:
           node-version-file: .node-version
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Generate Prisma client
-        run: pnpm --filter server exec prisma generate
+      - name: Generate server codegen (wrangler types + prisma client)
+        run: pnpm --filter server run codegen
       - name: Lint web
         run: pnpm --filter web run lint
       - name: Lint server
@@ -34,8 +34,8 @@ jobs:
           node-version-file: .node-version
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Generate Prisma client
-        run: pnpm --filter server exec prisma generate
+      - name: Generate server codegen (wrangler types + prisma client)
+        run: pnpm --filter server run codegen
       - name: Test web
         run: pnpm --filter web run test
       - name: Test server
