@@ -1,0 +1,19 @@
+{
+  "_about": "Cross-client golden vectors for the World Tour rank + pace math. Every client (web useRankInfo/chart.js, iOS Domain/, Android domain/) must reproduce these input->output pairs, so the hand-ported math can't silently diverge. Enforced in CI by packages/web/tests/domain-vectors.spec.js; mirrored for the Android JUnit suite at packages/android/app/src/test/resources/domainVectors.json (the web test asserts that copy stays identical). Inputs are non-negative points only: web toNext uses floor(points) while native clamps to >=0, so they intentionally differ for negative inputs, which never occur for cumulative scores.",
+  "rank": [
+    { "points": 10,   "badge": "Unranked",   "currentFloor": 0,    "nextTarget": 25,   "nextBadge": "Bronze 4",   "toNext": 15, "progressFraction": 0.4 },
+    { "points": 25,   "badge": "Bronze 4",   "currentFloor": 25,   "nextTarget": 50,   "nextBadge": "Bronze 3",   "toNext": 25, "progressFraction": 0.0 },
+    { "points": 820,  "badge": "Platinum 3", "currentFloor": 800,  "nextTarget": 900,  "nextBadge": "Platinum 2", "toNext": 80, "progressFraction": 0.2 },
+    { "points": 850,  "badge": "Platinum 3", "currentFloor": 800,  "nextTarget": 900,  "nextBadge": "Platinum 2", "toNext": 50, "progressFraction": 0.5 },
+    { "points": 0,    "badge": "Unranked",   "currentFloor": 0,    "nextTarget": 25,   "nextBadge": "Bronze 4",   "toNext": 25, "progressFraction": 0.0 },
+    { "points": 2400, "badge": "Emerald 1",  "currentFloor": 2400, "nextTarget": null, "nextBadge": null,         "toNext": 0,  "progressFraction": 0.0 },
+    { "points": 3000, "badge": "Emerald 1",  "currentFloor": 2400, "nextTarget": null, "nextBadge": null,         "toNext": 0,  "progressFraction": 0.0 }
+  ],
+  "requiredPerDay": [
+    { "goal": 1000, "baselineY": 0,   "days": 10, "expected": 100 },
+    { "goal": 2400, "baselineY": 0,   "days": 30, "expected": 80 },
+    { "goal": 1000, "baselineY": 400, "days": 5,  "expected": 120 },
+    { "goal": 600,  "baselineY": 600, "days": 5,  "expected": 0 },
+    { "goal": 1000, "baselineY": 0,   "days": 1,  "expected": 1000 }
+  ]
+}
