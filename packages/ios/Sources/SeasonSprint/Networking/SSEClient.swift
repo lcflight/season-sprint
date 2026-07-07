@@ -4,9 +4,10 @@ import Foundation
 /// broadcast (UserStream.ts / broadcast.ts).
 enum RecordEvent: Sendable {
     case upsert(APIRecord)
-    case delete(String)
-    case deleteAll
-    case bulkUpsert([APIRecord])
+    /// `mode` is missing/nil for `"world-tour"`, matching the server's broadcast payload.
+    case delete(id: String, mode: String?)
+    case deleteAll(mode: String?)
+    case bulkUpsert([APIRecord], mode: String?)
 }
 
 /// Live-link state for the connection indicator.
@@ -141,18 +142,21 @@ final class SSEClient {
                 onEvent?(.upsert(p.data))
             }
         case "record:delete":
-            struct Inner: Decodable { let id: String }
+            struct Inner: Decodable { let id: String; let mode: String? }
             struct P: Decodable { let data: Inner }
             if let p = try? JSONDecoder().decode(P.self, from: bytes) {
-                onEvent?(.delete(p.data.id))
+                onEvent?(.delete(id: p.data.id, mode: p.data.mode))
             }
         case "record:delete-all":
-            onEvent?(.deleteAll)
+            struct Inner: Decodable { let mode: String? }
+            struct P: Decodable { let data: Inner }
+            let mode = (try? JSONDecoder().decode(P.self, from: bytes))?.data.mode
+            onEvent?(.deleteAll(mode: mode))
         case "record:bulk-upsert":
-            struct Inner: Decodable { let records: [APIRecord] }
+            struct Inner: Decodable { let records: [APIRecord]; let mode: String? }
             struct P: Decodable { let data: Inner }
             if let p = try? JSONDecoder().decode(P.self, from: bytes) {
-                onEvent?(.bulkUpsert(p.data.records))
+                onEvent?(.bulkUpsert(p.data.records, mode: p.data.mode))
             }
         default:
             break

@@ -10,10 +10,13 @@ struct DetailsTabView: View {
             ScrollView {
                 VStack(spacing: 16) {
                     SeasonBannerView(season: store.season)
+                    SeasonsCardView(store: store)
                     StatsGridView(store: store)
                     GoalControlView(store: store)
                     RankReferenceView(thresholds: store.thresholds, rank: store.rank)
-                    CheatsheetView()
+                    if store.mode == .worldTour {
+                        CheatsheetView()
+                    }
 
                     if let errorMessage = store.errorMessage {
                         Text(errorMessage)

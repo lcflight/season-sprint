@@ -13,13 +13,24 @@ struct GraphTabView: View {
                 VStack(spacing: 16) {
                     CompactSummary(rank: store.rank, liveStatus: store.liveStatus)
 
+                    if store.isViewingPastSeason {
+                        Text("Viewing a past season — read-only")
+                            .font(.caption.bold())
+                            .foregroundStyle(.tint)
+                    }
+
+                    let baseline = store.paceBaseline ?? PaceBaseline(date: store.viewedSeason?.start ?? store.season?.start ?? .distantPast, value: 0)
+
                     PointsChartView(
                         points: store.seasonPoints.sorted { $0.date < $1.date },
-                        season: store.season,
+                        season: store.viewedSeason,
                         goal: store.goal,
+                        thresholds: store.thresholds,
+                        baseline: baseline,
                         rank: store.rank,
                         pace: store.pace,
-                        todayGain: store.todayGain,
+                        overlayPoints: store.overlayPoints,
+                        todayGain: store.isViewingPastSeason ? nil : store.todayGain,
                         showRankOverlay: settings.showRankOverlay,
                         showAveragePace: settings.showAveragePace,
                         showDeviationWedge: settings.showDeviationWedge
@@ -29,7 +40,8 @@ struct GraphTabView: View {
                         PaceChartView(
                             points: store.seasonPoints,
                             goal: store.goal,
-                            season: store.season
+                            season: store.viewedSeason,
+                            baseline: baseline
                         )
                     }
                 }

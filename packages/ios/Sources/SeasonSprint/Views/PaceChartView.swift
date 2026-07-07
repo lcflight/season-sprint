@@ -7,6 +7,7 @@ struct PaceChartView: View {
     let points: [Point]
     let goal: Int
     let season: Season?
+    let baseline: PaceBaseline
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -15,7 +16,7 @@ struct PaceChartView: View {
 
             if let season {
                 let required = requiredPaceSeries(seasonPoints: points, goal: goal, end: season.end)
-                let earned = earnedPaceSeries(seasonPoints: points)
+                let earned = earnedPaceSeries(seasonPoints: points, baselineY: baseline.value)
 
                 if required.isEmpty && earned.isEmpty {
                     placeholder("No pace data yet.")

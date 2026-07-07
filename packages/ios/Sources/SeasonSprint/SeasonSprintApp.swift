@@ -7,7 +7,6 @@ struct SeasonSprintApp: App {
     // *before* anything touches `Clerk.shared`, so we do it here in init and seed
     // the @State from the return value rather than reading `Clerk.shared` directly.
     @State private var clerk: Clerk
-    @State private var settings: AppSettings
 
     init() {
         let options = Clerk.Options(
@@ -25,14 +24,12 @@ struct SeasonSprintApp: App {
             options: options
         )
         _clerk = State(initialValue: configured)
-        _settings = State(initialValue: AppSettings())
     }
 
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environment(clerk)
-                .environment(settings)
         }
     }
 }
