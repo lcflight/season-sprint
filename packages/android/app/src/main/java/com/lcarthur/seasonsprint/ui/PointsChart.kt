@@ -168,22 +168,29 @@ private fun ChartCanvas(
             }
 
             // --- Deviation wedge ---
+            // A straight-line fan from the baseline anchor (season start at 0 for World
+            // Tour; the placement point for Ranked) to the projected upper/lower bound at
+            // season end — sampled so the Canvas Path can render it as a filled band.
             if (showAveragePace && showDeviationWedge && season != null) {
                 val proj = averagePaceProjectedEnd(sorted, season.start, season.end, baseline)
                 val dev = deviationAtEnd(sorted, season.start, season.end, baseline)
                 if (proj != null && dev != null) {
+                    val baselineSec = baseline.instant.epochSecond.toDouble()
+                    val totalSecFromBaseline = endSec - baselineSec
+                    val yUpperEnd = proj + dev
+                    val yLowerEnd = maxOf(0.0, proj - dev)
                     val steps = 24
                     val path = Path()
                     for (i in 0..steps) {
                         val f = i.toDouble() / steps
-                        val x = xAtFrac(f)
-                        val hi = yOf(minOf(yMax, f * (proj + dev)))
+                        val x = xAtFrac((baselineSec + f * totalSecFromBaseline - startSec) / xSpan)
+                        val hi = yOf(minOf(yMax, baseline.value + f * (yUpperEnd - baseline.value)))
                         if (i == 0) path.moveTo(x, hi) else path.lineTo(x, hi)
                     }
                     for (i in steps downTo 0) {
                         val f = i.toDouble() / steps
-                        val x = xAtFrac(f)
-                        val lo = yOf(minOf(yMax, maxOf(0.0, f * (proj - dev))))
+                        val x = xAtFrac((baselineSec + f * totalSecFromBaseline - startSec) / xSpan)
+                        val lo = yOf(minOf(yMax, maxOf(0.0, baseline.value + f * (yLowerEnd - baseline.value))))
                         path.lineTo(x, lo)
                     }
                     path.close()
