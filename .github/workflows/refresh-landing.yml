@@ -4,6 +4,16 @@ name: Refresh landing downloads
 # static site rebuilds and re-bakes packages/landing/releases.json (via
 # `pnpm -F landing build` → generate-releases.mjs) with the new assets.
 #
+# The `release` trigger below is mostly aspirational: GitHub does not dispatch
+# `release` (or `push`) events for actions taken with a workflow's own
+# GITHUB_TOKEN, and every release here is created that way (softprops/action-gh-release
+# in build-android.yml / build-linux.yml / build-windows-installer.yml). So this
+# also listens for those three build-and-release workflows completing — that's
+# what actually fires after every real release. The job only acts on a
+# successful run of a `v*` tag build (those workflows also run on PRs/pushes
+# unrelated to a release), so it may ping the hook up to 3 times per release;
+# that's harmless, just a few redundant rebuilds.
+#
 # Setup: in the Render dashboard for the landing static site, create a Deploy
 # Hook (Settings → Deploy Hook), then add its URL as the repo secret
 # RENDER_LANDING_DEPLOY_HOOK. Without the secret this job is a no-op, so the
@@ -13,6 +23,9 @@ name: Refresh landing downloads
 on:
   release:
     types: [published, edited, released, deleted, unpublished]
+  workflow_run:
+    workflows: ["Build Android APK", "Build Linux tarball", "Build Windows installer"]
+    types: [completed]
   workflow_dispatch:
 
 permissions:
@@ -21,6 +34,12 @@ permissions:
 jobs:
   trigger-render:
     runs-on: ubuntu-latest
+    # For workflow_run: only act on a successful v*-tag build, not the PR/push
+    # runs those workflows also do. release/workflow_dispatch always proceed.
+    if: >
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       startsWith(github.event.workflow_run.head_branch, 'v'))
     steps:
       - name: Trigger Render deploy
         env:
