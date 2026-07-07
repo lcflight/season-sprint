@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.lcarthur.seasonsprint.domain.PaceBaseline
 import com.lcarthur.seasonsprint.domain.Point
 import com.lcarthur.seasonsprint.domain.Season
 import com.lcarthur.seasonsprint.domain.earnedPaceSeries
@@ -33,6 +34,7 @@ fun PaceChart(
     points: List<Point>,
     goal: Int,
     season: Season?,
+    baseline: PaceBaseline,
     modifier: Modifier = Modifier,
 ) {
     Card(modifier = modifier.fillMaxWidth()) {
@@ -45,7 +47,7 @@ fun PaceChart(
             }
 
             val required = requiredPaceSeries(points, goal, season.end)
-            val earned = earnedPaceSeries(points)
+            val earned = earnedPaceSeries(points, baseline.value)
             if (required.isEmpty() && earned.isEmpty()) {
                 Placeholder("No pace data yet.")
                 return@Column

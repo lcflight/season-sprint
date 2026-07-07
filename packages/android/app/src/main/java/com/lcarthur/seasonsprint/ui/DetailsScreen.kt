@@ -44,9 +44,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.lcarthur.seasonsprint.GameMode
 import com.lcarthur.seasonsprint.domain.Season
+import com.lcarthur.seasonsprint.domain.SeasonOption
 import com.lcarthur.seasonsprint.domain.worldTourCheatsheet
-import com.lcarthur.seasonsprint.domain.worldTourThresholds
 import com.lcarthur.seasonsprint.state.DashboardState
 import com.lcarthur.seasonsprint.state.DashboardViewModel
 import com.lcarthur.seasonsprint.ui.theme.FinalsGold
@@ -74,10 +75,11 @@ fun DetailsScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         state.season?.let { SeasonBanner(it) }
+        SeasonsCard(state, viewModel)
         StatsGrid(state)
         GoalControl(state, viewModel)
         RankReference(state)
-        Cheatsheet()
+        if (state.mode == GameMode.WorldTour) Cheatsheet()
         if (state.error != null) {
             Text(
                 state.error!!,
@@ -179,6 +181,83 @@ private fun StatCard(label: String, value: String, accent: Color, modifier: Modi
     }
 }
 
+/**
+ * Season picker + compare overlay. Mirrors SeasonControls.vue: the current season is always
+ * selectable, past seasons appear once they have data, and the whole module explains itself
+ * (rather than showing empty dropdowns) until there's a past season to look at.
+ */
+@Composable
+private fun SeasonsCard(state: DashboardState, viewModel: DashboardViewModel) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Seasons", style = MaterialTheme.typography.titleMedium)
+            if (state.seasonModuleDisabled) {
+                Text(
+                    "Log points across more than the current season to unlock historical comparisons.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                SeasonPickerRow(
+                    label = "Season",
+                    options = state.seasonOptions,
+                    selectedKey = state.viewedSeasonKey ?: state.currentSeasonKey,
+                    placeholder = null,
+                    onSelect = { viewModel.viewSeason(if (it == state.currentSeasonKey) null else it) },
+                )
+                SeasonPickerRow(
+                    label = "Compare",
+                    options = state.overlayOptions,
+                    selectedKey = state.overlaySeasonKey,
+                    placeholder = "None",
+                    onSelect = { viewModel.overlaySeason(it) },
+                )
+                if (state.isViewingPastSeason) {
+                    Text(
+                        "Viewing a past season — read-only. Switch back to the current season to log points.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SeasonPickerRow(
+    label: String,
+    options: List<SeasonOption>,
+    selectedKey: String?,
+    placeholder: String?,
+    onSelect: (String?) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val selectedLabel = options.firstOrNull { it.key == selectedKey }?.displayName ?: placeholder ?: "—"
+
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+        Box {
+            OutlinedButton(onClick = { expanded = true }) {
+                Text(selectedLabel)
+                Spacer(Modifier.width(4.dp))
+                Icon(Icons.Filled.ExpandMore, contentDescription = null)
+            }
+            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                if (placeholder != null) {
+                    DropdownMenuItem(text = { Text(placeholder) }, onClick = { onSelect(null); expanded = false })
+                }
+                options.forEach { option ->
+                    DropdownMenuItem(
+                        text = { Text(option.displayName) },
+                        onClick = { onSelect(option.key); expanded = false },
+                    )
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun GoalControl(state: DashboardState, viewModel: DashboardViewModel) {
     var expanded by remember { mutableStateOf(false) }
@@ -206,7 +285,7 @@ private fun GoalControl(state: DashboardState, viewModel: DashboardViewModel) {
                         Icon(Icons.Filled.ExpandMore, contentDescription = null)
                     }
                     DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                        worldTourThresholds.reversed().forEach { t ->
+                        state.thresholds.reversed().forEach { t ->
                             DropdownMenuItem(
                                 text = { Text("${t.badge} — ${t.points}") },
                                 onClick = {
@@ -257,7 +336,7 @@ private fun GoalControl(state: DashboardState, viewModel: DashboardViewModel) {
 @Composable
 private fun RankReference(state: DashboardState) {
     ExpandableCard(title = "Rank thresholds") {
-        worldTourThresholds.reversed().forEach { t ->
+        state.thresholds.reversed().forEach { t ->
             val isCurrent = t.points == state.rank.currentFloor && state.rank.badge == t.badge
             Row(
                 modifier = Modifier

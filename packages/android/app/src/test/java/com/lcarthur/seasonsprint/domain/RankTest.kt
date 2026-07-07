@@ -1,7 +1,9 @@
 package com.lcarthur.seasonsprint.domain
 
+import com.lcarthur.seasonsprint.GameMode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Test
 
 /** Validates the ported rank logic matches the web/iOS source of truth (worldTourRanks.json). */
@@ -59,5 +61,36 @@ class RankTest {
         assertEquals("gold", tierKey("Gold 2"))
         assertEquals("emerald", tierKey("Emerald 1"))
         assertEquals("unranked", tierKey("Unranked"))
+    }
+
+    @Test
+    fun rankedStartsAtBronze4Immediately() {
+        // Unlike World Tour, Ranked's first threshold is 0 RS, so a placement of 0 is already
+        // Bronze 4, not Unranked.
+        val r = computeRank(0, rankedThresholds)
+        assertEquals("Bronze 4", r.badge)
+        assertEquals(0, r.currentFloor)
+        assertEquals(2500, r.nextTarget)
+    }
+
+    @Test
+    fun rankedMidBandReportsCurrentAndNext() {
+        val r = computeRank(26_000, rankedThresholds) // between Gold 2 (25000) and Gold 1 (27500)
+        assertEquals("Gold 2", r.badge)
+        assertEquals(25000, r.currentFloor)
+        assertEquals(27500, r.nextTarget)
+    }
+
+    @Test
+    fun rankedAtTopThereIsNoNext() {
+        val r = computeRank(47_500, rankedThresholds)
+        assertEquals("Diamond 1", r.badge)
+        assertNull(r.nextTarget)
+    }
+
+    @Test
+    fun thresholdsForPicksTheRightTable() {
+        assertSame(worldTourThresholds, thresholdsFor(GameMode.WorldTour))
+        assertSame(rankedThresholds, thresholdsFor(GameMode.Ranked))
     }
 }

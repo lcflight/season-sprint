@@ -1,10 +1,12 @@
 package com.lcarthur.seasonsprint.data
 
 import com.lcarthur.seasonsprint.Config
+import com.lcarthur.seasonsprint.GameMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -20,7 +22,7 @@ class ApiException(val code: Int) : Exception("HTTP $code")
  * the live WebSocket (Phase 7).
  */
 object ApiClient {
-    private val json = Json { ignoreUnknownKeys = true }
+    private val json = Json { ignoreUnknownKeys = true; explicitNulls = false }
     private val jsonMedia = "application/json".toMediaType()
     private val emptyBody = ByteArray(0).toRequestBody(null)
 
@@ -30,9 +32,12 @@ object ApiClient {
 
     private fun url(path: String) = "${Config.SERVER_URL}/$path"
 
-    /** `GET /me/records` */
-    suspend fun getRecords(): List<ApiRecord> = withContext(Dispatchers.IO) {
-        val req = Request.Builder().url(url("me/records")).get().build()
+    private fun urlWithMode(path: String, mode: GameMode) =
+        url(path).toHttpUrl().newBuilder().addQueryParameter("mode", mode.wireValue).build()
+
+    /** `GET /me/records?mode=...` */
+    suspend fun getRecords(mode: GameMode): List<ApiRecord> = withContext(Dispatchers.IO) {
+        val req = Request.Builder().url(urlWithMode("me/records", mode)).get().build()
         httpClient.newCall(req).execute().use { resp ->
             check(resp)
             json.decodeFromString<List<ApiRecord>>(resp.body.string())
@@ -40,8 +45,8 @@ object ApiClient {
     }
 
     /** `POST /me/records` — upsert a record by date; returns the saved record. */
-    suspend fun upsertRecord(date: String, winPoints: Int): ApiRecord = withContext(Dispatchers.IO) {
-        val body = json.encodeToString(RecordWrite(date, winPoints)).toRequestBody(jsonMedia)
+    suspend fun upsertRecord(date: String, winPoints: Int, mode: GameMode): ApiRecord = withContext(Dispatchers.IO) {
+        val body = json.encodeToString(RecordWrite(date, winPoints, mode.wireValue)).toRequestBody(jsonMedia)
         val req = Request.Builder().url(url("me/records")).post(body).build()
         httpClient.newCall(req).execute().use { resp ->
             check(resp)
@@ -49,7 +54,7 @@ object ApiClient {
         }
     }
 
-    /** `PUT /me/records/:id` — edit a record in place; returns the updated record. */
+    /** `PUT /me/records/:id` — edit a record in place; returns the updated record. Mode is fixed at creation. */
     suspend fun updateRecord(id: String, date: String, winPoints: Int): ApiRecord = withContext(Dispatchers.IO) {
         val body = json.encodeToString(RecordWrite(date, winPoints)).toRequestBody(jsonMedia)
         val req = Request.Builder().url(url("me/records/$id")).put(body).build()
@@ -67,10 +72,15 @@ object ApiClient {
 
     /** `GET /seasons` — public (no auth); returns the current season window, or null. */
     suspend fun getSeasons(): SeasonDto? = withContext(Dispatchers.IO) {
+        getAllSeasons().currentSeason
+    }
+
+    /** `GET /seasons` — public (no auth); the full payload (every season + the current one). */
+    suspend fun getAllSeasons(): SeasonsResponse = withContext(Dispatchers.IO) {
         val req = Request.Builder().url(url("seasons")).get().build()
         httpClient.newCall(req).execute().use { resp ->
             check(resp)
-            json.decodeFromString<SeasonsResponse>(resp.body.string()).currentSeason
+            json.decodeFromString<SeasonsResponse>(resp.body.string())
         }
     }
 

@@ -26,14 +26,17 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.lcarthur.seasonsprint.domain.OverlayPoint
+import com.lcarthur.seasonsprint.domain.PaceBaseline
 import com.lcarthur.seasonsprint.domain.PaceStats
 import com.lcarthur.seasonsprint.domain.Point
 import com.lcarthur.seasonsprint.domain.RankInfo
 import com.lcarthur.seasonsprint.domain.Season
+import com.lcarthur.seasonsprint.domain.Threshold
 import com.lcarthur.seasonsprint.domain.averagePaceProjectedEnd
 import com.lcarthur.seasonsprint.domain.deviationAtEnd
-import com.lcarthur.seasonsprint.domain.worldTourThresholds
 import com.lcarthur.seasonsprint.ui.theme.ChartAvgPace
+import com.lcarthur.seasonsprint.ui.theme.FinalsGold
 import com.lcarthur.seasonsprint.ui.theme.GainNegative
 import com.lcarthur.seasonsprint.ui.theme.GainPositive
 import com.lcarthur.seasonsprint.ui.theme.rankColor
@@ -41,13 +44,17 @@ import java.time.Instant
 
 /**
  * The hero chart: cumulative points over time with optional rank overlay, goal line,
- * pace projections, average-pace line, and deviation wedge. Ports iOS PointsChartView.
+ * pace projections, average-pace line, deviation wedge, and a past-season compare overlay.
+ * Ports iOS PointsChartView.
  */
 @Composable
 fun PointsChart(
     points: List<Point>,
     goal: Int,
     season: Season?,
+    thresholds: List<Threshold>,
+    baseline: PaceBaseline,
+    overlayPoints: List<OverlayPoint>,
     rank: RankInfo,
     pace: PaceStats?,
     todayGain: Int?,
@@ -74,13 +81,16 @@ fun PointsChart(
                 sorted = sorted,
                 goal = goal,
                 season = season,
+                thresholds = thresholds,
+                baseline = baseline,
+                overlayPoints = overlayPoints,
                 showRankOverlay = showRankOverlay,
                 showAveragePace = showAveragePace,
                 showDeviationWedge = showDeviationWedge,
                 isFromLastDefined = pace?.isFromLastDefined == true,
                 todayGain = todayGain,
             )
-            Legend(showAveragePace = showAveragePace, showLast = pace?.isFromLastDefined == true)
+            Legend(showAveragePace = showAveragePace, showLast = pace?.isFromLastDefined == true, showOverlay = overlayPoints.isNotEmpty())
         }
     }
 }
@@ -90,6 +100,9 @@ private fun ChartCanvas(
     sorted: List<Point>,
     goal: Int,
     season: Season?,
+    thresholds: List<Threshold>,
+    baseline: PaceBaseline,
+    overlayPoints: List<OverlayPoint>,
     showRankOverlay: Boolean,
     showAveragePace: Boolean,
     showDeviationWedge: Boolean,
@@ -102,10 +115,11 @@ private fun ChartCanvas(
     val xSpan = (endSec - startSec).coerceAtLeast(1.0)
 
     // Y domain: cap at the goal unless the data exceeds it (then 5% headroom).
-    val maxPoint = sorted.maxOf { it.winPoints }.toDouble()
+    val maxPoint = maxOf(sorted.maxOf { it.winPoints }, overlayPoints.maxOfOrNull { it.winPoints } ?: 0).toDouble()
     val yMax = if (maxPoint > goal) maxOf(1.0, maxPoint * 1.05) else maxOf(1.0, goal.toDouble())
 
     val lineColor = MaterialTheme.colorScheme.secondary       // cyan
+    val overlayColor = FinalsGold.copy(alpha = 0.55f)          // faint gold, dashed — the compared season
     val lastProjectionColor = MaterialTheme.colorScheme.tertiary // mint
     val projectionColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
     val axisColor = MaterialTheme.colorScheme.outlineVariant
@@ -134,7 +148,7 @@ private fun ChartCanvas(
             // --- Rank overlay bands (back layer) ---
             if (showRankOverlay) {
                 var lower = 0
-                for (t in worldTourThresholds) {
+                for (t in thresholds) {
                     if (lower < yMax) {
                         val upper = minOf(t.points.toDouble(), yMax)
                         val top = yOf(upper)
@@ -148,15 +162,15 @@ private fun ChartCanvas(
                     lower = t.points
                 }
                 // Faint tier-zone labels at each grouped tier's vertical midpoint (right-aligned).
-                for (zone in tierZones(yMax)) {
+                for (zone in tierZones(yMax, thresholds)) {
                     drawZoneLabel(zone.first, padLeft + plotW, yOf(zone.second) + 4.dp.toPx(), rankColor(zone.third).copy(alpha = 0.18f).toArgb())
                 }
             }
 
             // --- Deviation wedge ---
             if (showAveragePace && showDeviationWedge && season != null) {
-                val proj = averagePaceProjectedEnd(sorted, season.start, season.end)
-                val dev = deviationAtEnd(sorted, season.start, season.end)
+                val proj = averagePaceProjectedEnd(sorted, season.start, season.end, baseline)
+                val dev = deviationAtEnd(sorted, season.start, season.end, baseline)
                 if (proj != null && dev != null) {
                     val steps = 24
                     val path = Path()
@@ -181,13 +195,13 @@ private fun ChartCanvas(
 
             // --- Average pace line ---
             if (showAveragePace && season != null) {
-                val proj = averagePaceProjectedEnd(sorted, season.start, season.end)
-                if (proj != null && proj > 0) {
-                    val endFrac = if (proj > yMax) yMax / proj else 1.0
+                val proj = averagePaceProjectedEnd(sorted, season.start, season.end, baseline)
+                if (proj != null && proj > baseline.value) {
+                    val endFrac = if (proj > yMax) (yMax - baseline.value) / (proj - baseline.value) else 1.0
                     val endVal = if (proj > yMax) yMax else proj
                     drawLine(
                         color = avgColor,
-                        start = Offset(xAtFrac(0.0), yOf(0.0)),
+                        start = Offset(xOf(baseline.instant), yOf(baseline.value)),
                         end = Offset(xAtFrac(endFrac), yOf(endVal)),
                         strokeWidth = 1.5.dp.toPx(),
                         pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 4f)),
@@ -195,13 +209,13 @@ private fun ChartCanvas(
                 }
             }
 
-            // Baseline (y = 0).
+            // Baseline (y = 0) — a fixed zero reference, distinct from the pace/projection anchor.
             drawLine(axisColor, Offset(padLeft, yOf(0.0)), Offset(padLeft + plotW, yOf(0.0)), strokeWidth = 1.dp.toPx())
 
-            // --- Zero → goal projection ---
+            // --- Baseline → goal projection ---
             drawLine(
                 color = projectionColor,
-                start = Offset(xAtFrac(0.0), yOf(0.0)),
+                start = Offset(xOf(baseline.instant), yOf(baseline.value)),
                 end = Offset(xAtFrac(1.0), yOf(goal.toDouble())),
                 strokeWidth = 1.5.dp.toPx(),
                 pathEffect = dash,
@@ -219,9 +233,38 @@ private fun ChartCanvas(
                 )
             }
 
+            // --- Placement baseline segment (Ranked only) ---
+            // A flat span from season start to the placement point, making it clear the climb
+            // begins at placement rather than zero. No-op for World Tour, whose baseline sits
+            // at season start already.
+            if (baseline.instant.epochSecond > startSec.toLong()) {
+                drawLine(
+                    color = lineColor.copy(alpha = 0.6f),
+                    start = Offset(xAtFrac(0.0), yOf(baseline.value)),
+                    end = Offset(xOf(baseline.instant), yOf(baseline.value)),
+                    strokeWidth = 2.5.dp.toPx(),
+                )
+            }
+
+            // --- Compare-season overlay (faint, dashed, behind the current line) ---
+            if (overlayPoints.isNotEmpty()) {
+                var prevOverlay: Offset? = null
+                for (p in overlayPoints) {
+                    val o = Offset(xOf(p.instant), yOf(p.winPoints.toDouble()))
+                    prevOverlay?.let {
+                        drawLine(overlayColor, it, o, strokeWidth = 2.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(5f, 5f)))
+                    }
+                    prevOverlay = o
+                }
+                for (p in overlayPoints) {
+                    drawCircle(overlayColor, radius = 2.5.dp.toPx(), center = Offset(xOf(p.instant), yOf(p.winPoints.toDouble())))
+                }
+            }
+
             // --- Cumulative line + dots ---
-            // Seed at the graph origin (x-start, 0) so the first point connects back to zero-zero.
-            var prev: Offset? = Offset(xAtFrac(0.0), yOf(0.0))
+            // Seed at the pace baseline (season start at 0 for World Tour; the placement point
+            // itself for Ranked) so the first point connects back to the anchor, not always zero.
+            var prev: Offset? = Offset(xOf(baseline.instant), yOf(baseline.value))
             for (p in sorted) {
                 val o = Offset(xOf(p.instant), yOf(p.winPoints.toDouble()))
                 prev?.let { drawLine(lineColor, it, o, strokeWidth = 2.5.dp.toPx()) }
@@ -252,11 +295,12 @@ private fun ChartCanvas(
 }
 
 @Composable
-private fun Legend(showAveragePace: Boolean, showLast: Boolean) {
+private fun Legend(showAveragePace: Boolean, showLast: Boolean, showOverlay: Boolean) {
     Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
         LegendItem(MaterialTheme.colorScheme.onSurfaceVariant, "Zero → goal")
         if (showLast) LegendItem(MaterialTheme.colorScheme.tertiary, "Last → goal")
         if (showAveragePace) LegendItem(ChartAvgPace, "Avg pace")
+        if (showOverlay) LegendItem(FinalsGold.copy(alpha = 0.55f), "Compare")
     }
 }
 
@@ -271,18 +315,17 @@ private fun LegendItem(color: Color, label: String) {
 }
 
 /** One label per grouped tier (adjacent same-tier sub-tiers merge), at the band midpoint. */
-private fun tierZones(yMax: Double): List<Triple<String, Double, String>> {
+private fun tierZones(yMax: Double, thresholds: List<Threshold>): List<Triple<String, Double, String>> {
     val zones = mutableListOf<Triple<String, Double, String>>()
-    val t = worldTourThresholds
     var lower = 0
     var i = 0
-    while (i < t.size) {
-        val tier = t[i].badge.substringBefore(' ')
+    while (i < thresholds.size) {
+        val tier = thresholds[i].badge.substringBefore(' ')
         var j = i
-        while (j + 1 < t.size && t[j + 1].badge.substringBefore(' ') == tier) j++
-        val upper = t[j].points
+        while (j + 1 < thresholds.size && thresholds[j + 1].badge.substringBefore(' ') == tier) j++
+        val upper = thresholds[j].points
         val mid = (lower + upper) / 2.0
-        if (mid < yMax) zones.add(Triple(tier, mid, t[i].badge))
+        if (mid < yMax) zones.add(Triple(tier, mid, thresholds[i].badge))
         lower = upper
         i = j + 1
     }
