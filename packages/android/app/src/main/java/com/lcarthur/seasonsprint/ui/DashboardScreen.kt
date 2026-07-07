@@ -21,10 +21,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.lcarthur.seasonsprint.domain.PaceBaseline
 import com.lcarthur.seasonsprint.state.AppSettingsState
 import com.lcarthur.seasonsprint.state.DashboardState
 import com.lcarthur.seasonsprint.state.DashboardViewModel
 import com.lcarthur.seasonsprint.ui.theme.rankColor
+import java.time.Instant
 
 /** Graph tab: compact rank summary + cumulative points chart + optional pace sub-graph. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -49,19 +51,30 @@ fun DashboardScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             RankSummaryCard(state)
+            if (state.isViewingPastSeason) {
+                Text(
+                    "Viewing a past season — read-only",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+            val baseline = state.paceBaseline ?: PaceBaseline(state.viewedSeason?.start ?: state.season?.start ?: Instant.EPOCH, 0.0)
             PointsChart(
                 points = state.seasonPoints,
                 goal = state.goal,
-                season = state.season,
+                season = state.viewedSeason,
+                thresholds = state.thresholds,
+                baseline = baseline,
+                overlayPoints = state.overlayPoints,
                 rank = state.rank,
                 pace = state.pace,
-                todayGain = state.todayGain,
+                todayGain = if (state.isViewingPastSeason) null else state.todayGain,
                 showRankOverlay = settings.showRankOverlay,
                 showAveragePace = settings.showAveragePace,
                 showDeviationWedge = settings.showDeviationWedge,
             )
             if (settings.showPaceGraph) {
-                PaceChart(points = state.seasonPoints, goal = state.goal, season = state.season)
+                PaceChart(points = state.seasonPoints, goal = state.goal, season = state.viewedSeason, baseline = baseline)
             }
             if (state.error != null) {
                 Text(

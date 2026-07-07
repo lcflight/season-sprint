@@ -1,7 +1,15 @@
 package com.lcarthur.seasonsprint.domain
 
+import com.lcarthur.seasonsprint.GameMode
+
 /** A rank threshold: reach [points] to earn [badge]. */
 data class Threshold(val badge: String, val points: Int)
+
+/** The rank/RS threshold table for a mode. */
+fun thresholdsFor(mode: GameMode): List<Threshold> = when (mode) {
+    GameMode.WorldTour -> worldTourThresholds
+    GameMode.Ranked -> rankedThresholds
+}
 
 /** Derived rank state. Ported from packages/web/src/composables/useRankInfo.js + iOS Rank.swift. */
 data class RankInfo(
@@ -66,6 +74,34 @@ val worldTourThresholds: List<Threshold> = listOf(
     Threshold("Emerald 3", 2000),
     Threshold("Emerald 2", 2200),
     Threshold("Emerald 1", 2400),
+)
+
+/**
+ * Ranked RS thresholds, verbatim from packages/web/src/views/Ranked.vue (RANKED_THRESHOLDS).
+ * Bronze (0 → 7,500), Silver (10,000 → 17,500), Gold (20,000 → 27,500), Platinum
+ * (30,000 → 37,500), Diamond (40,000 → 47,500). Ruby = Top 500, not threshold-based.
+ */
+val rankedThresholds: List<Threshold> = listOf(
+    Threshold("Bronze 4", 0),
+    Threshold("Bronze 3", 2500),
+    Threshold("Bronze 2", 5000),
+    Threshold("Bronze 1", 7500),
+    Threshold("Silver 4", 10000),
+    Threshold("Silver 3", 12500),
+    Threshold("Silver 2", 15000),
+    Threshold("Silver 1", 17500),
+    Threshold("Gold 4", 20000),
+    Threshold("Gold 3", 22500),
+    Threshold("Gold 2", 25000),
+    Threshold("Gold 1", 27500),
+    Threshold("Platinum 4", 30000),
+    Threshold("Platinum 3", 32500),
+    Threshold("Platinum 2", 35000),
+    Threshold("Platinum 1", 37500),
+    Threshold("Diamond 4", 40000),
+    Threshold("Diamond 3", 42500),
+    Threshold("Diamond 2", 45000),
+    Threshold("Diamond 1", 47500),
 )
 
 /** World Tour win-points cheatsheet, from packages/web/src/components/PointsCheatsheet.vue. */

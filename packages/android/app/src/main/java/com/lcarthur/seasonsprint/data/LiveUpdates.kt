@@ -121,9 +121,12 @@ class LiveUpdates(private val scope: CoroutineScope) {
             "record:delete" -> data?.jsonObject?.get("id")?.jsonPrimitive?.content?.let {
                 RecordEvent.Delete(it)
             }
-            "record:delete-all" -> RecordEvent.DeleteAll
+            "record:delete-all" -> RecordEvent.DeleteAll(data?.jsonObject?.get("mode")?.jsonPrimitive?.content)
             "record:bulk-upsert" -> data?.jsonObject?.get("records")?.let {
-                RecordEvent.BulkUpsert(json.decodeFromJsonElement(ListSerializer(ApiRecord.serializer()), it))
+                RecordEvent.BulkUpsert(
+                    json.decodeFromJsonElement(ListSerializer(ApiRecord.serializer()), it),
+                    data.jsonObject["mode"]?.jsonPrimitive?.content,
+                )
             }
             else -> null
         }

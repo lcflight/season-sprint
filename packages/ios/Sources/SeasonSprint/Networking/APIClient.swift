@@ -18,11 +18,13 @@ enum APIClient {
         return "Bearer \(jwt)"
     }
 
-    /// `GET /me/records`
+    /// `GET /me/records?mode=...`
     @MainActor
-    static func getRecords() async throws -> [APIRecord] {
+    static func getRecords(mode: GameMode) async throws -> [APIRecord] {
         guard let auth = await authorizationHeader() else { throw APIError.notAuthenticated }
-        var req = URLRequest(url: Config.serverURL.appendingPathComponent("me/records"))
+        var comps = URLComponents(url: Config.serverURL.appendingPathComponent("me/records"), resolvingAgainstBaseURL: false)!
+        comps.queryItems = [URLQueryItem(name: "mode", value: mode.wireValue)]
+        var req = URLRequest(url: comps.url!)
         req.setValue(auth, forHTTPHeaderField: "Authorization")
         let (data, response) = try await URLSession.shared.data(for: req)
         try check(response)
@@ -31,13 +33,13 @@ enum APIClient {
 
     /// `POST /me/records` — upsert a record by date; returns the saved record.
     @MainActor
-    static func upsertRecord(date: String, winPoints: Int) async throws -> APIRecord {
+    static func upsertRecord(date: String, winPoints: Int, mode: GameMode) async throws -> APIRecord {
         guard let auth = await authorizationHeader() else { throw APIError.notAuthenticated }
         var req = URLRequest(url: Config.serverURL.appendingPathComponent("me/records"))
         req.httpMethod = "POST"
         req.setValue(auth, forHTTPHeaderField: "Authorization")
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = try JSONEncoder().encode(RecordWrite(date: date, winPoints: winPoints))
+        req.httpBody = try JSONEncoder().encode(RecordWrite(date: date, winPoints: winPoints, mode: mode.wireValue))
         let (data, response) = try await URLSession.shared.data(for: req)
         try check(response)
         return try JSONDecoder().decode(UpsertResponse.self, from: data).record
@@ -70,10 +72,15 @@ enum APIClient {
 
     /// `GET /seasons` — public (no auth); returns the current season window, or nil.
     static func getSeasons() async throws -> Season? {
+        try await getAllSeasons().currentSeason
+    }
+
+    /// `GET /seasons` — public (no auth); the full payload (every season + the current one).
+    static func getAllSeasons() async throws -> SeasonsResponse {
         let req = URLRequest(url: Config.serverURL.appendingPathComponent("seasons"))
         let (data, response) = try await URLSession.shared.data(for: req)
         try check(response)
-        return try seasonsDecoder.decode(SeasonsResponse.self, from: data).currentSeason
+        return try seasonsDecoder.decode(SeasonsResponse.self, from: data)
     }
 
     /// Decoder that parses ISO-8601 timestamps with fractional seconds (e.g. `...000Z`).

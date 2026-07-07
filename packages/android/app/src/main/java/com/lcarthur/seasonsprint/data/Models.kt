@@ -8,6 +8,8 @@ data class ApiRecord(
     val id: String,
     val date: String,
     val winPoints: Int,
+    /** Missing/null means `"world-tour"`, matching the server default. */
+    val mode: String? = null,
 )
 
 /** Request body for creating/updating a record (`POST`/`PUT /me/records`). */
@@ -15,6 +17,7 @@ data class ApiRecord(
 data class RecordWrite(
     val date: String,
     val winPoints: Int,
+    val mode: String? = null,
 )
 
 /** Response from `POST /me/records`. */
@@ -38,9 +41,10 @@ data class SeasonDto(
     val end: String,
 )
 
-/** `GET /seasons` payload (we only need `currentSeason`). */
+/** `GET /seasons` payload — the full scraped list, same for every mode. */
 @Serializable
 data class SeasonsResponse(
+    val seasons: List<SeasonDto> = emptyList(),
     val currentSeason: SeasonDto? = null,
 )
 
@@ -50,7 +54,8 @@ data class SeasonsResponse(
  */
 sealed interface RecordEvent {
     data class Upsert(val record: ApiRecord) : RecordEvent
-    data class Delete(val id: String) : RecordEvent
-    data object DeleteAll : RecordEvent
-    data class BulkUpsert(val records: List<ApiRecord>) : RecordEvent
+    /** [mode] is missing/null for `"world-tour"`, matching the server's broadcast payload. */
+    data class Delete(val id: String, val mode: String? = null) : RecordEvent
+    data class DeleteAll(val mode: String? = null) : RecordEvent
+    data class BulkUpsert(val records: List<ApiRecord>, val mode: String? = null) : RecordEvent
 }

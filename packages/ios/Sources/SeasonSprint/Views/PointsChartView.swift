@@ -31,8 +31,11 @@ struct PointsChartView: View {
     let points: [Point]
     let season: Season?
     let goal: Int
+    let thresholds: [Threshold]
+    let baseline: PaceBaseline
     let rank: RankInfo
     let pace: PaceStats?
+    var overlayPoints: [OverlayPoint] = []
     var todayGain: Int? = nil
     var showRankOverlay = false
     var showAveragePace = false
@@ -92,7 +95,8 @@ struct PointsChartView: View {
                 }
             }
 
-            // Zero -> goal projection.
+            // Baseline -> goal projection (baseline is (seasonStart, 0) for World Tour, the
+            // placement point for Ranked).
             ForEach(zeroProjection) { p in
                 LineMark(x: .value("Date", p.date), y: .value("Points", p.value),
                          series: .value("Series", "zero"))
@@ -106,6 +110,23 @@ struct PointsChartView: View {
                          series: .value("Series", "last"))
                     .foregroundStyle(.green)
                     .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
+            }
+
+            // Compare-season overlay (faint, dashed, behind the current line).
+            ForEach(overlayPoints) { p in
+                LineMark(x: .value("Date", p.date), y: .value("Points", Double(p.winPoints)),
+                         series: .value("Series", "overlay"))
+                    .foregroundStyle(Color.yellow.opacity(0.55))
+                    .lineStyle(StrokeStyle(lineWidth: 2, dash: [5, 5]))
+            }
+
+            // Placement baseline segment (Ranked only): a flat span from season start to the
+            // placement point, making it clear the climb begins at placement rather than
+            // zero. No-op for World Tour, whose baseline sits at season start already.
+            ForEach(placementBaselineSegment) { p in
+                LineMark(x: .value("Date", p.date), y: .value("Points", p.value),
+                         series: .value("Series", "placement"))
+                    .foregroundStyle(Color.accentColor.opacity(0.6))
             }
 
             // Actual cumulative points.
@@ -152,6 +173,9 @@ struct PointsChartView: View {
             if showAveragePace {
                 legendItem(color: .purple, label: "Avg pace")
             }
+            if !overlayPoints.isEmpty {
+                legendItem(color: .yellow.opacity(0.55), label: "Compare")
+            }
         }
         .font(.caption2)
         .foregroundStyle(.secondary)
@@ -193,7 +217,7 @@ struct PointsChartView: View {
     /// Adjacent same-tier sub-tiers share a color, so they form a single zone.
     private var tierZones: [(name: String, mid: Double, color: Color)] {
         var zones: [(String, Double, Color)] = []
-        let t = worldTourThresholds
+        let t = thresholds
         var lower = 0
         var i = 0
         while i < t.count {
@@ -217,7 +241,7 @@ struct PointsChartView: View {
     private var rankBands: [RankBand] {
         var bands: [RankBand] = []
         var lower = 0
-        for (i, t) in worldTourThresholds.enumerated() {
+        for (i, t) in thresholds.enumerated() {
             // Only bands below the goal cap; clamp the top band to the goal.
             if Double(lower) < yMax {
                 bands.append(RankBand(id: i, lower: Double(lower), upper: min(Double(t.points), yMax), badge: t.badge))
@@ -230,7 +254,7 @@ struct PointsChartView: View {
     private var zeroProjection: [ProjPoint] {
         guard let season else { return [] }
         return [
-            ProjPoint(id: 0, date: season.start, value: 0),
+            ProjPoint(id: 0, date: baseline.date, value: baseline.value),
             ProjPoint(id: 1, date: season.end, value: Double(goal)),
         ]
     }
@@ -244,12 +268,22 @@ struct PointsChartView: View {
         ]
     }
 
+    /// Ranked only: a flat line from season start across to the placement point, at the
+    /// placement RS. Empty for World Tour, whose baseline already sits at season start.
+    private var placementBaselineSegment: [ProjPoint] {
+        guard let season, baseline.date > season.start else { return [] }
+        return [
+            ProjPoint(id: 0, date: season.start, value: baseline.value),
+            ProjPoint(id: 1, date: baseline.date, value: baseline.value),
+        ]
+    }
+
     private var averagePaceLine: [ProjPoint] {
         guard let season,
-              let end = averagePaceProjectedEnd(seasonPoints: points, start: season.start, end: season.end)
+              let end = averagePaceProjectedEnd(seasonPoints: points, start: season.start, end: season.end, baseline: baseline)
         else { return [] }
         return clampToCap([
-            ProjPoint(id: 0, date: season.start, value: 0),
+            ProjPoint(id: 0, date: baseline.date, value: baseline.value),
             ProjPoint(id: 1, date: season.end, value: end),
         ])
     }
@@ -274,21 +308,24 @@ struct PointsChartView: View {
 
     private var wedgePoints: [WedgePoint] {
         guard let season,
-              let projected = averagePaceProjectedEnd(seasonPoints: points, start: season.start, end: season.end),
-              let dev = deviationAtEnd(seasonPoints: points, start: season.start, end: season.end)
+              let projected = averagePaceProjectedEnd(seasonPoints: points, start: season.start, end: season.end, baseline: baseline),
+              let dev = deviationAtEnd(seasonPoints: points, start: season.start, end: season.end, baseline: baseline)
         else { return [] }
-        // Sample the fan at multiple points so AreaMark renders a band *between* the
-        // lower and upper pace lines, not a fill down to the baseline.
+        // Sample a straight-line fan from the baseline anchor (season start at 0 for World
+        // Tour; the placement point for Ranked) to the projected upper/lower bound at season
+        // end, so AreaMark renders a band *between* the lower and upper pace lines.
+        let yUpperEnd = projected + dev
+        let yLowerEnd = max(0, projected - dev)
         let steps = 24
-        let total = season.end.timeIntervalSince(season.start)
+        let total = season.end.timeIntervalSince(baseline.date)
         return (0...steps).map { i in
             let f = Double(i) / Double(steps)
-            let date = season.start.addingTimeInterval(total * f)
+            let date = baseline.date.addingTimeInterval(total * f)
             return WedgePoint(
                 id: i,
                 date: date,
-                low: min(yMax, max(0, f * (projected - dev))),
-                high: min(yMax, f * (projected + dev))
+                low: min(yMax, max(0, baseline.value + f * (yLowerEnd - baseline.value))),
+                high: min(yMax, baseline.value + f * (yUpperEnd - baseline.value))
             )
         }
     }

@@ -6,6 +6,14 @@ struct Threshold: Sendable, Equatable {
     let points: Int
 }
 
+/// The rank/RS threshold table for a mode.
+func thresholds(for mode: GameMode) -> [Threshold] {
+    switch mode {
+    case .worldTour: return worldTourThresholds
+    case .ranked: return rankedThresholds
+    }
+}
+
 /// Derived rank state for a given points total against a threshold table.
 /// Ported from packages/web/src/composables/useRankInfo.js.
 struct RankInfo: Sendable, Equatable {
@@ -85,6 +93,32 @@ let worldTourThresholds: [Threshold] = [
     Threshold(badge: "Emerald 3", points: 2000),
     Threshold(badge: "Emerald 2", points: 2200),
     Threshold(badge: "Emerald 1", points: 2400),
+]
+
+/// Ranked RS thresholds, verbatim from packages/web/src/views/Ranked.vue (RANKED_THRESHOLDS).
+/// Bronze (0 -> 7,500), Silver (10,000 -> 17,500), Gold (20,000 -> 27,500), Platinum
+/// (30,000 -> 37,500), Diamond (40,000 -> 47,500). Ruby = Top 500, not threshold-based.
+let rankedThresholds: [Threshold] = [
+    Threshold(badge: "Bronze 4", points: 0),
+    Threshold(badge: "Bronze 3", points: 2500),
+    Threshold(badge: "Bronze 2", points: 5000),
+    Threshold(badge: "Bronze 1", points: 7500),
+    Threshold(badge: "Silver 4", points: 10000),
+    Threshold(badge: "Silver 3", points: 12500),
+    Threshold(badge: "Silver 2", points: 15000),
+    Threshold(badge: "Silver 1", points: 17500),
+    Threshold(badge: "Gold 4", points: 20000),
+    Threshold(badge: "Gold 3", points: 22500),
+    Threshold(badge: "Gold 2", points: 25000),
+    Threshold(badge: "Gold 1", points: 27500),
+    Threshold(badge: "Platinum 4", points: 30000),
+    Threshold(badge: "Platinum 3", points: 32500),
+    Threshold(badge: "Platinum 2", points: 35000),
+    Threshold(badge: "Platinum 1", points: 37500),
+    Threshold(badge: "Diamond 4", points: 40000),
+    Threshold(badge: "Diamond 3", points: 42500),
+    Threshold(badge: "Diamond 2", points: 45000),
+    Threshold(badge: "Diamond 1", points: 47500),
 ]
 
 /// World Tour win-points cheatsheet, from packages/web/src/components/PointsCheatsheet.vue.

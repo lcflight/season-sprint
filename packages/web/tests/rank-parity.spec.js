@@ -18,7 +18,8 @@ import { resolve, dirname } from 'node:path'
  * literal tables, which is enough to catch value/ordering drift.
  *
  * Sources of truth:
- *   - thresholds: packages/web/src/data/worldTourRanks.json
+ *   - World Tour thresholds: packages/web/src/data/worldTourRanks.json
+ *   - Ranked thresholds: packages/web/src/views/Ranked.vue (RANKED_THRESHOLDS)
  *   - cheatsheet: packages/web/src/components/PointsCheatsheet.vue (prop default)
  */
 
@@ -32,16 +33,41 @@ const KOTLIN_RANK =
 
 // --- parsers (literal tables only; deliberately strict so format changes surface) ---
 
+// Both native files now declare two threshold tables (World Tour + Ranked) using the
+// same `Threshold(...)` literal syntax, so the threshold parsers must be scoped to one
+// array declaration at a time rather than matching every `Threshold(...)` in the file.
+// `open` is the exact text marking the start of the array body (e.g. `"= ["` or
+// `"listOf("`), searched for *after* `arrayName` — not just the next bracket, since a
+// Swift `[Threshold]` type annotation contains its own `[`/`]` before the real one.
+function extractBlock(src, arrayName, open, close) {
+  const start = src.indexOf(arrayName)
+  if (start === -1) throw new Error(`could not find \`${arrayName}\` in source`)
+  const openIdx = src.indexOf(open, start)
+  if (openIdx === -1) throw new Error(`could not find \`${open}\` after \`${arrayName}\``)
+  const bodyStart = openIdx + open.length
+  const closeIdx = src.indexOf(`\n${close}`, bodyStart)
+  if (closeIdx === -1) throw new Error(`could not find the \`${arrayName}\` array body`)
+  return src.slice(bodyStart, closeIdx)
+}
+
 // Swift:  Threshold(badge: "Bronze 4", points: 25)
-function parseSwiftThresholds(src) {
-  return [...src.matchAll(/Threshold\(badge:\s*"([^"]+)",\s*points:\s*(\d+)\)/g)].map(
+function parseSwiftThresholds(block) {
+  return [...block.matchAll(/Threshold\(badge:\s*"([^"]+)",\s*points:\s*(\d+)\)/g)].map(
     (m) => ({ badge: m[1], points: Number(m[2]) })
   )
 }
 
 // Kotlin:  Threshold("Bronze 4", 25)   (the `data class` decl has no quote, so it won't match)
-function parseKotlinThresholds(src) {
-  return [...src.matchAll(/Threshold\("([^"]+)",\s*(\d+)\)/g)].map((m) => ({
+function parseKotlinThresholds(block) {
+  return [...block.matchAll(/Threshold\("([^"]+)",\s*(\d+)\)/g)].map((m) => ({
+    badge: m[1],
+    points: Number(m[2]),
+  }))
+}
+
+// Web:  { badge: 'Bronze 4', points: 0 }
+function parseWebThresholds(block) {
+  return [...block.matchAll(/badge:\s*'([^']+)',\s*points:\s*(\d+)/g)].map((m) => ({
     badge: m[1],
     points: Number(m[2]),
   }))
@@ -72,11 +98,21 @@ const jsonThresholds = JSON.parse(read('packages/web/src/data/worldTourRanks.jso
 const swiftSrc = read(SWIFT_RANK)
 const kotlinSrc = read(KOTLIN_RANK)
 const vueSrc = read('packages/web/src/components/PointsCheatsheet.vue')
+const rankedVueSrc = read('packages/web/src/views/Ranked.vue')
 
-const swiftThresholds = parseSwiftThresholds(swiftSrc)
-const kotlinThresholds = parseKotlinThresholds(kotlinSrc)
+const swiftWorldTourBlock = extractBlock(swiftSrc, 'let worldTourThresholds', '= [', ']')
+const kotlinWorldTourBlock = extractBlock(kotlinSrc, 'val worldTourThresholds', 'listOf(', ')')
+const swiftThresholds = parseSwiftThresholds(swiftWorldTourBlock)
+const kotlinThresholds = parseKotlinThresholds(kotlinWorldTourBlock)
 const swiftCheats = parseSwiftCheatsheet(swiftSrc)
 const kotlinCheats = parseKotlinCheatsheet(kotlinSrc)
+
+const swiftRankedBlock = extractBlock(swiftSrc, 'let rankedThresholds', '= [', ']')
+const kotlinRankedBlock = extractBlock(kotlinSrc, 'val rankedThresholds', 'listOf(', ')')
+const webRankedBlock = extractBlock(rankedVueSrc, 'RANKED_THRESHOLDS', '= [', ']')
+const swiftRankedThresholds = parseSwiftThresholds(swiftRankedBlock)
+const kotlinRankedThresholds = parseKotlinThresholds(kotlinRankedBlock)
+const webRankedThresholds = parseWebThresholds(webRankedBlock)
 
 describe('World Tour rank threshold parity (web JSON ↔ iOS ↔ Android)', () => {
   it('the JSON source of truth is non-empty and strictly ascending', () => {
@@ -99,6 +135,30 @@ describe('World Tour rank threshold parity (web JSON ↔ iOS ↔ Android)', () =
 
   it('Android Rank.kt matches the JSON verbatim (badge + points, in order)', () => {
     expect(kotlinThresholds).toEqual(jsonThresholds)
+  })
+})
+
+describe('Ranked rank threshold parity (web Ranked.vue ↔ iOS ↔ Android)', () => {
+  it('the web source of truth is non-empty and strictly ascending', () => {
+    expect(webRankedThresholds.length).toBeGreaterThan(0)
+    for (let i = 1; i < webRankedThresholds.length; i++) {
+      expect(webRankedThresholds[i].points).toBeGreaterThan(webRankedThresholds[i - 1].points)
+    }
+  })
+
+  // Guard: a regex that silently matched nothing must fail here, not pass a
+  // vacuous comparison of two empty arrays elsewhere.
+  it('parsers found the same number of thresholds as the web source', () => {
+    expect(swiftRankedThresholds).toHaveLength(webRankedThresholds.length)
+    expect(kotlinRankedThresholds).toHaveLength(webRankedThresholds.length)
+  })
+
+  it('iOS Rank.swift matches Ranked.vue verbatim (badge + points, in order)', () => {
+    expect(swiftRankedThresholds).toEqual(webRankedThresholds)
+  })
+
+  it('Android Rank.kt matches Ranked.vue verbatim (badge + points, in order)', () => {
+    expect(kotlinRankedThresholds).toEqual(webRankedThresholds)
   })
 })
 

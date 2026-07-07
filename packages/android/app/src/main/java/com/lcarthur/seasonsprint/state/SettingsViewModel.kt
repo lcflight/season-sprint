@@ -3,6 +3,8 @@ package com.lcarthur.seasonsprint.state
 import android.app.Application
 import android.content.Context
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModelProvider
+import com.lcarthur.seasonsprint.GameMode
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -15,8 +17,13 @@ data class AppSettingsState(
     val showPaceGraph: Boolean = false,
 )
 
-class SettingsViewModel(app: Application) : AndroidViewModel(app) {
-    private val prefs = app.getSharedPreferences("settings", Context.MODE_PRIVATE)
+/** Display toggles are saved per mode, matching the web's per-mode `storageKey`. */
+class SettingsViewModel(mode: GameMode, app: Application) : AndroidViewModel(app) {
+    // World Tour keeps the original "settings" file so existing installs don't lose their toggles.
+    private val prefs = app.getSharedPreferences(
+        if (mode == GameMode.WorldTour) "settings" else "settings.${mode.prefsSuffix}",
+        Context.MODE_PRIVATE,
+    )
 
     private val _state = MutableStateFlow(
         AppSettingsState(
@@ -50,5 +57,12 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
         const val K_AVG = "settings.showAveragePace"
         const val K_DEV = "settings.showDeviationWedge"
         const val K_PACE = "settings.showPaceGraph"
+    }
+
+    /** Custom factory since [SettingsViewModel] needs a [GameMode] the default AndroidViewModel factory can't supply. */
+    class Factory(private val mode: GameMode, private val app: Application) : ViewModelProvider.Factory {
+        @Suppress("UNCHECKED_CAST")
+        override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T =
+            SettingsViewModel(mode, app) as T
     }
 }

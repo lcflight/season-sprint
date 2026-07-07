@@ -1,11 +1,13 @@
 import Foundation
 
 /// A record as returned by the server (`GET /me/records`).
-/// Matches the Prisma `Record` model: { id, date (ISO), winPoints, ... }.
+/// Matches the Prisma `Record` model: { id, date (ISO), winPoints, mode, ... }.
 struct APIRecord: Codable, Identifiable, Sendable {
     let id: String
     let date: String
     let winPoints: Int
+    /// Missing/nil means `"world-tour"`, matching the server default.
+    let mode: String?
 }
 
 /// Response from `POST /me/stream/token`.
@@ -21,8 +23,9 @@ struct Season: Codable, Sendable, Equatable {
     let end: Date
 }
 
-/// `GET /seasons` payload (we only need `currentSeason`).
+/// `GET /seasons` payload — the full scraped list, same for every mode.
 struct SeasonsResponse: Codable, Sendable {
+    let seasons: [Season]
     let currentSeason: Season?
 }
 
@@ -30,6 +33,7 @@ struct SeasonsResponse: Codable, Sendable {
 struct RecordWrite: Encodable, Sendable {
     let date: String
     let winPoints: Int
+    var mode: String? = nil
 }
 
 /// Response from `POST /me/records`.
