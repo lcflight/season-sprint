@@ -122,6 +122,16 @@ describe("API Routes", () => {
       expect(records).toHaveLength(1);
       expect(records[0].winPoints).toBe(200);
     });
+
+    it("rejects a malformed date instead of erroring", async () => {
+      const res = await appFetch(d1, "/me/records", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date: "not-a-date", winPoints: 100 }),
+      });
+
+      expect(res.status).toBe(400);
+    });
   });
 
   describe("PUT /me/records/:id", () => {
@@ -297,6 +307,18 @@ describe("API Routes", () => {
         (r) => r.date.slice(0, 10) === "2026-03-01"
       );
       expect(march1?.winPoints).toBe(999);
+    });
+
+    it("rejects a malformed date instead of erroring", async () => {
+      const res = await appFetch(d1, "/me/records/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          records: [{ date: "not-a-date", winPoints: 100 }],
+        }),
+      });
+
+      expect(res.status).toBe(400);
     });
   });
 
