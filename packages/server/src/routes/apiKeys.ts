@@ -1,22 +1,18 @@
 import { Hono } from "hono";
+import { zValidator } from "@hono/zod-validator";
+import { CreateApiKeyInputSchema } from "@season-sprint/shared";
 import type { Env } from "../index";
 import getEmail from "../getEmail";
 import { generateApiKey, hashApiKey, keyPrefix } from "../utils/apiKey";
 
 const apiKeys = new Hono<Env>();
 
-apiKeys.post("/", async (c) => {
+apiKeys.post("/", zValidator("json", CreateApiKeyInputSchema), async (c) => {
   const { userId, email: cachedEmail } = c.get("auth");
   const email = await getEmail(userId, c.env, cachedEmail);
   const db = c.get("db");
 
-  const { name } = await c.req.json<{ name: string }>();
-  if (!name || typeof name !== "string") {
-    return c.text("name is required", 400);
-  }
-  if (name.length > 64) {
-    return c.text("name must be 64 characters or fewer", 400);
-  }
+  const { name } = c.req.valid("json");
 
   const existing = await db.listApiKeys(userId);
   if (existing.length >= 10) {
