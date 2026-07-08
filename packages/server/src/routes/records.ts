@@ -58,10 +58,16 @@ records.put("/:id", async (c) => {
   } catch {
     body = {};
   }
+  const fields =
+    typeof body === "object" && body !== null ? (body as Record<string, unknown>) : {};
 
-  const parsed = UpdateRecordInputSchema.safeParse(body);
-  const date = parsed.success ? parseDate(parsed.data.date) : undefined;
-  const winPoints = parsed.success ? parsed.data.winPoints : undefined;
+  // Each field is validated independently (rather than parsing `fields` as a whole)
+  // so a malformed field doesn't wipe out an otherwise-valid one.
+  const dateResult = UpdateRecordInputSchema.shape.date.safeParse(fields.date);
+  const winPointsResult = UpdateRecordInputSchema.shape.winPoints.safeParse(fields.winPoints);
+
+  const date = dateResult.success ? parseDate(dateResult.data) : undefined;
+  const winPoints = winPointsResult.success ? winPointsResult.data : undefined;
 
   if (date === undefined && winPoints === undefined) {
     return c.text("No fields to update", 400);

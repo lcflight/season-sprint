@@ -124,6 +124,68 @@ describe("API Routes", () => {
     });
   });
 
+  describe("PUT /me/records/:id", () => {
+    async function createRecord(d1: D1Database) {
+      const res = await appFetch(d1, "/me/records", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date: "2026-03-01", winPoints: 100 }),
+      });
+      const body = await res.json();
+      return body.record.id;
+    }
+
+    it("updates winPoints", async () => {
+      const id = await createRecord(d1);
+
+      const res = await appFetch(d1, `/me/records/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ winPoints: 250 }),
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.winPoints).toBe(250);
+    });
+
+    it("applies a valid date even when winPoints is malformed in the same request", async () => {
+      const id = await createRecord(d1);
+
+      const res = await appFetch(d1, `/me/records/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date: "2026-04-15", winPoints: "not-a-number" }),
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(new Date(body.date).toISOString().slice(0, 10)).toBe("2026-04-15");
+    });
+
+    it("returns 400 when no valid fields are provided", async () => {
+      const id = await createRecord(d1);
+
+      const res = await appFetch(d1, `/me/records/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ winPoints: "not-a-number" }),
+      });
+
+      expect(res.status).toBe(400);
+    });
+
+    it("returns 404 for a non-existent record", async () => {
+      const res = await appFetch(d1, "/me/records/does-not-exist", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ winPoints: 50 }),
+      });
+
+      expect(res.status).toBe(404);
+    });
+  });
+
   describe("DELETE /me/records/:id", () => {
     it("deletes an owned record", async () => {
       const createRes = await appFetch(d1, "/me/records", {
