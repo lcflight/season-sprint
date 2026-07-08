@@ -24,19 +24,28 @@ importers:
         version: 5.1.6(react@19.1.1)
       '@hono/clerk-auth':
         specifier: ^3.0.3
-        version: 3.0.3(hono@4.9.6)(react@19.1.1)
+        version: 3.0.3(hono@4.12.28)(react@19.1.1)
+      '@hono/zod-validator':
+        specifier: ^0.8.0
+        version: 0.8.0(hono@4.12.28)(zod@3.25.76)
       '@prisma/adapter-d1':
         specifier: ^6.16.1
         version: 6.16.1
       '@prisma/client':
         specifier: ^6.16.1
         version: 6.16.1(prisma@6.16.1(typescript@5.9.3))(typescript@5.9.3)
+      '@season-sprint/shared':
+        specifier: workspace:*
+        version: link:../shared
       dotenv:
         specifier: ^17.2.3
         version: 17.2.3
       hono:
-        specifier: ^4.9.6
-        version: 4.9.6
+        specifier: ^4.12.28
+        version: 4.12.28
+      zod:
+        specifier: ^3.25.76
+        version: 3.25.76
     devDependencies:
       '@eslint/js':
         specifier: ^9.36.0
@@ -66,6 +75,16 @@ importers:
         specifier: ^4.4.0
         version: 4.35.0(@cloudflare/workers-types@4.20250912.0)
 
+  packages/shared:
+    dependencies:
+      zod:
+        specifier: ^3.23.8
+        version: 3.25.76
+    devDependencies:
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
   packages/web:
     dependencies:
       '@clerk/themes':
@@ -74,6 +93,9 @@ importers:
       '@clerk/vue':
         specifier: ^1.13.0
         version: 1.13.0(vue@3.5.18(typescript@5.9.3))
+      '@season-sprint/shared':
+        specifier: workspace:*
+        version: link:../shared
       axios:
         specifier: 1.11.0
         version: 1.11.0
@@ -1242,6 +1264,12 @@ packages:
     engines: {node: '>=16.x.x'}
     peerDependencies:
       hono: '>=3.0.0'
+
+  '@hono/zod-validator@0.8.0':
+    resolution: {integrity: sha512-5uS4S1/LKtZQYvD4BtpPUFkOv8d1wNxHHrChm26buMiEYc1FrHWvDUaKVBwkiVtvSExHSpLGDvcnpI2Copyj9w==}
+    peerDependencies:
+      hono: '>=4.10.0'
+      zod: ^3.25.0 || ^4.0.0
 
   '@humanfs/core@0.19.1':
     resolution: {integrity: sha512-5DyQ4+1JEUzejeK1JGICcideyfUbGixgS9jNgex5nqkW+cY7WZhxBigmieN5Qnw9ZosSNVC9KQKyb+GUaGyKUA==}
@@ -3501,8 +3529,8 @@ packages:
   highlight.js@10.7.3:
     resolution: {integrity: sha512-tzcUFauisWKNHaRkN4Wjl/ZA07gENAjFl3J/c480dprkGTg5EQstgaNFqBfUqCq54kZRIEcreTsAgF/m2quD7A==}
 
-  hono@4.9.6:
-    resolution: {integrity: sha512-doVjXhSFvYZ7y0dNokjwwSahcrAfdz+/BCLvAMa/vHLzjj8+CFyV5xteThGUsKdkaasgN+gF2mUxao+SGLpUeA==}
+  hono@4.12.28:
+    resolution: {integrity: sha512-YwUvVpSF7m1yOblFPrU3Hbo8XhPheBoiyfGuII6z19LnOr6JpDnyyp7LFNrfV56wS8tpvtBFGRISHN02pDdLOA==}
     engines: {node: '>=16.9.0'}
 
   hosted-git-info@2.8.9:
@@ -5552,6 +5580,9 @@ packages:
   zod@3.22.3:
     resolution: {integrity: sha512-EjIevzuJRiRPbVH4mGc8nApb/lVLKVpmUhAaR5R5doKGfAnGJ6Gr3CViAVjP+4FWSxCsybeWQdcgCtbX+7oZug==}
 
+  zod@3.25.76:
+    resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
+
 snapshots:
 
   '@achrinza/node-ipc@9.2.9':
@@ -6690,14 +6721,19 @@ snapshots:
     dependencies:
       '@hapi/hoek': 9.3.0
 
-  '@hono/clerk-auth@3.0.3(hono@4.9.6)(react@19.1.1)':
+  '@hono/clerk-auth@3.0.3(hono@4.12.28)(react@19.1.1)':
     dependencies:
       '@clerk/backend': 2.14.0(react@19.1.1)
       '@clerk/types': 4.85.0
-      hono: 4.9.6
+      hono: 4.12.28
     transitivePeerDependencies:
       - react
       - react-dom
+
+  '@hono/zod-validator@0.8.0(hono@4.12.28)(zod@3.25.76)':
+    dependencies:
+      hono: 4.12.28
+      zod: 3.25.76
 
   '@humanfs/core@0.19.1': {}
 
@@ -9301,7 +9337,7 @@ snapshots:
 
   highlight.js@10.7.3: {}
 
-  hono@4.9.6: {}
+  hono@4.12.28: {}
 
   hosted-git-info@2.8.9: {}
 
@@ -11460,3 +11496,5 @@ snapshots:
       youch-core: 0.3.3
 
   zod@3.22.3: {}
+
+  zod@3.25.76: {}

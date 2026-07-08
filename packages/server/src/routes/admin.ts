@@ -1,4 +1,11 @@
 import { Hono } from "hono";
+import { zValidator } from "@hono/zod-validator";
+import {
+  CreateFlagInputSchema,
+  ToggleFlagInputSchema,
+  SetUserOverrideInputSchema,
+  SetUserAdminInputSchema,
+} from "@season-sprint/shared";
 import type { Env } from "../index";
 import { requireAdmin, allowlist } from "../middleware/admin";
 import { audit } from "../utils/audit";
@@ -14,25 +21,16 @@ admin.get("/flags", async (c) => {
   return c.json(await c.get("db").listFlags());
 });
 
-admin.post("/flags", async (c) => {
-  const { key, description } = await c.req.json<{
-    key: string;
-    description?: string;
-  }>();
-  if (!key || typeof key !== "string") {
-    return c.text("Missing flag key", 400);
-  }
+admin.post("/flags", zValidator("json", CreateFlagInputSchema), async (c) => {
+  const { key, description } = c.req.valid("json");
   const flag = await c.get("db").createFlag(key, description ?? "");
   audit(c, "flag.create", { key });
   return c.json(flag);
 });
 
-admin.patch("/flags/:key", async (c) => {
+admin.patch("/flags/:key", zValidator("json", ToggleFlagInputSchema), async (c) => {
   const key = c.req.param("key");
-  const { enabledGlobally } = await c.req.json<{ enabledGlobally: boolean }>();
-  if (typeof enabledGlobally !== "boolean") {
-    return c.text("enabledGlobally must be a boolean", 400);
-  }
+  const { enabledGlobally } = c.req.valid("json");
   const flag = await c.get("db").setFlagGlobal(key, enabledGlobally);
   audit(c, "flag.setGlobal", { key, enabledGlobally });
   return c.json(flag);
@@ -55,17 +53,18 @@ admin.get("/users", async (c) => {
   );
 });
 
-admin.put("/users/:userId/flags/:flagKey", async (c) => {
-  const userId = c.req.param("userId");
-  const flagKey = c.req.param("flagKey");
-  const { enabled } = await c.req.json<{ enabled: boolean }>();
-  if (typeof enabled !== "boolean") {
-    return c.text("enabled must be a boolean", 400);
+admin.put(
+  "/users/:userId/flags/:flagKey",
+  zValidator("json", SetUserOverrideInputSchema),
+  async (c) => {
+    const userId = c.req.param("userId");
+    const flagKey = c.req.param("flagKey");
+    const { enabled } = c.req.valid("json");
+    const override = await c.get("db").setUserOverride(userId, flagKey, enabled);
+    audit(c, "user.flag.override.set", { userId, flagKey, enabled });
+    return c.json(override);
   }
-  const override = await c.get("db").setUserOverride(userId, flagKey, enabled);
-  audit(c, "user.flag.override.set", { userId, flagKey, enabled });
-  return c.json(override);
-});
+);
 
 admin.delete("/users/:userId/flags/:flagKey", async (c) => {
   const userId = c.req.param("userId");
@@ -75,12 +74,9 @@ admin.delete("/users/:userId/flags/:flagKey", async (c) => {
   return c.json({ cleared });
 });
 
-admin.patch("/users/:userId", async (c) => {
+admin.patch("/users/:userId", zValidator("json", SetUserAdminInputSchema), async (c) => {
   const userId = c.req.param("userId");
-  const { isAdmin } = await c.req.json<{ isAdmin: boolean }>();
-  if (typeof isAdmin !== "boolean") {
-    return c.text("isAdmin must be a boolean", 400);
-  }
+  const { isAdmin } = c.req.valid("json");
   const user = await c.get("db").setUserAdmin(userId, isAdmin);
   audit(c, "user.setAdmin", { userId, isAdmin });
   return c.json(user);

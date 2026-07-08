@@ -1,3 +1,13 @@
+import {
+  CreateRecordInputSchema,
+  BulkUpsertInputSchema,
+  CreateApiKeyInputSchema,
+  CreateFlagInputSchema,
+  ToggleFlagInputSchema,
+  SetUserOverrideInputSchema,
+  SetUserAdminInputSchema,
+} from "@season-sprint/shared";
+
 const isLocalDevHost =
   typeof window !== "undefined" &&
   (window.location.hostname === "localhost" ||
@@ -12,6 +22,17 @@ function requireApiBaseUrl() {
     );
   }
   return BASE;
+}
+
+// Validates a request payload against the shared API contract before it's sent,
+// so a shape drift between web and server surfaces at the call site instead of
+// as an opaque 400 from the worker.
+function validateBody(schema, data) {
+  const result = schema.safeParse(data);
+  if (!result.success) {
+    throw new Error(result.error.issues.map((issue) => issue.message).join(", "));
+  }
+  return result.data;
 }
 
 export async function getRecords(authorizationHeader, mode = "world-tour") {
@@ -49,7 +70,7 @@ export async function upsertRecord(
       "Content-Type": "application/json",
       Authorization: authorizationHeader,
     },
-    body: JSON.stringify({ date, winPoints, mode }),
+    body: JSON.stringify(validateBody(CreateRecordInputSchema, { date, winPoints, mode })),
   });
 
   if (!response.ok) {
@@ -114,7 +135,7 @@ export async function bulkUpsertRecords(
       "Content-Type": "application/json",
       Authorization: authorizationHeader,
     },
-    body: JSON.stringify({ records, mode }),
+    body: JSON.stringify(validateBody(BulkUpsertInputSchema, { records, mode })),
   });
 
   if (!response.ok) {
@@ -151,7 +172,7 @@ export async function createApiKey(name, authorizationHeader) {
       "Content-Type": "application/json",
       Authorization: authorizationHeader,
     },
-    body: JSON.stringify({ name }),
+    body: JSON.stringify(validateBody(CreateApiKeyInputSchema, { name })),
   });
 
   if (!response.ok) {
@@ -224,14 +245,14 @@ export function adminListFlags(authorizationHeader) {
 export function adminCreateFlag(key, description, authorizationHeader) {
   return adminFetch("/admin/flags", authorizationHeader, {
     method: "POST",
-    body: JSON.stringify({ key, description }),
+    body: JSON.stringify(validateBody(CreateFlagInputSchema, { key, description })),
   });
 }
 
 export function adminToggleFlag(key, enabledGlobally, authorizationHeader) {
   return adminFetch(`/admin/flags/${encodeURIComponent(key)}`, authorizationHeader, {
     method: "PATCH",
-    body: JSON.stringify({ enabledGlobally }),
+    body: JSON.stringify(validateBody(ToggleFlagInputSchema, { enabledGlobally })),
   });
 }
 
@@ -246,7 +267,7 @@ export function adminSetUserOverride(userId, flagKey, enabled, authorizationHead
   return adminFetch(
     `/admin/users/${encodeURIComponent(userId)}/flags/${encodeURIComponent(flagKey)}`,
     authorizationHeader,
-    { method: "PUT", body: JSON.stringify({ enabled }) }
+    { method: "PUT", body: JSON.stringify(validateBody(SetUserOverrideInputSchema, { enabled })) }
   );
 }
 
@@ -261,7 +282,7 @@ export function adminClearUserOverride(userId, flagKey, authorizationHeader) {
 export function adminSetUserAdmin(userId, isAdmin, authorizationHeader) {
   return adminFetch(`/admin/users/${encodeURIComponent(userId)}`, authorizationHeader, {
     method: "PATCH",
-    body: JSON.stringify({ isAdmin }),
+    body: JSON.stringify(validateBody(SetUserAdminInputSchema, { isAdmin })),
   });
 }
 

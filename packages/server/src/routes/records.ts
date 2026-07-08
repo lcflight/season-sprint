@@ -1,6 +1,11 @@
 import { Hono } from "hono";
+import { zValidator } from "@hono/zod-validator";
+import {
+  CreateRecordInputSchema,
+  UpdateRecordInputSchema,
+  BulkUpsertInputSchema,
+} from "@season-sprint/shared";
 import type { Env } from "../index";
-import type { GameMode, Record } from "../types";
 import getEmail from "../getEmail";
 import { parseDate } from "../utils/parseDate";
 import { broadcast } from "../utils/broadcast";
@@ -16,21 +21,18 @@ records.get("/", async (c) => {
   return c.json(result);
 });
 
-records.post("/", async (c) => {
+records.post("/", zValidator("json", CreateRecordInputSchema), async (c) => {
   const { userId, email: cachedEmail } = c.get("auth");
   const email = await getEmail(userId, c.env, cachedEmail);
   const db = c.get("db");
 
-  // `mode` is optional on the wire (older clients omit it) — default it.
-  const { date, winPoints, mode } = await c.req.json<
-    Omit<Record, "id" | "userId" | "mode"> & { mode?: GameMode }
-  >();
+  const { date, winPoints, mode } = c.req.valid("json");
   const resolvedMode = mode ?? "world-tour";
 
   const record = await db.upsertRecord(
     userId,
     email,
-    date,
+    new Date(date),
     winPoints,
     resolvedMode
   );
@@ -52,19 +54,14 @@ records.put("/:id", async (c) => {
 
   let body: unknown;
   try {
-    body = await c.req.json<
-      Partial<{ date: string | Date; winPoints: number }>
-    >();
+    body = await c.req.json();
   } catch {
     body = {};
   }
 
-  const maybeDate = (body as { date?: string | Date }).date;
-  const maybeWinPoints = (body as { winPoints?: unknown }).winPoints;
-
-  const date = parseDate(maybeDate);
-  const winPoints =
-    typeof maybeWinPoints === "number" ? maybeWinPoints : undefined;
+  const parsed = UpdateRecordInputSchema.safeParse(body);
+  const date = parsed.success ? parseDate(parsed.data.date) : undefined;
+  const winPoints = parsed.success ? parsed.data.winPoints : undefined;
 
   if (date === undefined && winPoints === undefined) {
     return c.text("No fields to update", 400);
@@ -107,15 +104,12 @@ records.delete("/", async (c) => {
   return c.json({ deleted: count });
 });
 
-records.post("/bulk", async (c) => {
+records.post("/bulk", zValidator("json", BulkUpsertInputSchema), async (c) => {
   const { userId, email: cachedEmail } = c.get("auth");
   const email = await getEmail(userId, c.env, cachedEmail);
   const db = c.get("db");
 
-  const { records: input, mode } = await c.req.json<{
-    records: { date: string; winPoints: number }[];
-    mode?: string;
-  }>();
+  const { records: input, mode } = c.req.valid("json");
   const resolvedMode = mode ?? "world-tour";
 
   const result = await db.bulkUpsertRecords(
