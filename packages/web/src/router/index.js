@@ -40,7 +40,12 @@ const routes = [
 const router = createRouter({
   history: createWebHistory(),
   routes,
-  scrollBehavior() {
+  scrollBehavior(to) {
+    // Respect an in-page anchor (e.g. /privacy#data-deletion) instead of
+    // always snapping to the top — applies on initial load too.
+    if (to.hash) {
+      return { el: to.hash }
+    }
     return { top: 0 }
   },
 })

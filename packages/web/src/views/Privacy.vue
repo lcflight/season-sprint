@@ -72,11 +72,33 @@ export default { name: "PrivacyView" };
         We do not sell or share your data with any other third party.
       </p>
 
-      <h2 class="card-title">Data deletion</h2>
+      <h2 id="data-deletion" class="card-title">Data deletion</h2>
       <p>
         You can delete individual season records at any time from within the
-        app. To delete your account and all associated data entirely,
-        contact us using the email below and we'll remove it.
+        Season Sprint app (Android, iOS, or web) — open a record and choose
+        delete.
+      </p>
+      <p>
+        To delete your Season Sprint account and all associated data
+        entirely:
+      </p>
+      <ol>
+        <li>
+          Email <a href="mailto:larthur.creations@gmail.com">larthur.creations@gmail.com</a>
+          from the address your account uses, with the subject "Delete my
+          account."
+        </li>
+        <li>
+          We'll confirm the request and permanently delete your account,
+          email, season records, and API keys within 30 days.
+        </li>
+      </ol>
+      <p>
+        Standard infrastructure request logs kept by our hosting provider,
+        Cloudflare (e.g. IP address and timestamp of requests — see "Where
+        your data is stored" above), are not covered by this process and age
+        out per Cloudflare's own retention policy, independent of your
+        account.
       </p>
 
       <h2 class="card-title">Children's privacy</h2>
@@ -144,6 +166,9 @@ export default { name: "PrivacyView" };
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--text-strong);
+  /* So a direct link to #data-deletion doesn't land the heading underneath
+     the sticky header bar. */
+  scroll-margin-top: 80px;
 }
 .privacy-card .card-title:first-child {
   margin-top: 0;
@@ -158,7 +183,8 @@ export default { name: "PrivacyView" };
   margin-bottom: 0;
 }
 
-.privacy-card ul {
+.privacy-card ul,
+.privacy-card ol {
   margin: 0 0 8px;
   padding-left: 20px;
   color: var(--text);
