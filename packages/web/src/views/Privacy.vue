@@ -18,9 +18,7 @@ export default { name: "PrivacyView" };
         endorsed by Embark Studios. This page explains what data the app
         collects and how it's used, across the Android, iOS, and web clients.
       </p>
-    </section>
 
-    <section class="privacy-card">
       <h2 class="card-title">Information we collect</h2>
       <ul>
         <li>
@@ -45,9 +43,7 @@ export default { name: "PrivacyView" };
         kind, and we do not collect device identifiers, location data, or
         contacts.
       </p>
-    </section>
 
-    <section class="privacy-card">
       <h2 class="card-title">How your data is used</h2>
       <p>
         Your email identifies your account and lets you sign back in. Your
@@ -55,9 +51,7 @@ export default { name: "PrivacyView" };
         pace projections — they're not shared with other users or used for
         any purpose beyond displaying your own data back to you.
       </p>
-    </section>
 
-    <section class="privacy-card">
       <h2 class="card-title">Where your data is stored</h2>
       <p>
         The app runs on Cloudflare Workers, with account and season-record
@@ -68,9 +62,7 @@ export default { name: "PrivacyView" };
         connection that relays updates in real time and does not log message
         contents.
       </p>
-    </section>
 
-    <section class="privacy-card">
       <h2 class="card-title">Third parties</h2>
       <p>
         We use <strong>Clerk</strong> for authentication. Clerk processes
@@ -79,26 +71,20 @@ export default { name: "PrivacyView" };
         <a href="https://clerk.com/privacy" target="_blank" rel="noopener noreferrer">clerk.com/privacy</a>.
         We do not sell or share your data with any other third party.
       </p>
-    </section>
 
-    <section class="privacy-card">
       <h2 class="card-title">Data deletion</h2>
       <p>
         You can delete individual season records at any time from within the
         app. To delete your account and all associated data entirely,
         contact us using the email below and we'll remove it.
       </p>
-    </section>
 
-    <section class="privacy-card">
       <h2 class="card-title">Children's privacy</h2>
       <p>
         Season Sprint is not directed at children under 13, and we do not
         knowingly collect data from them.
       </p>
-    </section>
 
-    <section class="privacy-card">
       <h2 class="card-title">Contact</h2>
       <p>
         Questions about this policy or your data? Reach out at
@@ -148,16 +134,19 @@ export default { name: "PrivacyView" };
   border: 1px solid color-mix(in oklab, var(--primary) 20%, var(--surface));
   border-radius: 12px;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
-  padding: 16px;
+  padding: 20px 24px;
 }
 
-.card-title {
-  margin: 0 0 8px;
+.privacy-card .card-title {
+  margin: 24px 0 8px;
   font-size: 14px;
   font-weight: 800;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--text-strong);
+}
+.privacy-card .card-title:first-child {
+  margin-top: 0;
 }
 
 .privacy-card p {
