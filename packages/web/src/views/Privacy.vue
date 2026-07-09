@@ -102,7 +102,7 @@ export default { name: "PrivacyView" };
       <h2 class="card-title">Contact</h2>
       <p>
         Questions about this policy or your data? Reach out at
-        <a href="mailto:lcarthur747@gmail.com">lcarthur747@gmail.com</a>.
+        <a href="mailto:larthur.creations@gmail.com">larthur.creations@gmail.com</a>.
       </p>
     </section>
   </div>
