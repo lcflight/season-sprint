@@ -27,6 +27,14 @@ const routes = [
     component: () => import('@/views/Admin.vue'),
     meta: { admin: true },
   },
+  // Public — must be reachable without signing in (Play/App Store review,
+  // and visitors deciding whether to sign up in the first place).
+  {
+    path: '/privacy',
+    name: 'Privacy',
+    component: () => import('@/views/Privacy.vue'),
+    meta: { public: true },
+  },
 ]
 
 const router = createRouter({
