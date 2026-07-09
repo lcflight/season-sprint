@@ -84,9 +84,12 @@ export default { name: "PrivacyView" };
       </p>
       <ol>
         <li>
-          Email <a href="mailto:larthur.creations@gmail.com">larthur.creations@gmail.com</a>
-          from the address your account uses, with the subject "Delete my
-          account."
+          Sign in and submit the
+          <router-link to="/delete-account">account deletion form</router-link>
+          — this confirms the request is really coming from you. Can't sign
+          in anymore? Email
+          <a href="mailto:larthur.creations@gmail.com">larthur.creations@gmail.com</a>
+          directly and we'll verify it's your account first.
         </li>
         <li>
           We'll confirm the request and permanently delete your account,

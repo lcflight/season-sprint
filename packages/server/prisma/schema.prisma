@@ -73,3 +73,14 @@ model UserFlagOverride {
 
   @@unique([userId, flagKey])
 }
+
+// Submitted via the public /delete-account page (no auth required — the
+// requester may not be signed in, or may have lost access to their
+// account). Not linked to a User row for the same reason. An admin
+// actions the request manually (see routes/admin.ts) then dismisses it.
+model DeletionRequest {
+  id        String   @id @default(uuid())
+  email     String
+  reason    String?
+  createdAt DateTime @default(now())
+}

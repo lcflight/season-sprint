@@ -87,6 +87,22 @@
       </div>
       <p v-if="searched && !users.length" class="muted">No users found.</p>
     </div>
+
+    <!-- Deletion requests -->
+    <div class="card">
+      <h2 class="card-title">Deletion requests</h2>
+      <div v-for="r in deletionRequests" :key="r.id" class="deletion-row">
+        <div class="deletion-head">
+          <span class="user-email">{{ r.email }}</span>
+          <span class="deletion-date">{{ new Date(r.createdAt).toLocaleDateString() }}</span>
+          <button class="btn-ghost" type="button" @click="dismissRequest(r)">
+            Mark handled
+          </button>
+        </div>
+        <p v-if="r.reason" class="deletion-reason">{{ r.reason }}</p>
+      </div>
+      <p v-if="!deletionRequests.length" class="muted">No pending requests.</p>
+    </div>
   </section>
 </template>
 
@@ -107,6 +123,8 @@ import {
   adminSetUserOverride,
   adminClearUserOverride,
   adminSetUserAdmin,
+  adminListDeletionRequests,
+  adminDismissDeletionRequest,
 } from "@/services/api";
 
 const flags = ref([]);
@@ -116,6 +134,7 @@ const newDescription = ref("");
 const searchEmail = ref("");
 const searched = ref(false);
 const error = ref("");
+const deletionRequests = ref([]);
 
 // Defense-in-depth: the router guard already blocks non-admins, but if this
 // view is ever reached without admin rights, render nothing and bounce out.
@@ -212,8 +231,24 @@ async function setAdmin(user, isAdmin) {
   });
 }
 
+async function loadDeletionRequests() {
+  await run(async () => {
+    deletionRequests.value = await adminListDeletionRequests(await auth());
+  });
+}
+
+async function dismissRequest(request) {
+  await run(async () => {
+    await adminDismissDeletionRequest(request.id, await auth());
+    deletionRequests.value = deletionRequests.value.filter((r) => r.id !== request.id);
+  });
+}
+
 onMounted(() => {
-  if (isAdmin.value) loadFlags();
+  if (isAdmin.value) {
+    loadFlags();
+    loadDeletionRequests();
+  }
 });
 </script>
 
@@ -326,6 +361,25 @@ onMounted(() => {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  font-size: 13px;
+}
+.deletion-row {
+  padding: 10px 0;
+  border-bottom: 1px solid color-mix(in oklab, var(--primary) 12%, var(--surface));
+}
+.deletion-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.deletion-date {
+  font-size: 12px;
+  color: var(--muted);
+}
+.deletion-reason {
+  margin: 6px 0 0;
+  color: var(--text);
   font-size: 13px;
 }
 </style>

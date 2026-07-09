@@ -6,6 +6,7 @@ import {
   ToggleFlagInputSchema,
   SetUserOverrideInputSchema,
   SetUserAdminInputSchema,
+  CreateDeletionRequestInputSchema,
 } from "@season-sprint/shared";
 
 const isLocalDevHost =
@@ -197,6 +198,44 @@ export async function revokeApiKey(keyId, authorizationHeader) {
   }
 
   return response.json();
+}
+
+// ── Deletion requests ────────────────────────────────────────────────────────
+
+// Authenticated — the account email is derived server-side from the
+// caller's session, never sent from the client. Otherwise anyone could
+// request deletion of someone else's account just by typing their email.
+export async function requestAccountDeletion(reason, authorizationHeader) {
+  if (!authorizationHeader) {
+    throw new Error("Missing authorization header");
+  }
+  const apiBase = requireApiBaseUrl();
+  const response = await fetch(`${apiBase}/me/deletion-requests`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: authorizationHeader,
+    },
+    body: JSON.stringify(
+      validateBody(CreateDeletionRequestInputSchema, { reason: reason || undefined })
+    ),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to submit deletion request: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export function adminListDeletionRequests(authorizationHeader) {
+  return adminFetch("/admin/deletion-requests", authorizationHeader);
+}
+
+export function adminDismissDeletionRequest(id, authorizationHeader) {
+  return adminFetch(`/admin/deletion-requests/${encodeURIComponent(id)}`, authorizationHeader, {
+    method: "DELETE",
+  });
 }
 
 // ── Feature flags ───────────────────────────────────────────────────────────

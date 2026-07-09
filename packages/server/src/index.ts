@@ -1,9 +1,12 @@
 import { Hono } from "hono";
+import { zValidator } from "@hono/zod-validator";
+import { CreateDeletionRequestInputSchema } from "@season-sprint/shared";
 import { DbService } from "./services/db";
 import { cors } from "hono/cors";
 import { getAuth } from "@hono/clerk-auth";
 import { getCachedSeasons, scrapeAndStore } from "./services/seasonScraper";
 import { clerkOrDevToken, resolveAuth } from "./middleware/auth";
+import getEmail from "./getEmail";
 import records from "./routes/records";
 import apiKeys from "./routes/apiKeys";
 import stream from "./routes/stream";
@@ -92,6 +95,26 @@ app.route("/me/records", records);
 app.route("/me/api-keys", apiKeys);
 app.route("/me/flags", flags);
 app.route("/admin", admin);
+
+// Deletion requests — authenticated so the email is derived from the
+// caller's own session, never taken from client input. Otherwise anyone
+// could request deletion of someone else's account just by typing their
+// email address. An admin actions the request manually via
+// /admin/deletion-requests. (Users who can no longer sign in at all use the
+// email fallback in the privacy policy instead — those still require manual
+// identity verification by whoever processes them.)
+app.post(
+  "/me/deletion-requests",
+  zValidator("json", CreateDeletionRequestInputSchema),
+  async (c) => {
+    const { userId, email: cachedEmail } = c.get("auth");
+    const email = await getEmail(userId, c.env, cachedEmail);
+    const { reason } = c.req.valid("json");
+    const db = c.get("db");
+    const request = await db.createDeletionRequest(email, reason);
+    return c.json({ message: "Deletion request received", request });
+  }
+);
 
 // Stream token exchange — uses normal Clerk auth to issue a stream token
 app.post("/me/stream/token", async (c) => {

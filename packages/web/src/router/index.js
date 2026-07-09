@@ -35,6 +35,12 @@ const routes = [
     component: () => import('@/views/Privacy.vue'),
     meta: { public: true },
   },
+  {
+    path: '/delete-account',
+    name: 'DeleteAccount',
+    component: () => import('@/views/DeleteAccount.vue'),
+    meta: { public: true },
+  },
 ]
 
 const router = createRouter({
