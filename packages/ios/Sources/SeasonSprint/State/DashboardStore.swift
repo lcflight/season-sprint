@@ -67,15 +67,21 @@ final class DashboardStore {
         computeRank(points: currentPoints, thresholds: thresholds)
     }
 
-    /// Points gained today = today's total minus the most recent prior day's total. In
-    /// Ranked, a today-entry with no prior point is the placement itself, not earned
-    /// progress, so it reads as 0 gain rather than a jump from 0 (World Tour genuinely
-    /// starts at 0).
+    /// Points gained today = today's total minus the most recent prior day's total,
+    /// restricted to the live season — points reset to (near) zero at season start, so a
+    /// point from a previous season isn't a real "yesterday" to diff against (it would
+    /// otherwise read as a huge drop, e.g. -2400, on the first log of a new season). In
+    /// Ranked, a today-entry with no in-season prior point is the placement itself, not
+    /// earned progress, so it reads as 0 gain rather than a jump from 0 (World Tour
+    /// genuinely starts at 0).
     var todayGain: Int? {
         let today = DateKey.today()
         let sorted = sortedPoints
         guard let todayPoint = sorted.first(where: { $0.day == today }) else { return nil }
-        let prev = sorted.last(where: { $0.day < today })
+        let seasonStart = season?.start
+        let prev = sorted.last(where: { point in
+            point.day < today && (seasonStart == nil || point.date >= seasonStart!)
+        })
         let prevValue = prev?.winPoints ?? (mode == .ranked ? todayPoint.winPoints : 0)
         return todayPoint.winPoints - prevValue
     }
