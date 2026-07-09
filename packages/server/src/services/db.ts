@@ -378,4 +378,26 @@ export class DbService {
       select: { id: true, email: true, isAdmin: true },
     });
   }
+
+  // ── Deletion requests ────────────────────────────────────────────────────
+
+  async createDeletionRequest(email: string, reason?: string) {
+    return await this.prisma.deletionRequest.create({
+      data: { email, reason },
+      select: { id: true, email: true, reason: true, createdAt: true },
+    });
+  }
+
+  async listDeletionRequests() {
+    return await this.prisma.deletionRequest.findMany({
+      orderBy: { createdAt: "desc" },
+    });
+  }
+
+  async dismissDeletionRequest(id: string): Promise<boolean> {
+    const result = await this.prisma.deletionRequest.deleteMany({
+      where: { id },
+    });
+    return result.count > 0;
+  }
 }

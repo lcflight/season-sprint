@@ -6,6 +6,7 @@ import {
   ToggleFlagInputSchema,
   SetUserOverrideInputSchema,
   SetUserAdminInputSchema,
+  CreateDeletionRequestInputSchema,
 } from "@season-sprint/shared";
 
 const isLocalDevHost =
@@ -197,6 +198,36 @@ export async function revokeApiKey(keyId, authorizationHeader) {
   }
 
   return response.json();
+}
+
+// ── Deletion requests ────────────────────────────────────────────────────────
+
+// Public — no auth required. The requester may not be signed in.
+export async function requestAccountDeletion(email, reason) {
+  const apiBase = requireApiBaseUrl();
+  const response = await fetch(`${apiBase}/deletion-requests`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(
+      validateBody(CreateDeletionRequestInputSchema, { email, reason: reason || undefined })
+    ),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to submit deletion request: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export function adminListDeletionRequests(authorizationHeader) {
+  return adminFetch("/admin/deletion-requests", authorizationHeader);
+}
+
+export function adminDismissDeletionRequest(id, authorizationHeader) {
+  return adminFetch(`/admin/deletion-requests/${encodeURIComponent(id)}`, authorizationHeader, {
+    method: "DELETE",
+  });
 }
 
 // ── Feature flags ───────────────────────────────────────────────────────────

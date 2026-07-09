@@ -1,4 +1,6 @@
 import { Hono } from "hono";
+import { zValidator } from "@hono/zod-validator";
+import { CreateDeletionRequestInputSchema } from "@season-sprint/shared";
 import { DbService } from "./services/db";
 import { cors } from "hono/cors";
 import { getAuth } from "@hono/clerk-auth";
@@ -79,6 +81,20 @@ app.get("/seasons", async (c) => {
     return c.json({ error: "Season data unavailable" }, 503);
   }
 });
+
+// Public endpoint — no auth required. Deliberately unauthenticated: the
+// requester may not be signed in, or may have lost access to their account.
+// An admin actions the request manually via /admin/deletion-requests.
+app.post(
+  "/deletion-requests",
+  zValidator("json", CreateDeletionRequestInputSchema),
+  async (c) => {
+    const { email, reason } = c.req.valid("json");
+    const db = c.get("db");
+    const request = await db.createDeletionRequest(email, reason);
+    return c.json({ message: "Deletion request received", request });
+  }
+);
 
 // SSE stream — has its own auth via query param (must be before global auth)
 app.route("/me/stream", stream);

@@ -82,4 +82,17 @@ admin.patch("/users/:userId", zValidator("json", SetUserAdminInputSchema), async
   return c.json(user);
 });
 
+// ── Deletion requests ────────────────────────────────────────────────────
+
+admin.get("/deletion-requests", async (c) => {
+  return c.json(await c.get("db").listDeletionRequests());
+});
+
+admin.delete("/deletion-requests/:id", async (c) => {
+  const id = c.req.param("id");
+  const dismissed = await c.get("db").dismissDeletionRequest(id);
+  audit(c, "deletionRequest.dismiss", { id });
+  return c.json({ dismissed });
+});
+
 export default admin;
