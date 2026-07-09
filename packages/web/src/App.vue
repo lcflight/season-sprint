@@ -7,7 +7,12 @@
     the SignedOut branch redirects to sign-in. In dev-auth mode (no Clerk
     plugin) the gate is bypassed.
   -->
-  <template v-if="clerkEnabled">
+  <!-- Public routes (e.g. /privacy) must render regardless of auth state —
+       needed for store review and for visitors deciding whether to sign up. -->
+  <main v-if="isPublicRoute" class="container">
+    <router-view />
+  </main>
+  <template v-else-if="clerkEnabled">
     <ClerkLoading>
       <div class="auth-loading" role="status" aria-live="polite">
         <span class="auth-spinner" aria-hidden="true"></span>
@@ -30,6 +35,7 @@
   </main>
   <footer class="site-footer" role="contentinfo">
     <div>Created by Luke Arthur (Aireal) 2025</div>
+    <div class="footer-note"><router-link to="/privacy">Privacy Policy</router-link></div>
   </footer>
 </template>
 
@@ -73,6 +79,9 @@ export default {
     return { seasonInfo: null, clerkEnabled: isClerkEnabled() };
   },
   computed: {
+    isPublicRoute() {
+      return !!this.$route.meta?.public;
+    },
     seasonName() {
       return this.seasonInfo?.name || "";
     },
