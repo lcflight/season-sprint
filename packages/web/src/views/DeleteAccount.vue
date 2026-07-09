@@ -3,20 +3,36 @@ export default { name: "DeleteAccountView" };
 </script>
 
 <script setup>
-import { ref } from "vue";
-import { requestAccountDeletion } from "@/services/api";
+import { onMounted, ref } from "vue";
+import { requestAccountDeletion, getAuthorizationHeader } from "@/services/api";
+import { getClerkUser } from "@/services/clerk";
 
-const email = ref("");
+const checking = ref(true);
+const authHeader = ref("");
+const accountEmail = ref("");
 const reason = ref("");
 const submitting = ref(false);
 const submitted = ref(false);
 const error = ref("");
 
+onMounted(async () => {
+  authHeader.value = (await getAuthorizationHeader()) || "";
+  if (authHeader.value) {
+    // Best-effort — only resolves for a real Clerk session, not the local
+    // dev-token bypass. Purely cosmetic (confirms which account you're
+    // about to delete); the server derives the real email from the session
+    // regardless of what's shown here.
+    const user = await getClerkUser({ waitForLoad: false });
+    accountEmail.value = user?.email || "";
+  }
+  checking.value = false;
+});
+
 async function submit() {
   error.value = "";
   submitting.value = true;
   try {
-    await requestAccountDeletion(email.value.trim(), reason.value.trim());
+    await requestAccountDeletion(reason.value.trim(), authHeader.value);
     submitted.value = true;
   } catch (e) {
     error.value = e?.message || "Something went wrong — try again.";
@@ -34,12 +50,25 @@ async function submit() {
     </header>
 
     <section class="delete-card">
-      <template v-if="submitted">
+      <template v-if="checking">
+        <p>Checking sign-in status…</p>
+      </template>
+
+      <template v-else-if="submitted">
         <p class="confirm">
           Request received. We'll confirm by email and permanently delete
           your account, season records, and API keys within 30 days.
         </p>
       </template>
+
+      <template v-else-if="!authHeader">
+        <p>
+          Sign in to request deletion of your own account — this confirms
+          it's really you asking, not someone typing in your email address.
+        </p>
+        <router-link class="btn-primary sign-in-link" to="/">Sign in</router-link>
+      </template>
+
       <template v-else>
         <p>
           Requesting deletion of your Season Sprint account and all
@@ -49,16 +78,10 @@ async function submit() {
         </p>
 
         <form class="delete-form" @submit.prevent="submit">
-          <label class="field">
-            <span>Account email</span>
-            <input
-              v-model="email"
-              type="email"
-              required
-              placeholder="you@example.com"
-              autocomplete="email"
-            />
-          </label>
+          <div v-if="accountEmail" class="field">
+            <span>Account</span>
+            <div class="account-email">{{ accountEmail }}</div>
+          </div>
 
           <label class="field">
             <span>Reason (optional)</span>
@@ -71,7 +94,7 @@ async function submit() {
 
           <p v-if="error" class="error">{{ error }}</p>
 
-          <button class="btn-primary" type="submit" :disabled="submitting || !email">
+          <button class="btn-primary" type="submit" :disabled="submitting">
             {{ submitting ? "Submitting…" : "Request deletion" }}
           </button>
         </form>
@@ -79,8 +102,9 @@ async function submit() {
     </section>
 
     <p class="fallback">
-      Prefer email? Reach out directly at
-      <a href="mailto:larthur.creations@gmail.com">larthur.creations@gmail.com</a>.
+      Can't sign in anymore? Email
+      <a href="mailto:larthur.creations@gmail.com">larthur.creations@gmail.com</a>
+      directly and we'll verify it's your account before deleting anything.
       See the <router-link to="/privacy#data-deletion">privacy policy</router-link>
       for details on what's deleted and what's retained.
     </p>
@@ -135,6 +159,12 @@ async function submit() {
   font-weight: 700;
 }
 
+.sign-in-link {
+  display: inline-flex;
+  text-decoration: none;
+  margin-top: 4px;
+}
+
 .delete-form {
   display: grid;
   gap: 14px;
@@ -163,6 +193,15 @@ async function submit() {
 .field textarea:focus {
   outline: none;
   box-shadow: 0 0 0 3px var(--ring);
+}
+
+.account-email {
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in oklab, var(--primary) 14%, var(--surface));
+  background: color-mix(in oklab, var(--surface) 96%, #000);
+  color: var(--text-strong);
+  font-weight: 700;
 }
 
 .error {

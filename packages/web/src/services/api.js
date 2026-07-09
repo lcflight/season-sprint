@@ -202,14 +202,22 @@ export async function revokeApiKey(keyId, authorizationHeader) {
 
 // ── Deletion requests ────────────────────────────────────────────────────────
 
-// Public — no auth required. The requester may not be signed in.
-export async function requestAccountDeletion(email, reason) {
+// Authenticated — the account email is derived server-side from the
+// caller's session, never sent from the client. Otherwise anyone could
+// request deletion of someone else's account just by typing their email.
+export async function requestAccountDeletion(reason, authorizationHeader) {
+  if (!authorizationHeader) {
+    throw new Error("Missing authorization header");
+  }
   const apiBase = requireApiBaseUrl();
-  const response = await fetch(`${apiBase}/deletion-requests`, {
+  const response = await fetch(`${apiBase}/me/deletion-requests`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: authorizationHeader,
+    },
     body: JSON.stringify(
-      validateBody(CreateDeletionRequestInputSchema, { email, reason: reason || undefined })
+      validateBody(CreateDeletionRequestInputSchema, { reason: reason || undefined })
     ),
   });
 
