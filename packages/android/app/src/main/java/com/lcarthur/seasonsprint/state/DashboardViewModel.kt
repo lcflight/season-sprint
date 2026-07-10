@@ -66,16 +66,20 @@ data class DashboardState(
     val rank: RankInfo get() = computeRank(currentPoints, thresholds)
 
     /**
-     * Points gained today = today's total minus the most recent prior day's total. In Ranked,
-     * a today-entry with no prior point is the placement itself, not earned progress, so it
-     * reads as 0 gain rather than a jump from 0 (World Tour genuinely starts at 0).
+     * Points gained today = today's total minus the most recent prior day's total, restricted to
+     * the live season -- points reset to (near) zero at season start, so a point from a previous
+     * season isn't a real "yesterday" to diff against (it would otherwise read as a huge drop,
+     * e.g. -2400, on the first log of a new season). In Ranked, a today-entry with no in-season
+     * prior point is the placement itself, not earned progress, so it reads as 0 gain rather than
+     * a jump from 0 (World Tour genuinely starts at 0).
      */
     val todayGain: Int?
         get() {
             val today = DateKey.today()
             val sorted = sortedPoints
             val todayPoint = sorted.firstOrNull { it.day == today } ?: return null
-            val prev = sorted.lastOrNull { it.day < today }
+            val seasonStart = season?.start
+            val prev = sorted.lastOrNull { it.day < today && (seasonStart == null || !it.instant.isBefore(seasonStart)) }
             val prevValue = prev?.winPoints ?: (if (mode == GameMode.Ranked) todayPoint.winPoints else 0)
             return todayPoint.winPoints - prevValue
         }

@@ -52,8 +52,14 @@ export function usePointsData({ isSeasonValid, seasonStart, seasonEnd, autoSetSe
   })
   const todayGain = computed(() => {
     if (!todayPoint.value) return 0
+    const seasonStartMs = dateToMs(seasonStart?.value)
     const prev = [...sortedPoints.value]
       .filter((p) => p.date < todayStr)
+      // Points reset to (near) zero at the start of a new season, so a prior
+      // point from a previous season isn't a real "previous day" to diff
+      // against — without this, the first log of a new season reads as a
+      // huge drop (e.g. -2400) instead of a fresh start.
+      .filter((p) => !isFinite(seasonStartMs) || dateToMs(p.date) >= seasonStartMs)
       .pop()
     // In ranked the first point is the placement rank, not earned progress, so
     // when there's no prior point treat the placement as the baseline (0 gain)
@@ -277,10 +283,16 @@ export function usePointsData({ isSeasonValid, seasonStart, seasonEnd, autoSetSe
     if (idxToday !== -1) {
       base = Number(points[idxToday].y) || 0
     } else {
+      // Only base off a point within the current season — otherwise the
+      // first "+points" of a new season adds on top of last season's final
+      // total instead of starting fresh from zero.
+      const seasonStartMs = dateToMs(seasonStart?.value)
       let last = null
       for (const p of sortedPoints.value) {
         const ms = dateToMs(p.date)
-        if (isFinite(ms) && ms <= todayMs) last = p
+        if (isFinite(ms) && ms <= todayMs && (!isFinite(seasonStartMs) || ms >= seasonStartMs)) {
+          last = p
+        }
       }
       base = last ? Number(last.y) || 0 : 0
     }
