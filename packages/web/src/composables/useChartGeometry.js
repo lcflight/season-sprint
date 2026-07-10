@@ -163,13 +163,21 @@ export function useChartGeometry({
 
   const overlayPathPoints = computed(() => {
     const sp = overlayScaledPoints.value;
-    if (!sp.length || mode === "ranked") return sp;
+    if (!sp.length) return sp;
     const overlayStartMs = dateToMs(overlayStart?.value);
     const firstMs = dateToMs(overlayPointsRaw.value[0]?.date);
-    if (isFinite(overlayStartMs) && isFinite(firstMs) && firstMs > overlayStartMs) {
-      return [{ x: scaleX(seasonStart.value), y: scaleY(0) }, ...sp];
+    if (!isFinite(overlayStartMs) || !isFinite(firstMs) || firstMs <= overlayStartMs) {
+      return sp;
     }
-    return sp;
+    // Ranked doesn't start at 0 -- stitch a flat lead-in at the overlay
+    // season's own first recorded value (its placement), matching the live
+    // line's placementBaselinePath semantics. Without this, a ranked overlay
+    // season with only one logged point (common in Ranked, which tends to
+    // get logged less often than World Tour) never draws a line at all --
+    // buildPathD needs >=2 points, so the "compare to a previous season"
+    // line silently failed to render for Ranked.
+    const baselineY = mode === "ranked" ? overlayPointsRaw.value[0].y : 0;
+    return [{ x: scaleX(seasonStart.value), y: scaleY(baselineY) }, ...sp];
   });
 
   const overlayPathD = computed(() => buildPathD(overlayPathPoints.value));
