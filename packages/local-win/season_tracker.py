@@ -356,12 +356,14 @@ def parse_wtp_from_ocr(results) -> Optional[int]:
         cleaned = text.replace(",", "").replace("_", "").strip()
         if cleaned.isdigit():
             candidates.append((t_cx, int(cleaned)))
-        elif "/" in cleaned:
-            # e.g. "1234 / 2400" — left side is current
-            left, _, _ = cleaned.partition("/")
-            left = left.strip()
-            if left.isdigit():
-                return int(left)
+        else:
+            # "current / max", e.g. "4 / 25" — left side is current. EasyOCR
+            # frequently misreads the thin slash glyph as "|", "l", "I", or
+            # drops it, so pull digit runs out directly instead of requiring
+            # a literal "/" (which silently dropped real reads like "4 | 25").
+            nums = re.findall(r"\d+", cleaned)
+            if len(nums) >= 2:
+                return int(nums[0])
 
     candidates.sort(key=lambda c: c[0])
     return candidates[0][1] if candidates else None
