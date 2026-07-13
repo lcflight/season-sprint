@@ -27,7 +27,7 @@
 ; Output: dist\SeasonSprintTracker.exe (relative to this file).
 
 #define AppName       "Season Sprint Tracker"
-#define AppVersion    "0.1.12"
+#define AppVersion    "0.1.13"
 #define AppPublisher  "lcflight"
 #define AppURL        "https://github.com/lcflight/season-sprint"
 
@@ -105,6 +105,7 @@ var
   DepsAttempted: Boolean;            // guard so Back/Next doesn't re-run deps
   LaunchEdit: TNewEdit;              // selectable Steam launch line on finish page
   Method2Label: TNewStaticText;     // non-Steam (Start-menu) instructions on finish page
+  PrevMonitorIndex: Integer;        // MONITOR_INDEX from an existing {app}\.env, if any (0 = none)
 
 // True once install-deps.bat has produced the venv python. Drives the monitor
 // page skip and the finish-page success/failure branch.
@@ -129,17 +130,46 @@ begin
   Result := True;
 end;
 
+// Re-running the installer over an existing install (an update) should not
+// force the user to blind-retype their API key — that's exactly the kind of
+// transcription slip that produces a hard-to-diagnose 401 later. If {app}\.env
+// already exists, pre-fill the token page from it and remember the previously
+// chosen monitor so RunDepsAndEnumerate can preselect it once repopulated.
+procedure LoadPreviousConfig;
+var
+  EnvLines: TArrayOfString;
+  i, eq: Integer;
+  key, val: String;
+begin
+  PrevMonitorIndex := 0;
+  if not LoadStringsFromFile(ExpandConstant('{app}\.env'), EnvLines) then
+    exit;
+  for i := 0 to GetArrayLength(EnvLines) - 1 do begin
+    eq := Pos('=', EnvLines[i]);
+    if eq > 0 then begin
+      key := Copy(EnvLines[i], 1, eq - 1);
+      val := Copy(EnvLines[i], eq + 1, Length(EnvLines[i]));
+      if key = 'AUTH_TOKEN' then
+        TokenPage.Values[0] := val
+      else if key = 'MONITOR_INDEX' then
+        PrevMonitorIndex := StrToIntDef(val, 0);
+    end;
+  end;
+end;
+
 procedure InitializeWizard;
 begin
   DepsOK := False;
   DepsAttempted := False;
   SetArrayLength(MonitorIndices, 0);
+  PrevMonitorIndex := 0;
 
   TokenPage := CreateInputQueryPage(wpWelcome,
     'Season Sprint account',
     'Enter your personal API key',
     'Paste the key from the web app''s "API Keys" banner (the full key in the green banner, not the truncated prefix). It starts with "sk_" and is 67 characters long. Clicking Next sets up Python and dependencies, which takes 1-2 minutes on the first install.');
   TokenPage.Add('API key:', True);
+  LoadPreviousConfig;
 
   MonitorPage := CreateInputOptionPage(TokenPage.ID,
     'Game monitor',
@@ -230,8 +260,16 @@ begin
           end;
         end;
       end;
-      if GetArrayLength(MonitorIndices) > 0 then
+      if GetArrayLength(MonitorIndices) > 0 then begin
+        // Default to the first monitor, unless this is an update and the
+        // previous MONITOR_INDEX is still present in the freshly-enumerated
+        // list — then keep the user's existing choice.
         MonitorPage.SelectedValueIndex := 0;
+        if PrevMonitorIndex > 0 then
+          for i := 0 to GetArrayLength(MonitorIndices) - 1 do
+            if MonitorIndices[i] = PrevMonitorIndex then
+              MonitorPage.SelectedValueIndex := i;
+      end;
     end;
   finally
     Progress.Hide;
