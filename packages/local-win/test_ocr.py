@@ -49,8 +49,9 @@ def main() -> int:
         y2 = max(p[1] for p in bbox)
         print(f"  [{x1:4.0f},{y1:4.0f}]-[{x2:4.0f},{y2:4.0f}] conf={conf:.2f}  {text!r}")
 
-    wtp = season_tracker.parse_wtp_from_ocr(results)
-    print(f"\n--- parse_wtp_from_ocr -> {wtp} ---")
+    wtp, verdict = season_tracker.analyze_ocr(results)
+    print(f"\n--- analyze_ocr -> {wtp} ---")
+    print(f"    verdict: {verdict}")
 
     if wtp is None:
         print(

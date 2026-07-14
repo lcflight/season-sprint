@@ -27,7 +27,7 @@
 ; Output: dist\SeasonSprintTracker.exe (relative to this file).
 
 #define AppName       "Season Sprint Tracker"
-#define AppVersion    "0.1.14"
+#define AppVersion    "0.1.15"
 #define AppPublisher  "lcflight"
 #define AppURL        "https://github.com/lcflight/season-sprint"
 
@@ -62,6 +62,7 @@ UninstallDisplayName={#AppName}
 ; Source paths are relative to this .iss file.
 Source: "..\season_tracker.py"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\tray.py";           DestDir: "{app}"; Flags: ignoreversion
+Source: "..\debug_panel.py";    DestDir: "{app}"; Flags: ignoreversion
 Source: "..\requirements.txt";  DestDir: "{app}"; Flags: ignoreversion
 Source: "..\test_ocr.py";       DestDir: "{app}"; Flags: ignoreversion
 Source: "..\setup.bat";         DestDir: "{app}"; Flags: ignoreversion
