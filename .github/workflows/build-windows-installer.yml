@@ -1,17 +1,24 @@
 name: Build Windows installer
 
-# Builds the Inno Setup .exe whenever files under packages/local-win/ change,
-# on manual dispatch, or on a v* tag push. Every run uploads
+# Builds the Inno Setup .exe on PRs touching packages/local-win/ (compile
+# check), on manual dispatch, and on a v* tag push. Every run uploads
 # SeasonSprintTracker.exe as a workflow artifact; tag pushes additionally
 # publish a GitHub Release with the installer attached.
+#
+# Note the trigger shape: an `on.push` with `tags:` and no `branches:` never
+# fires for branch pushes (the old `paths:` filter here was dead), and adding
+# `paths:` alongside `tags:` would filter tag pushes by changed files — a tag
+# on an already-pushed commit has none, silently skipping release builds. So
+# PR-time checks use `pull_request` and tag pushes stay unfiltered.
 
 on:
   push:
+    tags:
+      - "v*"
+  pull_request:
     paths:
       - "packages/local-win/**"
       - ".github/workflows/build-windows-installer.yml"
-    tags:
-      - "v*"
   workflow_dispatch:
 
 permissions:
