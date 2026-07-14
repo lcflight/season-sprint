@@ -27,7 +27,7 @@
 ; Output: dist\SeasonSprintTracker.exe (relative to this file).
 
 #define AppName       "Season Sprint Tracker"
-#define AppVersion    "0.1.15"
+#define AppVersion    "0.1.16"
 #define AppPublisher  "lcflight"
 #define AppURL        "https://github.com/lcflight/season-sprint"
 
@@ -134,9 +134,19 @@ end;
 
 // Re-running the installer over an existing install (an update) should not
 // force the user to blind-retype their API key — that's exactly the kind of
-// transcription slip that produces a hard-to-diagnose 401 later. If {app}\.env
-// already exists, pre-fill the token page from it and remember the previously
-// chosen monitor so RunDepsAndEnumerate can preselect it once repopulated.
+// transcription slip that produces a hard-to-diagnose 401 later. If the
+// install dir's .env already exists, pre-fill the token page from it and
+// remember the previously chosen monitor so RunDepsAndEnumerate can
+// preselect it once repopulated.
+//
+// IMPORTANT: this must not reference {app}. The token page sits right after
+// wpWelcome — BEFORE the (hidden) directory page — and {app} only becomes
+// expandable after that page is passed, so ExpandConstant('{app}\...') here
+// raises "attempt to expand the app constant before it was initialized",
+// and the exception unwinding out of the event handler then corrupts the
+// script VM ("Out of Global Vars range" on later events). WizardDirValue is
+// the documented safe accessor: it's valid from InitializeWizard onward and
+// already holds the previous install's directory on an update (via AppId).
 procedure LoadPreviousConfig;
 var
   EnvLines: TArrayOfString;
@@ -144,7 +154,7 @@ var
   key, val: String;
 begin
   PrevMonitorIndex := 0;
-  if not LoadStringsFromFile(ExpandConstant('{app}\.env'), EnvLines) then
+  if not LoadStringsFromFile(WizardDirValue + '\.env', EnvLines) then
     exit;
   for i := 0 to GetArrayLength(EnvLines) - 1 do begin
     eq := Pos('=', EnvLines[i]);
@@ -172,10 +182,9 @@ begin
     'Enter your personal API key',
     'Paste the key from the web app''s "API Keys" banner (the full key in the green banner, not the truncated prefix). It starts with "sk_" and is 67 characters long. Clicking Next sets up Python and dependencies, which takes 1-2 minutes on the first install.');
   TokenPage.Add('API key:', True);
-  // NOTE: LoadPreviousConfig is NOT called here — {app} is not yet resolved
-  // during InitializeWizard (Inno Setup raises "attempt to expand the app
-  // constant before it was initialized" if you try). It's deferred to
-  // CurPageChanged, once the token page is actually about to be shown.
+  // LoadPreviousConfig is deferred to CurPageChanged (first display of the
+  // token page) so it runs once, lazily; see its comment for why it must use
+  // WizardDirValue rather than {app}.
 
   MonitorPage := CreateInputOptionPage(TokenPage.ID,
     'Game monitor',
@@ -335,9 +344,6 @@ procedure CurPageChanged(CurPageID: Integer);
 var
   L: TNewStaticText;
 begin
-  // {app} only resolves once Setup has passed the (hidden) directory page,
-  // which has happened by the time any wizard page is actually displayed —
-  // safe here, unlike in InitializeWizard.
   if (CurPageID = TokenPage.ID) and (not PrevConfigLoaded) then begin
     LoadPreviousConfig;
     PrevConfigLoaded := True;

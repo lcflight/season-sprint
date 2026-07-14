@@ -86,11 +86,11 @@ class _Row:
 
     def __init__(self, panel: "_Panel", rec) -> None:
         self.rec = rec
-        self.dying = False
 
         f = tk.Frame(panel.canvas, bg=ROW_BG, padx=6, pady=6, cursor="hand2")
-        img = Image.open(io.BytesIO(rec.png_bytes))
+        img = Image.open(io.BytesIO(rec.png_bytes)).convert("RGB")
         img.thumbnail((THUMB_W, ROW_H - 16))
+        self.pil_thumb = img  # kept for the fade-out ghost on eviction
         self.thumb = ImageTk.PhotoImage(img)  # ref held or Tk drops the image
         thumb_lbl = tk.Label(f, image=self.thumb, bg=ROW_BG)
         thumb_lbl.pack(side="left")
@@ -126,12 +126,53 @@ class _Row:
         self.frame = f
 
 
+class _Ghost:
+    """Fade-out stand-in for an evicted row. Canvas *window* items (real
+    widgets) always render above every other canvas item, so a row widget
+    can never slide visually under the deletion line — and widgets can't
+    fade. The ghost swaps the row for a plain canvas image item (which
+    respects z-order and can be alpha-blended), then tweens down past the
+    line while fading into the background."""
+
+    def __init__(self, panel: "_Panel", row: _Row) -> None:
+        self.base = row.pil_thumb
+        self._bg = Image.new("RGB", self.base.size, (30, 30, 30))  # BG color
+        self.y = row.y
+        self.start_y = row.y
+        # Evictions only happen with a full buffer, but at this moment the
+        # row list is momentarily one short (the "added" event lands next),
+        # so _line_target() would aim one slot high. Use the full-buffer
+        # line position: fade out just past where the line settles.
+        self.target_y = panel._slot_y(panel.buf.maxlen) + 42
+        self.photo = ImageTk.PhotoImage(self.base)
+        self.item = panel.canvas.create_image(
+            LEFT_PAD + 6, self.y, image=self.photo, anchor="nw",
+        )
+        # Keep the deletion line + label rendering above the ghost.
+        panel.canvas.tag_raise(panel.line)
+        panel.canvas.tag_raise(panel.line_label)
+
+    def step(self, canvas: tk.Canvas) -> bool:
+        """Advance one tick; returns False once fully faded (caller deletes)."""
+        dy = self.target_y - self.y
+        if abs(dy) < 1.0:
+            canvas.delete(self.item)
+            return False
+        self.y += dy * EASE
+        travelled = (self.y - self.start_y) / (self.target_y - self.start_y)
+        alpha = max(0.0, 1.0 - travelled)
+        self.photo = ImageTk.PhotoImage(Image.blend(self._bg, self.base, alpha))
+        canvas.itemconfigure(self.item, image=self.photo)
+        canvas.coords(self.item, LEFT_PAD + 6, self.y)
+        return True
+
+
 class _Panel:
     def __init__(self, root: tk.Tk, buf) -> None:
         self.root = root
         self.buf = buf
         self.rows: list[_Row] = []      # newest first; index = slot on canvas
-        self.dying: list[_Row] = []     # evicted rows still animating out
+        self.ghosts: list[_Ghost] = []  # evicted rows still fading out
         self.kept_thumbs: list = []     # PhotoImage refs for the kept strip
 
         # ── Header: buffering toggle + status line ──
@@ -203,7 +244,7 @@ class _Panel:
         return w - LEFT_PAD * 2 if w > 100 else 580
 
     def _on_resize(self, _event) -> None:
-        for row in self.rows + self.dying:
+        for row in self.rows:
             self.canvas.itemconfigure(row.win, width=self.row_width())
 
     # ── Buffer toggle / close ──
@@ -247,17 +288,14 @@ class _Panel:
         self.root.after(TICK_MS, self._tick)
 
     def _animate(self) -> None:
-        for row in self.rows + self.dying:
+        for row in self.rows:
             dy = row.target_y - row.y
             if abs(dy) < 1.0:
                 row.y = row.target_y
             else:
                 row.y += dy * EASE
             self.canvas.coords(row.win, LEFT_PAD, row.y)
-        for row in [r for r in self.dying if r.y == r.target_y]:
-            self.dying.remove(row)
-            self.canvas.delete(row.win)
-            row.frame.destroy()
+        self.ghosts = [g for g in self.ghosts if g.step(self.canvas)]
 
         dy = self._line_target() - self.line_y
         if abs(dy) < 1.0:
@@ -282,8 +320,16 @@ class _Panel:
         self._update_scrollregion()
 
     def _update_scrollregion(self) -> None:
+        # An eviction momentarily shrinks the list (30 -> 29 rows) before the
+        # incoming capture grows it back, and Tk clamps a bottom-scrolled view
+        # upward whenever the scrollregion shrinks — which read as the whole
+        # page jumping. If the user is scrolled to the bottom (watching the
+        # deletion line), keep them pinned there across the change.
+        at_bottom = self.canvas.yview()[1] >= 0.999
         bottom = self._line_target() + ROW_H
         self.canvas.configure(scrollregion=(0, 0, 620, bottom))
+        if at_bottom:
+            self.canvas.yview_moveto(1.0)
 
     def _on_added(self, rec) -> None:
         self.rows.insert(0, _Row(self, rec))
@@ -295,17 +341,19 @@ class _Panel:
         if row is None:
             return
         self.rows.remove(row)
-        row.dying = True
-        row.target_y = self._line_target() + ROW_H  # push it past the line
-        self.dying.append(row)
+        self.ghosts.append(_Ghost(self, row))
+        self.canvas.delete(row.win)
+        row.frame.destroy()
         self._retarget()
 
     def _on_cleared(self) -> None:
-        for row in self.rows + self.dying:
+        for row in self.rows:
             self.canvas.delete(row.win)
             row.frame.destroy()
+        for ghost in self.ghosts:
+            self.canvas.delete(ghost.item)
         self.rows.clear()
-        self.dying.clear()
+        self.ghosts.clear()
         self.line_y = float(self._line_target())
         self._update_scrollregion()
         self.status.config(text="buffering off — screenshots are deleted immediately")
