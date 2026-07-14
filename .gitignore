@@ -56,6 +56,7 @@ packages/local-win/.venv/
 packages/local-win/.last-wtp
 packages/local-win/.tracker-pid
 packages/local-win/tracker.log
+packages/local-win/debug_captures/
 packages/local-win/__pycache__/
 packages/local-win/**/__pycache__/
 packages/local-win/dist/

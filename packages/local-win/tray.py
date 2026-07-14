@@ -98,6 +98,18 @@ def main() -> int:
 
     tracker_thread = threading.Thread(target=st.main_loop, args=(cfg,), daemon=True)
 
+    def on_open_diagnostics(icon, item):
+        try:
+            # Imported lazily so a broken/missing tkinter can't stop the
+            # tray (and tracker) from starting at all.
+            import debug_panel
+            debug_panel.open_panel()
+        except Exception as e:
+            _message_box(
+                f"Could not open the diagnostics panel:\n{e}",
+                flags=MB_OK | MB_ICONERROR,
+            )
+
     def on_open_log(icon, item):
         try:
             os.startfile(str(st.LOG_FILE))  # noqa: S606 (Windows-only, trusted path)
@@ -113,6 +125,7 @@ def main() -> int:
         _load_icon_image(),
         "Season Sprint Tracker",
         menu=pystray.Menu(
+            pystray.MenuItem("OCR diagnostics", on_open_diagnostics),
             pystray.MenuItem("Open log", on_open_log),
             pystray.MenuItem("Quit", on_quit),
         ),
