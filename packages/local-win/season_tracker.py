@@ -20,11 +20,15 @@ from __future__ import annotations
 
 import datetime as dt
 import getpass
+import io
 import os
+import queue
 import re
 import signal
 import sys
+import threading
 import time
+from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -320,10 +324,15 @@ def _grab_points_region(sct: mss.base.MSSBase, monitor_index: int) -> np.ndarray
     return frame
 
 
-def parse_wtp_from_ocr(results) -> Optional[int]:
+def analyze_ocr(results) -> tuple[Optional[int], str]:
     """Given EasyOCR readtext() results, return the first 'current points'
-    number located spatially below a 'WORLD TOUR POINTS' header. Mirrors
-    the logic in packages/local-linux/ocr_preprocess.py."""
+    number located spatially below a 'WORLD TOUR POINTS' header, plus a
+    human-readable verdict explaining how that conclusion was reached (shown
+    in the diagnostics panel and test_ocr.py). Mirrors the parsing logic in
+    packages/local-linux/ocr_preprocess.py."""
+    if not results:
+        return None, "No text detected in the capture region"
+
     header_bbox = None
     for bbox, text, _conf in results:
         up = text.upper()
@@ -332,7 +341,10 @@ def parse_wtp_from_ocr(results) -> Optional[int]:
             break
 
     if header_bbox is None:
-        return None
+        return None, (
+            f"Found {len(results)} text box(es), but no 'WORLD TOUR POINTS' "
+            f"header — probably not on the World Tour page"
+        )
 
     header_top = min(pt[1] for pt in header_bbox)
     header_bottom = max(pt[1] for pt in header_bbox)
@@ -356,15 +368,159 @@ def parse_wtp_from_ocr(results) -> Optional[int]:
         cleaned = text.replace(",", "").replace("_", "").strip()
         if cleaned.isdigit():
             candidates.append((t_cx, int(cleaned)))
-        elif "/" in cleaned:
-            # e.g. "1234 / 2400" — left side is current
-            left, _, _ = cleaned.partition("/")
-            left = left.strip()
-            if left.isdigit():
-                return int(left)
+        else:
+            # "current / max", e.g. "4 / 25" — left side is current. EasyOCR
+            # frequently misreads the thin slash glyph as "|", "l", "I", or
+            # drops it, so pull digit runs out directly instead of requiring
+            # a literal "/" (which silently dropped real reads like "4 | 25").
+            nums = re.findall(r"\d+", cleaned)
+            if len(nums) >= 2:
+                return int(nums[0]), (
+                    f"Read current points = {nums[0]} "
+                    f"(from a 'current / max' readout {cleaned!r})"
+                )
 
     candidates.sort(key=lambda c: c[0])
-    return candidates[0][1] if candidates else None
+    if candidates:
+        return candidates[0][1], f"Read current points = {candidates[0][1]}"
+    return None, "Found the 'WORLD TOUR POINTS' header, but no readable number near it"
+
+
+def parse_wtp_from_ocr(results) -> Optional[int]:
+    """Back-compat wrapper around analyze_ocr for callers that only want
+    the number (test_ocr.py's original interface)."""
+    return analyze_ocr(results)[0]
+
+
+# ── Diagnostics buffer ────────────────────────────────────────────────────────
+#
+# Backing store for the tray app's "OCR diagnostics" window (debug_panel.py).
+# Disabled by default: the tracker's standard behavior is to discard each
+# captured frame as soon as OCR has run. While the panel has buffering
+# switched on, the last DEBUG_BUFFER_SIZE captures are kept in memory (as
+# PNG bytes) together with their OCR output and verdict, so the user can see
+# exactly what the tracker saw. "Protecting" a capture pulls it out of the
+# rolling buffer and writes it to debug_captures\ so it can be shared.
+
+DEBUG_BUFFER_SIZE = 30
+DEBUG_CAPTURE_DIR = SCRIPT_DIR / "debug_captures"
+
+
+@dataclass
+class CaptureRecord:
+    seq: int
+    timestamp: dt.datetime
+    png_bytes: bytes
+    ocr_lines: list  # (text, confidence) per EasyOCR box, reading order
+    wtp: Optional[int]
+    verdict: str
+    ocr_ms: float
+    protected: bool = False
+    saved_path: Optional[Path] = None
+
+
+class DebugBuffer:
+    """Thread-safe rolling buffer of recent captures.
+
+    Written to by the tracker loop (its thread), toggled and read by the
+    diagnostics panel (its own Tk thread). UI updates flow one way through
+    `events`, a queue of tuples the panel polls:
+
+        ("added",   CaptureRecord)  — new capture appended
+        ("evicted", seq)            — oldest capture rolled off the end
+        ("cleared",)                — buffering switched off, records dropped
+        ("status",  text)           — tracker state note (e.g. cooldown)
+    """
+
+    def __init__(self, maxlen: int = DEBUG_BUFFER_SIZE):
+        self.maxlen = maxlen
+        self._lock = threading.Lock()
+        self._records: deque = deque(maxlen=maxlen)
+        self._seq = 0
+        self._enabled = False
+        self.events: "queue.Queue[tuple]" = queue.Queue()
+
+    @property
+    def enabled(self) -> bool:
+        with self._lock:
+            return self._enabled
+
+    def set_enabled(self, enabled: bool) -> None:
+        with self._lock:
+            if enabled == self._enabled:
+                return
+            self._enabled = enabled
+            if not enabled:
+                self._records.clear()
+        if not enabled:
+            self.events.put(("cleared",))
+
+    def add(self, frame, ocr_results, wtp: Optional[int], verdict: str, ocr_ms: float) -> None:
+        """Record one capture. No-op (including the PNG encode) when
+        buffering is off, so the tracker's default hot path is unchanged."""
+        with self._lock:
+            if not self._enabled:
+                return
+            self._seq += 1
+            seq = self._seq
+
+        from PIL import Image  # deferred like easyocr: only paid when buffering
+
+        buf = io.BytesIO()
+        Image.fromarray(frame).save(buf, format="PNG")
+        rec = CaptureRecord(
+            seq=seq,
+            timestamp=dt.datetime.now(),
+            png_bytes=buf.getvalue(),
+            ocr_lines=[(text, float(conf)) for _bbox, text, conf in (ocr_results or [])],
+            wtp=wtp,
+            verdict=verdict,
+            ocr_ms=ocr_ms,
+        )
+
+        with self._lock:
+            if not self._enabled:  # switched off while we were encoding
+                return
+            evicted = self._records[0].seq if len(self._records) == self.maxlen else None
+            self._records.append(rec)
+        if evicted is not None:
+            self.events.put(("evicted", evicted))
+        self.events.put(("added", rec))
+
+    def post_status(self, text: str) -> None:
+        if self.enabled:
+            self.events.put(("status", text))
+
+    def protect(self, seq: int) -> Optional[Path]:
+        """Pull a capture out of the rolling buffer so it can't be evicted,
+        and save it to debug_captures\\ (PNG + .txt sidecar with the OCR
+        output and verdict). Returns the PNG path, or None if the capture
+        already rolled off."""
+        with self._lock:
+            rec = next((r for r in self._records if r.seq == seq), None)
+            if rec is None:
+                return None
+            self._records.remove(rec)
+            rec.protected = True
+
+        DEBUG_CAPTURE_DIR.mkdir(exist_ok=True)
+        stem = f"capture-{rec.timestamp.strftime('%Y%m%d-%H%M%S')}-{rec.seq}"
+        png_path = DEBUG_CAPTURE_DIR / f"{stem}.png"
+        png_path.write_bytes(rec.png_bytes)
+        sidecar = [
+            f"captured: {rec.timestamp.isoformat(timespec='seconds')}",
+            f"ocr time: {rec.ocr_ms:.0f}ms",
+            f"verdict:  {rec.verdict}",
+            f"wtp:      {rec.wtp}",
+            "",
+            "raw OCR output:",
+        ] + [f"  conf={conf:.2f}  {text!r}" for text, conf in rec.ocr_lines]
+        (DEBUG_CAPTURE_DIR / f"{stem}.txt").write_text("\n".join(sidecar) + "\n", encoding="utf-8")
+        rec.saved_path = png_path
+        return png_path
+
+
+DEBUG_BUFFER = DebugBuffer()
 
 
 # ── State + HTTP push ─────────────────────────────────────────────────────────
@@ -467,12 +623,20 @@ def main_loop(cfg: Config) -> None:
             try:
                 frame = _grab_points_region(sct, cfg.monitor_index)
                 results = reader.readtext(frame)
-                wtp = parse_wtp_from_ocr(results)
+                wtp, verdict = analyze_ocr(results)
             except Exception as e:
                 print(f"[err] capture/OCR: {e}")
-                wtp = None
+                frame = results = None
+                wtp, verdict = None, f"capture/OCR error: {e}"
 
             dt_ms = (time.monotonic() - t0) * 1000
+
+            if frame is not None:
+                try:
+                    DEBUG_BUFFER.add(frame, results, wtp, verdict, dt_ms)
+                except Exception as e:
+                    # Diagnostics must never take down the tracker itself.
+                    print(f"[warn] debug buffer: {e}")
 
             if wtp is None:
                 consecutive_reads = 0
@@ -496,6 +660,10 @@ def main_loop(cfg: Config) -> None:
                     else:
                         print(f"[steady] wtp={wtp} unchanged from last push")
                     print(f"[cooldown] sleeping {COOLDOWN_SECS}s")
+                    resume = dt.datetime.now() + dt.timedelta(seconds=COOLDOWN_SECS)
+                    DEBUG_BUFFER.post_status(
+                        f"cooldown after a confirmed read — capturing resumes at {resume:%H:%M:%S}"
+                    )
                     _sleep_interruptible(COOLDOWN_SECS)
                     consecutive_reads = 0
                     last_val = None

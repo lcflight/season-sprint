@@ -14,6 +14,7 @@ The C binary (season-tracker) handles screen capture and Tesseract gate
 checks directly. This daemon is only called for EasyOCR points reading.
 """
 
+import re
 import sys
 import easyocr
 
@@ -83,10 +84,16 @@ def process_image(reader, path):
         # Check if it's a number or a "N / N" pattern
         if cleaned.isdigit():
             numbers.append((text_center_x, int(cleaned), text))
-        elif '/' in cleaned:
-            # Already in "N / N" format
-            print(text)
-            return
+        else:
+            # "current / max", e.g. "4 / 25" — EasyOCR frequently misreads
+            # the thin slash glyph as "|", "l", "I", or drops it, so pull
+            # digit runs out directly instead of requiring a literal "/".
+            # Re-emit a clean "N / N" so parse_metric()'s sscanf on the C
+            # side (which does expect a literal slash) still matches.
+            nums = re.findall(r'\d+', cleaned)
+            if len(nums) >= 2:
+                print(f"{nums[0]} / {nums[1]}")
+                return
 
     # Sort by horizontal position (left to right) — "current / max" reads left-to-right
     numbers.sort(key=lambda x: x[0])
