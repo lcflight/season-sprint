@@ -1,0 +1,85 @@
+name: Deploy Android to Google Play
+
+# Uploads a signed release bundle to the Google Play closed-testing track on
+# every push to main that touches the Android app (i.e. as soon as a PR with
+# Android changes merges), or on manual dispatch.
+#
+# versionCode is the commit count of the pushed ref, which is strictly
+# increasing on main — required by Play for every new upload.
+#
+# Secrets:
+#   ANDROID_KEYSTORE_BASE64    base64 of the upload keystore (.jks)
+#   ANDROID_KEYSTORE_PASSWORD  keystore password
+#   ANDROID_KEY_ALIAS          upload key alias
+#   ANDROID_KEY_PASSWORD       upload key password
+#   PLAY_SERVICE_ACCOUNT_JSON  Google Cloud service-account key with release
+#                              access to the app in Play Console
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "packages/android/**"
+      - ".github/workflows/deploy-android.yml"
+  workflow_dispatch:
+
+permissions: {}
+
+# Serialize deploys so two quick merges can't race on version codes.
+concurrency:
+  group: deploy-android
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          # Full history so the commit count is the real main-branch count.
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Reconstruct signing config
+        working-directory: packages/android
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          mkdir -p keystore
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 -d > keystore/upload-keystore.jks
+          cat > keystore.properties <<EOF
+          storeFile=keystore/upload-keystore.jks
+          storePassword=$ANDROID_KEYSTORE_PASSWORD
+          keyAlias=$ANDROID_KEY_ALIAS
+          keyPassword=$ANDROID_KEY_PASSWORD
+          EOF
+
+      - name: Build signed release bundle
+        working-directory: packages/android
+        run: |
+          chmod +x ./gradlew
+          ANDROID_VERSION_CODE=$(git rev-list --count HEAD) ./gradlew --no-daemon bundleRelease
+
+      - name: Upload to Play closed testing
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.lcarthur.seasonsprint
+          releaseFiles: packages/android/app/build/outputs/bundle/release/app-release.aab
+          track: alpha
+          status: completed
