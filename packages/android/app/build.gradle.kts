@@ -25,7 +25,7 @@ android {
         // CI (deploy-android.yml) overrides versionCode with the main-branch commit
         // count so every Play upload has a strictly increasing code.
         versionCode = System.getenv("ANDROID_VERSION_CODE")?.toIntOrNull() ?: 1
-        versionName = "0.1.0"
+        versionName = "1.1.0"
     }
 
     signingConfigs {

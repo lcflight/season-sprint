@@ -81,5 +81,5 @@ jobs:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
           packageName: com.lcarthur.seasonsprint
           releaseFiles: packages/android/app/build/outputs/bundle/release/app-release.aab
-          track: alpha
+          tracks: alpha
           status: completed
