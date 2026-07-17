@@ -20,15 +20,17 @@ const appearance = {
   <main class="signin-view">
     <div class="signin-brand">
       <img src="/logo-transparent.svg" alt="" class="signin-logo" />
-      <h1 class="signin-title">Sign in to Season Sprint</h1>
+      <h1 class="signin-title">Welcome to Season Sprint</h1>
       <p class="signin-tagline">
         Track your World Tour points and sync across all your devices.
       </p>
     </div>
     <div class="signin-widget">
       <!-- routing="hash" keeps the whole flow on app.seasonsprint.com without a
-           dedicated route, so the user never leaves the site to sign in. -->
-      <SignIn routing="hash" :appearance="appearance" />
+           dedicated route, so the user never leaves the site to sign in.
+           with-sign-up enables Clerk's combined flow: sign-up (email + password
+           + email-code verification) happens in this same widget. -->
+      <SignIn routing="hash" with-sign-up :appearance="appearance" />
     </div>
   </main>
 </template>
