@@ -94,12 +94,6 @@ fun SignInScreen(
                 if (state.isWorking) CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                 else Text("Sign in")
             }
-            TextButton(
-                onClick = { viewModel.sendResetCode(email) },
-                enabled = email.isNotBlank() && !state.isWorking,
-            ) {
-                Text("Forgot password?")
-            }
         } else {
             Text(
                 "Enter the code sent to $email and choose a new password",
@@ -149,8 +143,17 @@ fun SignInScreen(
         }
 
         if (!state.resetCodeSent) {
-            TextButton(onClick = onSwitchToSignUp) {
-                Text("Don't have an account? Sign up")
+            // Grouped without the outer 16.dp spacing so the two links sit close together.
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                TextButton(
+                    onClick = { viewModel.sendResetCode(email) },
+                    enabled = email.isNotBlank() && !state.isWorking,
+                ) {
+                    Text("Forgot password?")
+                }
+                TextButton(onClick = onSwitchToSignUp) {
+                    Text("Don't have an account? Sign up")
+                }
             }
         }
     }
