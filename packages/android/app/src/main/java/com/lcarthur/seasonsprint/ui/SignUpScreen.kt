@@ -30,22 +30,23 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.lcarthur.seasonsprint.auth.SignInViewModel
+import com.lcarthur.seasonsprint.auth.SignUpViewModel
 
 /**
- * Email + password sign-in with a "Forgot password?" email-code reset flow. On success the
- * auth gate swaps to the dashboard automatically.
+ * Minimal email-code sign-up, the registration counterpart of [SignInScreen]: enter email →
+ * send code → enter code → verify. On success the auth gate swaps to the dashboard automatically.
  */
 @Composable
-fun SignInScreen(
-    onSwitchToSignUp: () -> Unit,
-    viewModel: SignInViewModel = viewModel(),
+fun SignUpScreen(
+    onSwitchToSignIn: () -> Unit,
+    viewModel: SignUpViewModel = viewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    var confirmPassword by remember { mutableStateOf("") }
     var code by remember { mutableStateOf("") }
-    var newPassword by remember { mutableStateOf("") }
+    val passwordsMismatch = confirmPassword.isNotEmpty() && password != confirmPassword
 
     Column(
         modifier = Modifier
@@ -63,12 +64,12 @@ fun SignInScreen(
         )
         Text("Season Sprint", style = MaterialTheme.typography.headlineMedium)
         Text(
-            "Sign in to view your season progress",
+            "Create an account to track your season progress",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
-        if (!state.resetCodeSent) {
+        if (!state.codeSent) {
             OutlinedTextField(
                 value = email,
                 onValueChange = { email = it },
@@ -86,17 +87,31 @@ fun SignInScreen(
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                 modifier = Modifier.fillMaxWidth(),
             )
+            OutlinedTextField(
+                value = confirmPassword,
+                onValueChange = { confirmPassword = it },
+                label = { Text("Confirm password") },
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                isError = passwordsMismatch,
+                supportingText = if (passwordsMismatch) {
+                    { Text("Passwords don't match") }
+                } else null,
+                modifier = Modifier.fillMaxWidth(),
+            )
             Button(
-                onClick = { viewModel.signIn(email, password) },
-                enabled = email.isNotBlank() && password.isNotBlank() && !state.isWorking,
+                onClick = { viewModel.sendCode(email, password) },
+                enabled = email.isNotBlank() && password.isNotBlank() &&
+                    password == confirmPassword && !state.isWorking,
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 if (state.isWorking) CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                else Text("Sign in")
+                else Text("Create account")
             }
         } else {
             Text(
-                "Enter the code sent to $email and choose a new password",
+                "Enter the code sent to $email",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -108,29 +123,19 @@ fun SignInScreen(
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 modifier = Modifier.fillMaxWidth(),
             )
-            OutlinedTextField(
-                value = newPassword,
-                onValueChange = { newPassword = it },
-                label = { Text("New password") },
-                singleLine = true,
-                visualTransformation = PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                modifier = Modifier.fillMaxWidth(),
-            )
             Button(
-                onClick = { viewModel.resetPassword(code, newPassword) },
-                enabled = code.isNotBlank() && newPassword.isNotBlank() && !state.isWorking,
+                onClick = { viewModel.verify(code) },
+                enabled = code.isNotBlank() && !state.isWorking,
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 if (state.isWorking) CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                else Text("Reset password")
+                else Text("Verify")
             }
             TextButton(onClick = {
                 code = ""
-                newPassword = ""
                 viewModel.reset()
             }) {
-                Text("Back to sign in")
+                Text("Use a different email")
             }
         }
 
@@ -142,19 +147,8 @@ fun SignInScreen(
             )
         }
 
-        if (!state.resetCodeSent) {
-            // Grouped without the outer 16.dp spacing so the two links sit close together.
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                TextButton(
-                    onClick = { viewModel.sendResetCode(email) },
-                    enabled = email.isNotBlank() && !state.isWorking,
-                ) {
-                    Text("Forgot password?")
-                }
-                TextButton(onClick = onSwitchToSignUp) {
-                    Text("Don't have an account? Sign up")
-                }
-            }
+        TextButton(onClick = onSwitchToSignIn) {
+            Text("Already have an account? Sign in")
         }
     }
 }

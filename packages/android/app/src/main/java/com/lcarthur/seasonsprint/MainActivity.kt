@@ -12,6 +12,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -20,6 +23,7 @@ import com.lcarthur.seasonsprint.auth.AuthState
 import com.lcarthur.seasonsprint.auth.AuthViewModel
 import com.lcarthur.seasonsprint.ui.MainScreen
 import com.lcarthur.seasonsprint.ui.SignInScreen
+import com.lcarthur.seasonsprint.ui.SignUpScreen
 import com.lcarthur.seasonsprint.ui.theme.SeasonSprintTheme
 
 class MainActivity : ComponentActivity() {
@@ -46,8 +50,19 @@ fun App(authViewModel: AuthViewModel = viewModel()) {
     val authState by authViewModel.state.collectAsStateWithLifecycle()
     when (authState) {
         AuthState.Loading -> LoadingScreen()
-        AuthState.SignedOut -> SignInScreen()
+        AuthState.SignedOut -> SignedOutGate()
         AuthState.SignedIn -> MainScreen(onSignOut = authViewModel::signOut)
+    }
+}
+
+/** Signed-out flow: sign-in by default, with a local toggle over to sign-up and back. */
+@Composable
+private fun SignedOutGate() {
+    var showSignUp by rememberSaveable { mutableStateOf(false) }
+    if (showSignUp) {
+        SignUpScreen(onSwitchToSignIn = { showSignUp = false })
+    } else {
+        SignInScreen(onSwitchToSignUp = { showSignUp = true })
     }
 }
 
