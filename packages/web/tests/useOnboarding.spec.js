@@ -10,6 +10,13 @@ vi.mock('@/services/api', () => ({
   getAuthorizationHeader: (...args) => getAuthorizationHeader(...args),
 }))
 
+// The resolved flag is scoped per user id, so specs control who is signed in.
+let currentUser = { id: 'user_a' }
+vi.mock('@/services/clerk', () => ({
+  isClerkEnabled: () => true,
+  getClerkUserSync: () => currentUser,
+}))
+
 const store = new Map()
 vi.stubGlobal('localStorage', {
   getItem: (k) => (store.has(k) ? store.get(k) : null),
@@ -32,6 +39,7 @@ describe('useOnboarding', () => {
     resetOnboardingStateForTests()
     clearRecordsCache()
     store.clear()
+    currentUser = { id: 'user_a' }
     getRecords.mockReset()
     upsertRecord.mockReset().mockResolvedValue({ record: { id: 'r1' } })
     getAuthorizationHeader.mockReset().mockResolvedValue('Bearer token')
@@ -135,6 +143,102 @@ describe('useOnboarding', () => {
 
       expect(needed.value).toBe(false)
       expect(getRecords).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('account switching on a shared browser', () => {
+    it('still onboards a new user after a different account resolved it here', async () => {
+      // A single global flag would let the first account silently suppress the
+      // prompt for everyone who signs in afterwards — dropping a genuinely new
+      // user onto a zero graph, the exact thing this prompt exists to prevent.
+      getRecords.mockResolvedValue([{ id: 'r1', winPoints: 100 }])
+      const settled = useOnboarding()
+      await settled.check(BOTH)
+      expect(settled.needed.value).toBe(false)
+
+      currentUser = { id: 'user_b' }
+      resetOnboardingStateForTests()
+      getRecords.mockResolvedValue([])
+      const newcomer = useOnboarding()
+      await newcomer.check(BOTH)
+
+      expect(newcomer.needed.value).toBe(true)
+    })
+
+    it('keeps each account resolved independently', async () => {
+      getRecords.mockResolvedValue([{ id: 'r1' }])
+      await useOnboarding().check(BOTH)
+
+      currentUser = { id: 'user_b' }
+      resetOnboardingStateForTests()
+      getRecords.mockResolvedValue([])
+      const b = useOnboarding()
+      await b.check(BOTH)
+      b.skip()
+
+      // Returning to A must not re-probe: their flag is still set.
+      currentUser = { id: 'user_a' }
+      resetOnboardingStateForTests()
+      getRecords.mockClear()
+      const a = useOnboarding()
+      await a.check(BOTH)
+
+      expect(a.needed.value).toBe(false)
+      expect(getRecords).not.toHaveBeenCalled()
+    })
+
+    it('probes rather than trusting a flag when the user is unidentifiable', async () => {
+      getRecords.mockResolvedValue([{ id: 'r1' }])
+      await useOnboarding().check(BOTH)
+
+      currentUser = null
+      resetOnboardingStateForTests()
+      getRecords.mockClear().mockResolvedValue([])
+      const unknown = useOnboarding()
+      await unknown.check(BOTH)
+
+      expect(getRecords).toHaveBeenCalled()
+      expect(unknown.needed.value).toBe(true)
+    })
+
+    it('clears state and cached records when a new probe starts', async () => {
+      // A remount must not render the dashboard for the new account off the
+      // previous one's answer, nor hand it the previous one's records.
+      getRecords.mockResolvedValue([{ id: 'r1', winPoints: 100 }])
+      const first = useOnboarding()
+      await first.check(BOTH)
+      expect(first.needed.value).toBe(false)
+
+      currentUser = { id: 'user_b' }
+      getRecords.mockResolvedValue([])
+      const second = useOnboarding()
+      const inFlight = second.check(BOTH)
+      expect(second.needed.value).toBe(null)
+      expect(takeRecords(WT)).toBe(null)
+
+      await inFlight
+      expect(second.needed.value).toBe(true)
+    })
+
+    it('lets a newer probe win when two overlap', async () => {
+      // Account A's slow probe must not overwrite account B's newer result.
+      let resolveSlow
+      getRecords.mockImplementationOnce(
+        () => new Promise((r) => { resolveSlow = () => r([{ id: 'r1' }]) })
+      )
+      const { check, needed } = useOnboarding()
+      const slow = check([WT])
+
+      getRecords.mockResolvedValue([])
+      currentUser = { id: 'user_b' }
+      await check([WT])
+      expect(needed.value).toBe(true)
+
+      resolveSlow()
+      await slow
+
+      // The stale probe found records, but it's superseded — B is still new.
+      expect(needed.value).toBe(true)
     })
   })
 
@@ -285,7 +389,7 @@ describe('useOnboarding', () => {
       expect(ok).toBe(false)
       expect(needed.value).toBe(true)
       expect(saveError.value).toBeTruthy()
-      expect(localStorage.getItem('onboarding.resolved')).toBe(null)
+      expect(localStorage.getItem('onboarding.resolved.user_a')).toBe(null)
     })
   })
 })

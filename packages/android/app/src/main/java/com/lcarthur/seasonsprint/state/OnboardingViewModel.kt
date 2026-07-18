@@ -5,6 +5,7 @@ import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.clerk.api.Clerk
 import com.lcarthur.seasonsprint.GameMode
 import com.lcarthur.seasonsprint.data.ApiClient
 import com.lcarthur.seasonsprint.domain.DateKey
@@ -29,9 +30,20 @@ data class OnboardingState(
  * reinstall. The resolved flag marks onboarding as settled by any route — saved, skipped, or
  * found to already have records — so later launches skip the probe entirely instead of
  * refetching every mode just to rediscover the user isn't new.
+ *
+ * That flag is scoped per user id: signing out leaves it behind, so a single global key would
+ * let the first account to resolve onboarding silently suppress it for anyone who signs in on
+ * the device afterwards — dropping a genuinely new user onto a zero graph.
  */
 class OnboardingViewModel(app: Application) : AndroidViewModel(app) {
     private val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+    /**
+     * Per-user key, or null if the signed-in user can't be identified — in which case we fail
+     * safe by probing rather than trusting a flag that may belong to another account.
+     */
+    private val resolvedKey: String?
+        get() = Clerk.userFlow.value?.id?.let { "$KEY_RESOLVED.$it" }
 
     private val _state = MutableStateFlow(OnboardingState())
     val state = _state.asStateFlow()
@@ -41,7 +53,7 @@ class OnboardingViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun check() {
-        if (prefs.getBoolean(KEY_RESOLVED, false)) {
+        if (resolvedKey?.let { prefs.getBoolean(it, false) } == true) {
             _state.update { it.copy(isNeeded = false) }
             return
         }
@@ -90,7 +102,7 @@ class OnboardingViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun markResolved() {
-        prefs.edit().putBoolean(KEY_RESOLVED, true).apply()
+        resolvedKey?.let { prefs.edit().putBoolean(it, true).apply() }
     }
 
     class Factory(private val app: Application) : ViewModelProvider.Factory {

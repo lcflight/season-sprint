@@ -2,17 +2,35 @@ import { computed, ref } from 'vue'
 import { getRecords, upsertRecord, getAuthorizationHeader } from '@/services/api'
 import { formatDate } from '@/utils/date'
 import { primeRecords, clearRecordsCache } from '@/services/recordsCache'
+import { getClerkUserSync, isClerkEnabled } from '@/services/clerk'
 
-// Set once onboarding is settled for this user, by any route: they saved their
+// Set once onboarding is settled for a user, by any route: they saved their
 // totals, they skipped, or the check found they already have records. Detection
 // is server-side, so this is purely a "don't probe again" marker — without it
 // every returning user would refetch their records on every load just to
 // rediscover that they're not new.
-const RESOLVED_KEY = 'onboarding.resolved'
+//
+// Scoped per user id, because browsers are shared. A single global flag would
+// mean the first account to resolve onboarding silently suppresses it for every
+// later account on that browser — a genuinely new user would be dropped
+// straight onto a zero graph, which is the exact thing this prompt exists to
+// prevent.
+const RESOLVED_KEY_PREFIX = 'onboarding.resolved'
 
-function isResolvedLocally() {
+// Dev-auth mode has one fixed user, so a single bucket is correct there.
+const DEV_SCOPE = 'dev'
+
+/** Stable per-user storage scope, or null if we can't identify the user yet. */
+function currentScope() {
+  if (!isClerkEnabled()) return DEV_SCOPE
+  return getClerkUserSync()?.id ?? null
+}
+
+function isResolvedLocally(scope) {
+  // Unknown user — fail safe by probing rather than trusting someone else's flag.
+  if (!scope) return false
   try {
-    return localStorage.getItem(RESOLVED_KEY) === '1'
+    return localStorage.getItem(`${RESOLVED_KEY_PREFIX}.${scope}`) === '1'
   } catch {
     // Private mode / storage disabled — treat as unresolved. Worst case we
     // probe again, which is better than crashing the app shell.
@@ -20,9 +38,10 @@ function isResolvedLocally() {
   }
 }
 
-function markResolved() {
+function markResolved(scope) {
+  if (!scope) return
   try {
-    localStorage.setItem(RESOLVED_KEY, '1')
+    localStorage.setItem(`${RESOLVED_KEY_PREFIX}.${scope}`, '1')
   } catch {
     // Non-fatal; see isResolvedLocally.
   }
@@ -37,6 +56,9 @@ function markResolved() {
 const needed = ref(null)
 const isSaving = ref(false)
 const saveError = ref('')
+
+// Bumped per probe so a superseded one can't overwrite newer state.
+let checkGeneration = 0
 
 const isResolved = computed(() => needed.value !== null)
 
@@ -54,20 +76,35 @@ const isDashboardVisible = computed(() => needed.value === false)
  */
 export function useOnboarding() {
   async function check(modes) {
-    if (isResolvedLocally()) {
-      needed.value = false
+    // The shell remounts when the signed-in account changes. Reset rather than
+    // inheriting the previous user's answer, which would otherwise render the
+    // dashboard for the new account while their probe is still in flight — and
+    // discard any records cached for the previous account, so the dashboard
+    // can't be handed someone else's data.
+    const generation = ++checkGeneration
+    const isCurrent = () => generation === checkGeneration
+    needed.value = null
+    clearRecordsCache()
+
+    const scope = currentScope()
+    if (isResolvedLocally(scope)) {
+      if (isCurrent()) needed.value = false
       return
     }
     try {
       const authHeader = await getAuthorizationHeader()
       if (!authHeader) {
         // Signed out — the auth gate handles this; nothing to onboard.
-        needed.value = false
+        if (isCurrent()) needed.value = false
         return
       }
       const results = await Promise.all(
         modes.map((mode) => getRecords(authHeader, mode))
       )
+      // A newer probe started while we were awaiting — its account's state is
+      // the truth now, so drop this result instead of overwriting it.
+      if (!isCurrent()) return
+
       needed.value = results.every((records) => !records.length)
       // The dashboard is about to load these same records; hand them over
       // rather than making it fetch them again. Accurate whichever way the
@@ -76,13 +113,13 @@ export function useOnboarding() {
       if (!needed.value) {
         // They already have data, so they're settled — record that locally so
         // later loads skip this probe entirely instead of re-asking the server.
-        markResolved()
+        markResolved(scope)
       }
     } catch (e) {
       // Never let a failed probe block the app — fall through to the dashboard,
       // which surfaces its own load error if the API is genuinely down.
       console.warn('Failed to determine onboarding state', e)
-      needed.value = false
+      if (isCurrent()) needed.value = false
     }
   }
 
@@ -105,7 +142,7 @@ export function useOnboarding() {
       // We just wrote records, so anything the check cached is now stale — the
       // dashboard must fetch fresh or it would render the pre-save empty state.
       clearRecordsCache()
-      markResolved()
+      markResolved(currentScope())
       needed.value = false
       return true
     } catch (e) {
@@ -120,7 +157,7 @@ export function useOnboarding() {
   function skip() {
     // Nothing was written, so whatever the check cached is still accurate and
     // the dashboard can use it.
-    markResolved()
+    markResolved(currentScope())
     needed.value = false
   }
 

@@ -1,14 +1,19 @@
 import Foundation
 import Observation
+import ClerkKit
 
 /// Decides whether to show the first-launch "enter your current totals" prompt, and saves
 /// what the user enters as today's record in each mode.
 ///
 /// A user is considered new when they have no records at all, in either mode — detection is
 /// server-side so it holds across devices and platforms, rather than re-prompting after every
-/// reinstall. `resolvedKey` marks onboarding as settled by any route — saved, skipped, or
+/// reinstall. The resolved flag marks onboarding as settled by any route — saved, skipped, or
 /// found to already have records — so later launches skip the probe entirely instead of
 /// refetching every mode just to rediscover the user isn't new.
+///
+/// That flag is scoped per user id: signing out leaves it behind, so a single global key would
+/// let the first account to resolve onboarding silently suppress it for anyone who signs in on
+/// the device afterwards — dropping a genuinely new user onto a zero graph.
 @MainActor
 @Observable
 final class OnboardingStore {
@@ -19,10 +24,16 @@ final class OnboardingStore {
     private(set) var errorMessage: String?
 
     private let defaults = UserDefaults.standard
-    private let resolvedKey = "onboarding.resolved"
+
+    /// Per-user key, or nil if the signed-in user can't be identified — in which case we
+    /// fail safe by probing rather than trusting a flag that may belong to another account.
+    private var resolvedKey: String? {
+        guard let userId = Clerk.shared.user?.id else { return nil }
+        return "onboarding.resolved.\(userId)"
+    }
 
     func check() async {
-        if defaults.bool(forKey: resolvedKey) {
+        if let key = resolvedKey, defaults.bool(forKey: key) {
             isNeeded = false
             return
         }
@@ -76,7 +87,8 @@ final class OnboardingStore {
     }
 
     private func markResolved() {
-        defaults.set(true, forKey: resolvedKey)
+        guard let key = resolvedKey else { return }
+        defaults.set(true, forKey: key)
     }
 
     /// Today in the device's local timezone as `YYYY-MM-DD`, matching the date-only wire
