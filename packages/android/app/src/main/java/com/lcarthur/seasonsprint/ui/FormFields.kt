@@ -36,12 +36,12 @@ fun DateField(label: String, dateMillis: Long, onClick: () -> Unit) {
 
 /** Numeric win-points input (digits only). */
 @Composable
-fun WinPointsField(value: String, onValueChange: (String) -> Unit) {
+fun WinPointsField(value: String, onValueChange: (String) -> Unit, label: String = "Win points") {
     val scheme = MaterialTheme.colorScheme
     OutlinedTextField(
         value = value,
         onValueChange = { input -> onValueChange(input.filter { it.isDigit() }) },
-        label = { Text("Win points") },
+        label = { Text(label) },
         singleLine = true,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
         modifier = Modifier.fillMaxWidth(),

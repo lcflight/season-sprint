@@ -22,7 +22,7 @@
     <ClerkLoaded>
       <SignedIn>
         <main class="container">
-          <router-view />
+          <AppBody />
         </main>
       </SignedIn>
       <SignedOut>
@@ -31,7 +31,7 @@
     </ClerkLoaded>
   </template>
   <main v-else class="container">
-    <router-view />
+    <AppBody />
   </main>
   <footer class="site-footer" role="contentinfo">
     <div>Created by Luke Arthur (Aireal) 2025</div>
@@ -44,6 +44,7 @@ import { watch } from "vue";
 import { useAuth } from "@clerk/vue";
 import HeaderBar from "./components/HeaderBar.vue";
 import SignInView from "./components/SignInView.vue";
+import AppBody from "./components/AppBody.vue";
 import {
   ClerkLoading,
   ClerkLoaded,
@@ -59,6 +60,7 @@ export default {
   components: {
     HeaderBar,
     SignInView,
+    AppBody,
     ClerkLoading,
     ClerkLoaded,
     SignedIn,
