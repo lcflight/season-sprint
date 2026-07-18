@@ -6,8 +6,9 @@ import Observation
 ///
 /// A user is considered new when they have no records at all, in either mode — detection is
 /// server-side so it holds across devices and platforms, rather than re-prompting after every
-/// reinstall. `dismissedKey` exists only to stop nagging someone who genuinely has zero points
-/// and chose to skip; they'd otherwise see the prompt on every launch.
+/// reinstall. `resolvedKey` marks onboarding as settled by any route — saved, skipped, or
+/// found to already have records — so later launches skip the probe entirely instead of
+/// refetching every mode just to rediscover the user isn't new.
 @MainActor
 @Observable
 final class OnboardingStore {
@@ -18,10 +19,10 @@ final class OnboardingStore {
     private(set) var errorMessage: String?
 
     private let defaults = UserDefaults.standard
-    private let dismissedKey = "onboarding.dismissed"
+    private let resolvedKey = "onboarding.resolved"
 
     func check() async {
-        if defaults.bool(forKey: dismissedKey) {
+        if defaults.bool(forKey: resolvedKey) {
             isNeeded = false
             return
         }
@@ -35,6 +36,11 @@ final class OnboardingStore {
                 }
             }
             isNeeded = !hasAny
+            if hasAny {
+                // Already has data, so they're settled — record that so later launches
+                // skip this probe instead of re-asking the server every time.
+                markResolved()
+            }
         } catch {
             // Never let a failed probe block the app — fall through to the dashboard, which
             // surfaces its own load error if the API is genuinely down.
@@ -65,8 +71,12 @@ final class OnboardingStore {
     }
 
     private func dismiss() {
-        defaults.set(true, forKey: dismissedKey)
+        markResolved()
         isNeeded = false
+    }
+
+    private func markResolved() {
+        defaults.set(true, forKey: resolvedKey)
     }
 
     /// Today in the device's local timezone as `YYYY-MM-DD`, matching the date-only wire

@@ -1,28 +1,30 @@
 import { computed, ref } from 'vue'
 import { getRecords, upsertRecord, getAuthorizationHeader } from '@/services/api'
 import { formatDate } from '@/utils/date'
+import { primeRecords, clearRecordsCache } from '@/services/recordsCache'
 
-// Set once the user has either saved their starting totals or skipped the
-// prompt. Detection is server-side (no records in any prompted mode), so this
-// flag exists only to stop nagging someone who genuinely has zero points and
-// chose to skip — they'd otherwise see the prompt on every launch.
-const DISMISSED_KEY = 'onboarding.dismissed'
+// Set once onboarding is settled for this user, by any route: they saved their
+// totals, they skipped, or the check found they already have records. Detection
+// is server-side, so this is purely a "don't probe again" marker — without it
+// every returning user would refetch their records on every load just to
+// rediscover that they're not new.
+const RESOLVED_KEY = 'onboarding.resolved'
 
-function isDismissed() {
+function isResolvedLocally() {
   try {
-    return localStorage.getItem(DISMISSED_KEY) === '1'
+    return localStorage.getItem(RESOLVED_KEY) === '1'
   } catch {
-    // Private mode / storage disabled — treat as not dismissed. Worst case the
-    // prompt reappears, which is better than crashing the app shell.
+    // Private mode / storage disabled — treat as unresolved. Worst case we
+    // probe again, which is better than crashing the app shell.
     return false
   }
 }
 
-function markDismissed() {
+function markResolved() {
   try {
-    localStorage.setItem(DISMISSED_KEY, '1')
+    localStorage.setItem(RESOLVED_KEY, '1')
   } catch {
-    // Non-fatal; see isDismissed.
+    // Non-fatal; see isResolvedLocally.
   }
 }
 
@@ -52,7 +54,7 @@ const isDashboardVisible = computed(() => needed.value === false)
  */
 export function useOnboarding() {
   async function check(modes) {
-    if (isDismissed()) {
+    if (isResolvedLocally()) {
       needed.value = false
       return
     }
@@ -67,6 +69,15 @@ export function useOnboarding() {
         modes.map((mode) => getRecords(authHeader, mode))
       )
       needed.value = results.every((records) => !records.length)
+      // The dashboard is about to load these same records; hand them over
+      // rather than making it fetch them again. Accurate whichever way the
+      // check went — `save` clears the cache, since it makes them stale.
+      modes.forEach((mode, i) => primeRecords(mode, results[i]))
+      if (!needed.value) {
+        // They already have data, so they're settled — record that locally so
+        // later loads skip this probe entirely instead of re-asking the server.
+        markResolved()
+      }
     } catch (e) {
       // Never let a failed probe block the app — fall through to the dashboard,
       // which surfaces its own load error if the API is genuinely down.
@@ -91,7 +102,10 @@ export function useOnboarding() {
       for (const [mode, winPoints] of Object.entries(values)) {
         await upsertRecord(today, Number(winPoints), authHeader, mode)
       }
-      markDismissed()
+      // We just wrote records, so anything the check cached is now stale — the
+      // dashboard must fetch fresh or it would render the pre-save empty state.
+      clearRecordsCache()
+      markResolved()
       needed.value = false
       return true
     } catch (e) {
@@ -104,7 +118,9 @@ export function useOnboarding() {
   }
 
   function skip() {
-    markDismissed()
+    // Nothing was written, so whatever the check cached is still accurate and
+    // the dashboard can use it.
+    markResolved()
     needed.value = false
   }
 

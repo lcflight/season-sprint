@@ -20,6 +20,7 @@ vi.stubGlobal('localStorage', {
 const { useOnboarding, resetOnboardingStateForTests } = await import(
   '@/composables/useOnboarding'
 )
+const { takeRecords, clearRecordsCache } = await import('@/services/recordsCache')
 
 const WT = 'world-tour'
 const BOTH = [WT, 'ranked']
@@ -29,6 +30,7 @@ describe('useOnboarding', () => {
     // State is a module singleton (the header and app shell share it), so it
     // must be cleared between specs.
     resetOnboardingStateForTests()
+    clearRecordsCache()
     store.clear()
     getRecords.mockReset()
     upsertRecord.mockReset().mockResolvedValue({ record: { id: 'r1' } })
@@ -69,6 +71,39 @@ describe('useOnboarding', () => {
       expect(getRecords).toHaveBeenCalledWith('Bearer token', WT)
     })
 
+    it('never probes again for a user who already has records', async () => {
+      // Otherwise every returning user refetches every mode on every load just
+      // to rediscover they aren't new.
+      getRecords.mockResolvedValue([{ id: 'r1', winPoints: 100 }])
+      const first = useOnboarding()
+      await first.check(BOTH)
+      expect(getRecords).toHaveBeenCalledTimes(2)
+
+      resetOnboardingStateForTests()
+      getRecords.mockClear()
+      const second = useOnboarding()
+      await second.check(BOTH)
+
+      expect(second.needed.value).toBe(false)
+      expect(getRecords).not.toHaveBeenCalled()
+    })
+
+    it('does prompt again if the user closed the tab without answering', async () => {
+      // Nothing was settled, so the probe must run again next load.
+      getRecords.mockResolvedValue([])
+      const first = useOnboarding()
+      await first.check(BOTH)
+      expect(first.needed.value).toBe(true)
+
+      resetOnboardingStateForTests()
+      getRecords.mockClear()
+      const second = useOnboarding()
+      await second.check(BOTH)
+
+      expect(second.needed.value).toBe(true)
+      expect(getRecords).toHaveBeenCalled()
+    })
+
     it('does not prompt again once dismissed', async () => {
       getRecords.mockResolvedValue([])
       const first = useOnboarding()
@@ -100,6 +135,57 @@ describe('useOnboarding', () => {
 
       expect(needed.value).toBe(false)
       expect(getRecords).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('records handoff', () => {
+    it('hands the fetched records to the dashboard instead of making it refetch', async () => {
+      const wtRecords = [{ id: 'r1', winPoints: 100 }]
+      const rkRecords = [{ id: 'r2', winPoints: 18000 }]
+      getRecords.mockImplementation((_auth, mode) =>
+        Promise.resolve(mode === 'ranked' ? rkRecords : wtRecords)
+      )
+      const { check } = useOnboarding()
+      await check(BOTH)
+
+      expect(takeRecords(WT)).toEqual(wtRecords)
+      expect(takeRecords('ranked')).toEqual(rkRecords)
+    })
+
+    it('hands over the empty result too, for a user who skips', async () => {
+      getRecords.mockResolvedValue([])
+      const { check, skip } = useOnboarding()
+      await check(BOTH)
+      skip()
+
+      // Nothing was written, so the empty result is still accurate.
+      expect(takeRecords(WT)).toEqual([])
+    })
+
+    it('invalidates the handoff after saving, since it is now stale', async () => {
+      // The cached result predates the write; serving it would render the
+      // dashboard empty despite the user having just entered a total.
+      getRecords.mockResolvedValue([])
+      const { check, save } = useOnboarding()
+      await check(BOTH)
+      await save({ [WT]: 1200 })
+
+      expect(takeRecords(WT)).toBe(null)
+      expect(takeRecords('ranked')).toBe(null)
+    })
+
+    it('caches nothing when the probe is skipped entirely', async () => {
+      getRecords.mockResolvedValue([{ id: 'r1' }])
+      const first = useOnboarding()
+      await first.check(BOTH)
+      clearRecordsCache()
+
+      resetOnboardingStateForTests()
+      const second = useOnboarding()
+      await second.check(BOTH)
+
+      // Resolved locally, so no fetch happened and there's nothing to hand over.
+      expect(takeRecords(WT)).toBe(null)
     })
   })
 
@@ -199,7 +285,7 @@ describe('useOnboarding', () => {
       expect(ok).toBe(false)
       expect(needed.value).toBe(true)
       expect(saveError.value).toBeTruthy()
-      expect(localStorage.getItem('onboarding.dismissed')).toBe(null)
+      expect(localStorage.getItem('onboarding.resolved')).toBe(null)
     })
   })
 })

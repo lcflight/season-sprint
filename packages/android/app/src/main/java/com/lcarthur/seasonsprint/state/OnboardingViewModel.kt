@@ -26,8 +26,9 @@ data class OnboardingState(
  *
  * A user is considered new when they have no records at all, in either mode — detection is
  * server-side so it holds across devices and platforms, rather than re-prompting after every
- * reinstall. The dismissed flag exists only to stop nagging someone who genuinely has zero
- * points and chose to skip; they'd otherwise see the prompt on every launch.
+ * reinstall. The resolved flag marks onboarding as settled by any route — saved, skipped, or
+ * found to already have records — so later launches skip the probe entirely instead of
+ * refetching every mode just to rediscover the user isn't new.
  */
 class OnboardingViewModel(app: Application) : AndroidViewModel(app) {
     private val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -40,7 +41,7 @@ class OnboardingViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun check() {
-        if (prefs.getBoolean(KEY_DISMISSED, false)) {
+        if (prefs.getBoolean(KEY_RESOLVED, false)) {
             _state.update { it.copy(isNeeded = false) }
             return
         }
@@ -51,6 +52,11 @@ class OnboardingViewModel(app: Application) : AndroidViewModel(app) {
                 // Never let a failed probe block the app — fall through to the dashboard,
                 // which surfaces its own load error if the API is genuinely down.
                 false
+            }
+            if (!needed) {
+                // Already has data, so they're settled — record that so later launches skip
+                // this probe instead of re-asking the server every time.
+                markResolved()
             }
             _state.update { it.copy(isNeeded = needed) }
         }
@@ -79,8 +85,12 @@ class OnboardingViewModel(app: Application) : AndroidViewModel(app) {
     fun skip() = dismiss()
 
     private fun dismiss() {
-        prefs.edit().putBoolean(KEY_DISMISSED, true).apply()
+        markResolved()
         _state.update { it.copy(isNeeded = false, isSaving = false, error = null) }
+    }
+
+    private fun markResolved() {
+        prefs.edit().putBoolean(KEY_RESOLVED, true).apply()
     }
 
     class Factory(private val app: Application) : ViewModelProvider.Factory {
@@ -91,6 +101,6 @@ class OnboardingViewModel(app: Application) : AndroidViewModel(app) {
 
     private companion object {
         const val PREFS = "onboarding"
-        const val KEY_DISMISSED = "onboarding.dismissed"
+        const val KEY_RESOLVED = "onboarding.resolved"
     }
 }
