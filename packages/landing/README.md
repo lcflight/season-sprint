@@ -23,6 +23,11 @@ pnpm -F landing build    # regenerate releases.json from the latest GitHub relea
 - `releases.json` — snapshot of the latest release (regenerated on every deploy)
 - `styles.css` — THE FINALS-inspired theme (mirrors `packages/web`)
 - `assets/logo.svg` — brand logo (copied from `packages/web/public/logo.svg`)
+- `assets/og-landing.png` — social preview image (`og:image`/`twitter:image` for
+  `index.html`). A 2400×1260 (2× of 1200×630, the 1.91:1 ratio Discord/Twitter
+  crop to) capture of the landing hero. Regenerate after a hero redesign with:
+  `chromium --headless --hide-scrollbars --force-device-scale-factor=2 \
+  --window-size=1200,630 --screenshot=assets/og-landing.png https://www.seasonsprint.com/`
 - `favicon.ico`
 - `robots.txt` — allows all crawlers, points to the sitemap
 - `sitemap.xml` — lists `/` and `/downloads` for search engines
