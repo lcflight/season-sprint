@@ -3,6 +3,13 @@ import ClerkKit
 
 private let lastModeKey = "ui.lastMode"
 
+/// Composite `task(id:)` key so the records load re-runs both on a mode switch and once
+/// onboarding resolves.
+private struct LoadKey: Equatable {
+    let mode: GameMode
+    let isOnboardingNeeded: Bool?
+}
+
 /// Signed-in root: a mode switcher (World Tour / Ranked) above a Graph/Log/Details tab
 /// view. Both modes get their own `DashboardStore`/`AppSettings` instance (mirroring the
 /// web app's separate WorldTour.vue/Ranked.vue view instances), so each mode keeps its own
@@ -14,6 +21,7 @@ struct MainTabView: View {
     @State private var stores: [GameMode: DashboardStore]
     @State private var settingsByMode: [GameMode: AppSettings]
     @State private var showSettings = false
+    @State private var onboarding = OnboardingStore()
 
     init() {
         let saved = UserDefaults.standard.string(forKey: lastModeKey).flatMap(GameMode.init(rawValue:)) ?? .worldTour
@@ -27,7 +35,13 @@ struct MainTabView: View {
 
     var body: some View {
         Group {
-            if store.hasLoaded {
+            if onboarding.isNeeded == nil {
+                // Hold the dashboard back until we know whether this is a new user, so the
+                // graph doesn't flash into view and then get replaced by the prompt.
+                BrandedLoadingView(message: "Loading your season…")
+            } else if onboarding.isNeeded == true {
+                OnboardingView(store: onboarding)
+            } else if store.hasLoaded {
                 VStack(spacing: 0) {
                     ModeSwitcherView(selected: $mode)
                     TabView {
@@ -44,7 +58,12 @@ struct MainTabView: View {
                 BrandedLoadingView(message: "Loading your season…")
             }
         }
-        .task(id: mode) {
+        .task { await onboarding.check() }
+        // Keyed on the onboarding state as well as the mode so that finishing onboarding
+        // re-runs the load — otherwise the dashboard would show the empty result fetched
+        // before the starting totals were saved.
+        .task(id: LoadKey(mode: mode, isOnboardingNeeded: onboarding.isNeeded)) {
+            guard onboarding.isNeeded == false else { return }
             UserDefaults.standard.set(mode.rawValue, forKey: lastModeKey)
             for (m, s) in stores where m != mode { s.pauseLive() }
             await store.load()

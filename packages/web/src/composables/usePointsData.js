@@ -9,6 +9,7 @@ import {
   getAuthorizationHeader,
 } from '@/services/api'
 import { connectLiveUpdates } from '@/services/liveUpdates'
+import { takeRecords } from '@/services/recordsCache'
 
 /**
  * Manages the points array and all API-backed CRUD operations.
@@ -121,13 +122,21 @@ export function usePointsData({ isSeasonValid, seasonStart, seasonEnd, autoSetSe
     isLoading.value = true
     loadError.value = ''
     try {
-      const authHeader = await getAuthorizationHeader()
-      if (!authHeader) {
-        isAuthenticated.value = false
-        return
+      // The onboarding check fetches records moments before the dashboard
+      // mounts; take those rather than asking for them a second time. Reaching
+      // them means we were authenticated, since the check needed a token too.
+      let records = takeRecords(mode)
+      if (records) {
+        isAuthenticated.value = true
+      } else {
+        const authHeader = await getAuthorizationHeader()
+        if (!authHeader) {
+          isAuthenticated.value = false
+          return
+        }
+        isAuthenticated.value = true
+        records = await getRecords(authHeader, mode)
       }
-      isAuthenticated.value = true
-      const records = await getRecords(authHeader, mode)
       const mapped = records.map((r) => ({
         remoteId: r.id,
         date: typeof r.date === 'string' ? r.date.slice(0, 10) : '',

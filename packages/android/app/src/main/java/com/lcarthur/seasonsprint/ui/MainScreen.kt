@@ -30,6 +30,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.lcarthur.seasonsprint.GameMode
 import com.lcarthur.seasonsprint.state.DashboardViewModel
+import com.lcarthur.seasonsprint.state.OnboardingViewModel
 import com.lcarthur.seasonsprint.state.SettingsViewModel
 
 private enum class Tab(val label: String, val icon: ImageVector) {
@@ -73,9 +74,16 @@ fun MainScreen(onSignOut: () -> Unit) {
     val dashboardViewModel = dashboardViewModels.getValue(mode)
     val settingsViewModel = settingsViewModels.getValue(mode)
 
+    val onboardingViewModel = viewModel<OnboardingViewModel>(factory = OnboardingViewModel.Factory(app))
+    val onboarding by onboardingViewModel.state.collectAsStateWithLifecycle()
+
     // Only the active mode's VM keeps its records fresh and its WebSocket open; the inactive
     // one is paused (it still holds its last-loaded state, so switching back is instant).
-    LaunchedEffect(mode) {
+    // Keyed on the onboarding state as well as the mode so that finishing onboarding re-runs
+    // the load — otherwise the dashboard would show the empty result fetched before the
+    // starting totals were saved.
+    LaunchedEffect(mode, onboarding.isNeeded) {
+        if (onboarding.isNeeded != false) return@LaunchedEffect
         dashboardViewModels.forEach { (m, vm) -> if (m != mode) vm.pauseLive() }
         dashboardViewModel.load()
         dashboardViewModel.resumeLive()
@@ -85,6 +93,20 @@ fun MainScreen(onSignOut: () -> Unit) {
     val settings by settingsViewModel.state.collectAsStateWithLifecycle()
     var selected by remember { mutableStateOf(Tab.Graph) }
     var showSettings by remember { mutableStateOf(false) }
+
+    // Hold the dashboard back until we know whether this is a new user, so the graph doesn't
+    // flash into view and then get replaced by the prompt.
+    when (onboarding.isNeeded) {
+        null -> {
+            BrandedLoadingScreen(message = "Loading your season…")
+            return
+        }
+        true -> {
+            OnboardingScreen(onboardingViewModel)
+            return
+        }
+        else -> Unit
+    }
 
     if (!state.hasLoaded) {
         BrandedLoadingScreen(message = "Loading your season…")

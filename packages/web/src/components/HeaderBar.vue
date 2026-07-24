@@ -4,12 +4,18 @@ import { SignedIn } from "@clerk/vue";
 import UserMenu from "@/components/UserMenu.vue";
 import ModeSwitcher from "@/components/ModeSwitcher.vue";
 import { isClerkEnabled } from "@/services/clerk";
+import { useOnboarding } from "@/composables/useOnboarding";
 
 // The signed-out redirect is handled in App.vue alongside the content gate.
 const clerkEnabled = isClerkEnabled();
 // The mode switcher lives in the title bar, shown only on routes that opt in
 // via `meta.modeSwitcher` (World Tour / Ranked).
 const route = useRoute();
+// ...and only once the dashboard itself is up. While the onboarding prompt or
+// its preceding check is on screen, switching modes would just change the route
+// underneath the prompt without dismissing it. This also keeps the switcher out
+// of the signed-out view, where the shell never mounts.
+const { isDashboardVisible } = useOnboarding();
 </script>
 
 <template>
@@ -18,7 +24,10 @@ const route = useRoute();
       <img src="/logo-transparent.svg" alt="Season Sprint logo" class="brand-logo" />
       <span class="brand-text"><span class="brand-accent">THE</span>&nbsp;FINALS</span> <span class="brand-sep">|</span> <span class="brand-text">Season Sprint</span>
     </router-link>
-    <ModeSwitcher v-if="route.meta.modeSwitcher" class="header-mode" />
+    <ModeSwitcher
+      v-if="route.meta.modeSwitcher && isDashboardVisible"
+      class="header-mode"
+    />
     <div class="user-actions">
       <template v-if="clerkEnabled">
         <SignedIn>
