@@ -74,7 +74,7 @@
       </div>
 
       <StatsPanel
-        v-if="isSeasonValid && !awaitingNewSeason"
+        v-if="isSeasonValid && !showPlaceholder"
         :required-per-day-zero="requiredPerDayZero"
         :required-per-day-from-last="requiredPerDayFromLast"
         :is-from-last-defined="isFromLastDefined"
@@ -107,16 +107,18 @@
       @close="closePointsModal"
     />
 
-    <!-- Past the end of every season the server knows about: the new season
-         hasn't been picked up yet, so show an empty frame and a notice rather
-         than plotting new-season points against last season's window. -->
-    <div v-if="awaitingNewSeason" class="chart-wrapper awaiting-season">
+    <!-- Empty frame + notice instead of the chart when (a) the "maintenance"
+         feature flag is on for this user, or (b) we're past the end of every
+         season the server knows about and the new one hasn't been picked up
+         yet (plotting new-season points against last season's window would
+         show wrong numbers). -->
+    <div v-if="showPlaceholder" class="chart-wrapper awaiting-season">
       <svg
         :viewBox="`0 0 ${width} ${height}`"
         :width="width"
         :height="height"
         role="img"
-        aria-label="Empty chart for the upcoming season"
+        aria-label="Empty chart"
         class="nav-disabled"
       >
         <g class="axes">
@@ -125,16 +127,13 @@
         </g>
       </svg>
       <div class="chart-overlay">
-        <p class="chart-overlay-text awaiting-season-text">
-          Please stand by. We are updating SeasonSprint to track the new season.
-          Reach out if the issue persists.
-        </p>
+        <p class="chart-overlay-text awaiting-season-text">{{ placeholderMessage }}</p>
       </div>
     </div>
 
-    <p v-if="!isSeasonValid && !awaitingNewSeason" class="error">Season start must be before end.</p>
+    <p v-if="!isSeasonValid && !showPlaceholder" class="error">Season start must be before end.</p>
 
-    <div class="chart-wrapper" v-if="isSeasonValid && !awaitingNewSeason">
+    <div class="chart-wrapper" v-if="isSeasonValid && !showPlaceholder">
       <!-- In-graph overlays: today's gain (top-left), live DB status (top-right) -->
       <div class="graph-overlay">
         <div class="today-progress">
@@ -477,6 +476,7 @@ import { useRankInfo } from "@/composables/useRankInfo";
 import { usePanZoom } from "@/composables/usePanZoom";
 import { useGraphSettings } from "@/composables/useGraphSettings";
 import { useSeasons } from "@/composables/useSeasons";
+import { useFlags } from "@/composables/useFlags";
 import { usePointsData } from "@/composables/usePointsData";
 import { useChartGeometry } from "@/composables/useChartGeometry";
 import GoalControls from "@/components/GoalControls.vue";
@@ -584,6 +584,19 @@ const isViewingPastSeason = computed(
 // useSeasons): the live view shows an empty placeholder instead of a chart.
 const awaitingNewSeason = computed(
   () => !!currentSeason.value?.upcoming && !isViewingPastSeason.value
+);
+
+// "maintenance" feature flag: toggled from the Admin page, globally or per
+// user. While on, the chart is replaced by a stand-by notice.
+const { flags } = useFlags();
+const underMaintenance = computed(() => !!flags.maintenance);
+const showPlaceholder = computed(
+  () => underMaintenance.value || awaitingNewSeason.value
+);
+const placeholderMessage = computed(() =>
+  underMaintenance.value
+    ? "Please stand by. SeasonSprint is under maintenance. Reach out if the issue persists."
+    : "Please stand by. We are updating SeasonSprint to track the new season. Reach out if the issue persists."
 );
 
 // The window the chart actually renders. For the live season this is the
