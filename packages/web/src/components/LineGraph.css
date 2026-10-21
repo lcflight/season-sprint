@@ -285,6 +285,13 @@
   border-radius: 8px;
 }
 
+.awaiting-season-text {
+  max-width: 28em;
+  margin: 0 16px;
+  line-height: 1.5;
+  text-align: center;
+}
+
 .chart-overlay-error {
   color: #ff6b6b;
 }

@@ -10,6 +10,10 @@ import { msToDateInput, dateToMs } from '@/utils/date'
  * records span all of them, so "viewing a past season" is just pointing the
  * existing chart geometry at a different [start, end] window.
  */
+// Key of the placeholder season shown when we're past the end of every
+// season the server knows about (the wiki hasn't listed the new one yet).
+export const UPCOMING_SEASON_KEY = '__upcoming__'
+
 export function useSeasons() {
   const seasons = ref([]) // normalized, ascending by start date
   const currentSeasonKey = ref('')
@@ -58,13 +62,32 @@ export function useSeasons() {
       const match = cs?.name
         ? list.find((s) => s.key === String(cs.name))
         : null
-      // Fall back to the latest known season if the wiki reports no active
-      // season (e.g. between seasons) — there's always something to show.
-      currentSeasonKey.value = match
-        ? match.key
-        : list.length
-          ? list[list.length - 1].key
-          : ''
+      const last = list.length ? list[list.length - 1] : null
+
+      if (match) {
+        currentSeasonKey.value = match.key
+      } else if (last && Date.now() > last.endMs) {
+        // Past the end of every known season: a new season has started but
+        // the server hasn't picked it up yet. Show an empty "Upcoming season"
+        // rather than falling back to the old one, whose window would compare
+        // new-season points against last season's. It has no real dates;
+        // startMs/endMs only make it own any points logged after the last
+        // known season, so they aren't offered as past-season data.
+        list.push({
+          key: UPCOMING_SEASON_KEY,
+          name: 'Upcoming season',
+          start: '',
+          end: '',
+          startMs: last.endMs + 1,
+          endMs: Infinity,
+          upcoming: true,
+        })
+        currentSeasonKey.value = UPCOMING_SEASON_KEY
+      } else {
+        // No active season but the last one hasn't ended (e.g. a gap in the
+        // data) — show the latest known season.
+        currentSeasonKey.value = last ? last.key : ''
+      }
       return data
     } catch (e) {
       error.value = 'Failed to load seasons'
