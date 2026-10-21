@@ -1,14 +1,14 @@
 """
-debug_panel.py — forward-facing OCR diagnostics window for the tray app.
+debug_panel.py — forward-facing Capture diagnostics window for the tray app.
 
-Opened from the tray icon (right-click > OCR diagnostics). Lets the user
+Opened from the tray icon (right-click > Capture diagnostics). Lets the user
 temporarily switch the tracker from its standard delete-immediately capture
 handling (restored when this window closes) to a rolling buffer of the last
 30 screenshots, shown as a vertical list: newest on top, older shots
 animating downward until they fall past the "deleted forever" line at the
-bottom. Clicking a shot shows the full screenshot, the raw OCR output, and
-the verdict the tracker derived from it ("not on the World Tour page",
-"read current points = 12", ...). "Keep" pulls a shot out of the rolling
+bottom. Clicking a shot shows the full screenshot, the template-match
+scores, and the verdict the tracker derived from it ("not on the MODES
+tab", "world_tour: 2726 / 8000", ...). "Keep" pulls a shot out of the rolling
 buffer and saves it to debug_captures\\ so it can be shared.
 
 Threading: pystray menu handlers and the tracker loop each run on their own
@@ -42,7 +42,7 @@ def open_panel() -> None:
         if _thread is not None and _thread.is_alive():
             _focus_requested.set()
             return
-        _thread = threading.Thread(target=_run, name="ocr-diagnostics", daemon=True)
+        _thread = threading.Thread(target=_run, name="capture-diagnostics", daemon=True)
         _thread.start()
 
 
@@ -73,7 +73,7 @@ def _run() -> None:
             break
 
     root = tk.Tk()
-    root.title("Season Sprint — OCR diagnostics")
+    root.title("Season Sprint — Capture diagnostics")
     root.geometry("640x700")
     root.configure(bg=BG)
     _Panel(root, buf)
@@ -396,7 +396,7 @@ class _Panel:
         win.configure(bg=BG)
 
         img = Image.open(io.BytesIO(rec.png_bytes))
-        # Cap to a sane window size; the region is already a monitor crop.
+        # Cap to a sane window size (captures are whole-monitor frames).
         img.thumbnail((1000, 500))
         photo = ImageTk.PhotoImage(img)
         win._photo = photo  # keep a ref alive for the window's lifetime
@@ -408,19 +408,16 @@ class _Panel:
             wraplength=960, justify="left",
         ).pack(anchor="w", padx=12)
         tk.Label(
-            win, text=f"OCR took {rec.ocr_ms:.0f}ms — raw output:",
+            win, text=f"Read took {rec.read_ms:.0f}ms — match details:",
             bg=BG, fg=FG_DIM, font=("Segoe UI", 9),
         ).pack(anchor="w", padx=12, pady=(8, 2))
 
         text = tk.Text(
-            win, height=max(3, min(10, len(rec.ocr_lines) + 1)), width=80,
+            win, height=max(3, min(10, len(rec.details) + 1)), width=80,
             bg="#141414", fg=FG, relief="flat", font=("Consolas", 9),
         )
-        if rec.ocr_lines:
-            for line, conf in rec.ocr_lines:
-                text.insert("end", f"conf={conf:.2f}  {line!r}\n")
-        else:
-            text.insert("end", "<no text boxes detected>\n")
+        for line in rec.details or ["<no details>"]:
+            text.insert("end", f"{line}\n")
         text.config(state="disabled")
         text.pack(fill="x", padx=12)
 

@@ -1,27 +1,33 @@
 # Season Sprint — Windows tracker
 
 The Windows counterpart to [`packages/local-linux`](../local-linux). It watches
-THE FINALS' end-of-match score screen, OCRs your **World Tour points** straight
-off the display, and pushes changes to your Season Sprint account automatically
+THE FINALS' lobby **MODES** tab and the post-match score panel, reads your
+**World Tour** and **Ranked** scores straight off the display, and pushes changes to your Season Sprint account automatically
 while you play. Distributed as a one-click installer (`SeasonSprintTracker.exe`).
 
 ## How it works
 A single Python program (`season_tracker.py`):
 
-1. **Capture** — grabs the bottom-centre of your chosen monitor with **mss**
-   (no PIL/OpenCV needed for capture).
-2. **Read** — runs **EasyOCR** (CPU-only PyTorch) over the region, looks for the
-   "WORLD TOUR POINTS" header, and parses the number beneath it. It requires two
-   identical consecutive reads before trusting a value.
-3. **Sync** — when the value changes versus local state (`.last-wtp`), it `POST`s
-   `{ date, winPoints }` to the server with your API key, then cools down ~5 min.
+1. **Capture** — grabs a small top-left zone of your chosen monitor with **mss** every
+   second (the whole monitor only when the MODES tab is showing).
+2. **Read** — `screen_reader.py` template-matches the yellow MODES tab, then the
+   score header at the bottom centre ("WORLD TOUR SCORE", "PLACEMENT ROUNDS", or
+   a ranked header once one is added), then classifies the yellow digits under
+   it against digit templates. No OCR engine — plain numpy, ~70ms a frame. The
+   white "/ max" is read too and a value above it is rejected. Needs 900p or
+   higher. Templates live in [`../tracker-templates`](../tracker-templates).
+3. **Post-match** — when not on MODES it also checks a small centre zone for the
+   post-match "WORLD TOUR SCORE" panel, polling every 0.2s while it's up and
+   requiring three identical reads (the value counts up for ~0.5s).
+4. **Sync** — after two identical consecutive reads (three post-match), if the value differs from
+   local state (`.last-wtp` / `.last-rank`) it `POST`s `{ date, winPoints, mode }`
+   to the server with your API key; that mode then rests ~5 min.
 
 The token is validated (`sk_` + 64 hex) before sending and masked in logs, and
-SSL is pinned to certifi's CA bundle so model downloads work on fresh Windows
-installs.
+SSL is pinned to certifi's CA bundle so HTTPS works on fresh Windows installs.
 
 ## Files
-- `season_tracker.py` — the tracker (capture → OCR → POST), config, state, and
+- `season_tracker.py` — the tracker (capture → read → POST), config, state, and
   logging. Supports `--setup-only`, `--list-monitors`.
 - `tray.py` — system-tray launcher for **non-Steam** players (Epic/Xbox/direct);
   runs headless via `pythonw.exe`, single-instance, with a tray menu.
@@ -29,22 +35,21 @@ installs.
   headless, runs the game, kills the tracker on exit. Run with no args to test
   in a console.
 - `setup.bat` / `install-deps.bat` — interactive setup and (idempotent)
-  dependency bootstrap: find/install Python, MSVC redist, create the venv,
-  pip-install requirements with **CPU-only torch**.
-- `watch-tracker.bat` — live-tails `tracker.log`. `test_ocr.py` — runs the OCR
-  pipeline against a saved image to debug parsing.
-- `requirements.txt` — `easyocr`, `mss`, `requests`, `numpy`, `Pillow`,
-  `pystray`.
+  dependency bootstrap: find/install Python, create the venv, pip-install
+  requirements.
+- `screen_reader.py` — the template-matching reader (C port lives in
+  `local-linux/season-tracker.c`; keep them in step).
+- `watch-tracker.bat` — live-tails `tracker.log`. `test_reader.py` — runs the
+  reader against a saved full-screen screenshot to debug recognition.
+- `requirements.txt` — `mss`, `requests`, `numpy`, `Pillow`, `pystray`.
 - `installer/installer.iss` — Inno Setup 6 script that builds the installer.
 - `.env.example` — config template (`AUTH_TOKEN`, `MONITOR_INDEX`).
 
 ## Prerequisites
 - **Windows x64**. Python **3.9+** (the installer/`install-deps.bat` will install
-  Python 3.12 via `winget` if it's missing), plus the MSVC C++ redistributable
-  (needed by PyTorch).
+  Python 3.12 via `winget` if it's missing).
 - The dependency bootstrap creates a venv at `%USERPROFILE%\.season-sprint\venv`
-  — outside the repo, stable across drives/updates — and installs **CPU-only**
-  torch from the PyTorch CPU wheel index (avoids the ~2 GB CUDA wheels).
+  — outside the repo, stable across drives/updates.
 - A personal **API key** (`sk_…`) from the web app's API Keys panel.
 
 ## Install & run

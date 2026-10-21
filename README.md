@@ -5,7 +5,7 @@ Tour points (and Ranked score) over the course of a season and shows how you're
 pacing toward a goal — rank-threshold overlays, projection lines, and a
 required-vs-earned pace graph — with your data synced live across web, iOS, and
 Android. Optional desktop trackers (Linux/Windows) read your score straight off
-the in-game screen via OCR and push it automatically while you play.
+the in-game screen (by template matching) and push it automatically while you play.
 
 Live at **https://app.seasonsprint.com** (marketing site:
 **https://www.seasonsprint.com**).
@@ -22,8 +22,8 @@ deployed independently.
 | [`ios`](packages/ios) | Native iOS client | SwiftUI, SwiftPM, built with xtool |
 | [`android`](packages/android) | Native Android client | Kotlin + Jetpack Compose |
 | [`landing`](packages/landing) | Marketing + downloads site (`www`/apex) | Static HTML/CSS/JS |
-| [`local-linux`](packages/local-linux) | Local desktop tracker that OCRs the in-game score | C + Python (EasyOCR), X11 |
-| [`local-win`](packages/local-win) | Windows desktop tracker (counterpart to `local-linux`) | Python (EasyOCR), Inno Setup installer |
+| [`local-linux`](packages/local-linux) | Local desktop tracker that reads the in-game score by template matching | C, X11 |
+| [`local-win`](packages/local-win) | Windows desktop tracker (counterpart to `local-linux`) | Python (numpy), Inno Setup installer |
 
 ## Architecture
 

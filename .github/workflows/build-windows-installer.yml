@@ -18,6 +18,7 @@ on:
   pull_request:
     paths:
       - "packages/local-win/**"
+      - "packages/tracker-templates/**"
       - ".github/workflows/build-windows-installer.yml"
   workflow_dispatch:
 

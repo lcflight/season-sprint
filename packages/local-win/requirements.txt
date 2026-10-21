@@ -1,4 +1,3 @@
-easyocr
 mss
 requests
 numpy

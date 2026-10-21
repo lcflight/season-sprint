@@ -63,12 +63,6 @@ popd & endlocal & exit /b 1
 
 :have_python
 
-REM ── 3b. Ensure MSVC Redistributable (PyTorch links against vcruntime140*)
-where winget >nul 2>&1
-if not errorlevel 1 (
-    winget install --silent --accept-source-agreements --accept-package-agreements --id Microsoft.VCRedist.2015+.x64
-)
-
 REM ── 4. Create venv (short path outside repo) if missing ──────────────────
 if not exist "%VENV_PY%" (
     if not exist "%USERPROFILE%\.season-sprint" mkdir "%USERPROFILE%\.season-sprint"
@@ -81,20 +75,6 @@ if not exist "%VENV_PY%" (
 
 REM ── 5. Install / upgrade dependencies (no-op if satisfied) ───────────────
 "%VENV_PY%" -m pip install --upgrade pip >nul
-
-REM EasyOCR depends on torch + torchvision. Installed straight from PyPI,
-REM pip can pull a CUDA-enabled torch wheel (~2GB) even though we run OCR on
-REM CPU (gpu=False). Pre-installing the CPU-only builds from PyTorch's own
-REM index pins the small wheels (~200MB total) so the subsequent
-REM `-r requirements.txt` sees torch/torchvision already satisfied and skips
-REM the CUDA download entirely. This is the single biggest factor in how long
-REM a cold install takes — and the most common point of failure on flaky
-REM connections. No-ops on a re-run once the wheels are present.
-"%VENV_PY%" -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
-if errorlevel 1 (
-    echo ERROR: CPU torch install failed.
-    popd & endlocal & exit /b 1
-)
 
 "%VENV_PY%" -m pip install -r requirements.txt
 if errorlevel 1 (

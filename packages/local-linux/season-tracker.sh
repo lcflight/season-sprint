@@ -2,7 +2,7 @@
 #
 # season-tracker.sh — One-shot installer + Steam launcher for Season Sprint.
 #
-# First-time (interactive setup: deps, venv, build, config):
+# First-time (interactive setup: deps, build, config):
 #   ./season-tracker.sh
 #
 # After setup, set as a Steam launch option on the game:
@@ -15,22 +15,18 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="$SCRIPT_DIR/.env"
 BINARY="$SCRIPT_DIR/season-tracker"
 SOURCE="$SCRIPT_DIR/season-tracker.c"
-VENV="$SCRIPT_DIR/.venv"
 
 # ── System dependencies ──────────────────────────────────────────────────────
 #
 # Linux-only (tracker uses X11 SHM). Covers the common package managers.
 
-APT_PKGS=(build-essential pkg-config tesseract-ocr tesseract-ocr-eng
-          libtesseract-dev libleptonica-dev libcurl4-openssl-dev
-          libx11-dev libxext-dev python3 python3-venv python3-pip)
+# The tracker reads the screen by template matching, so it only needs a C
+# toolchain, libcurl and X11 — no OCR engine or Python.
+APT_PKGS=(build-essential pkg-config libcurl4-openssl-dev libx11-dev libxext-dev)
 
-DNF_PKGS=(gcc make pkgconf-pkg-config tesseract tesseract-langpack-eng
-          tesseract-devel leptonica-devel libcurl-devel libX11-devel
-          libXext-devel python3 python3-pip)
+DNF_PKGS=(gcc make pkgconf-pkg-config libcurl-devel libX11-devel libXext-devel)
 
-PACMAN_PKGS=(base-devel pkgconf tesseract tesseract-data-eng leptonica
-             curl libx11 libxext python python-pip)
+PACMAN_PKGS=(base-devel pkgconf curl libx11 libxext)
 
 detect_pkg_mgr() {
   for cmd in apt-get dnf pacman zypper; do
@@ -42,7 +38,7 @@ have_build_deps() {
   command -v gcc >/dev/null 2>&1 \
     && command -v make >/dev/null 2>&1 \
     && command -v pkg-config >/dev/null 2>&1 \
-    && pkg-config --exists tesseract libcurl x11 xext 2>/dev/null
+    && pkg-config --exists libcurl x11 xext 2>/dev/null
 }
 
 install_system_deps() {
@@ -55,8 +51,8 @@ install_system_deps() {
   mgr=$(detect_pkg_mgr)
   if [[ -z "$mgr" ]]; then
     echo "WARNING: No supported package manager found (apt/dnf/pacman/zypper)."
-    echo "Install manually: tesseract + dev headers, libcurl-dev, libx11-dev,"
-    echo "libxext-dev, gcc, make, pkg-config, python3, python3-venv."
+    echo "Install manually: libcurl-dev, libx11-dev, libxext-dev, gcc, make,"
+    echo "pkg-config."
     return 1
   fi
 
@@ -71,40 +67,8 @@ install_system_deps() {
     dnf)     sudo dnf install -y "${DNF_PKGS[@]}" ;;
     pacman)  sudo pacman -S --needed --noconfirm "${PACMAN_PKGS[@]}" ;;
     zypper)  sudo zypper --non-interactive install gcc make pkg-config \
-               tesseract-ocr tesseract-ocr-devel libcurl-devel \
-               libX11-devel libXext-devel python3 python3-pip ;;
+               libcurl-devel libX11-devel libXext-devel ;;
   esac
-}
-
-# ── Python / EasyOCR ─────────────────────────────────────────────────────────
-
-python_has_easyocr() {
-  [[ -x "$1" ]] && "$1" -c 'import easyocr' >/dev/null 2>&1
-}
-
-ensure_python_deps() {
-  # Always provision a local venv. Trusting system Python is fragile: Steam
-  # strips LD_LIBRARY_PATH / STEAM_RUNTIME_LIBRARY_PATH before exec'ing the
-  # binary, and a Linuxbrew / conda / distro Python that imports EasyOCR in a
-  # normal shell may fail once those vars are gone. The venv keeps the OCR
-  # daemon's runtime environment identical to install time.
-  if [[ ! -x "$VENV/bin/python3" ]]; then
-    echo "Creating Python virtual environment at $VENV ..."
-    if ! python3 -m venv "$VENV"; then
-      echo "ERROR: 'python3 -m venv' failed. Install python3-venv and retry." >&2
-      return 1
-    fi
-  fi
-
-  if python_has_easyocr "$VENV/bin/python3"; then
-    return 0
-  fi
-
-  echo "Installing EasyOCR into venv (downloads ~1GB of PyTorch, takes a few minutes)..."
-  "$VENV/bin/pip" install --upgrade pip >/dev/null \
-    && "$VENV/bin/pip" install easyocr \
-    || { echo "ERROR: pip install failed. See output above." >&2; return 1; }
-  echo "EasyOCR ready."
 }
 
 # ── Monitor detection ────────────────────────────────────────────────────────
@@ -241,7 +205,7 @@ build_binary() {
 
 prep_launcher_env() {
   # Strip Steam's library overrides (keep only the gameoverlay overlay so the
-  # Steam overlay still works) so system libcurl/tesseract/X11 load cleanly.
+  # Steam overlay still works) so system libcurl/X11 load cleanly.
   local filtered_preload="" entry
   while IFS= read -r entry; do
     [[ -z "$entry" ]] && continue
@@ -280,13 +244,11 @@ run_install() {
   echo
   echo "This will:"
   echo "  1. Install system packages (via your package manager, sudo)"
-  echo "  2. Set up a local Python venv with EasyOCR (~1GB)"
-  echo "  3. Build the tracker binary"
-  echo "  4. Prompt for your server URL, API token, and monitor"
+  echo "  2. Build the tracker binary"
+  echo "  3. Prompt for your server URL, API token, and monitor"
   echo
 
   install_system_deps || echo "(continuing; some steps may fail)"
-  ensure_python_deps  || exit 1
   build_binary        || exit 1
   prompt_config
 

@@ -54,6 +54,7 @@ packages/local-linux/ocr_test_results/
 # Windows tracker (Python) — venv, state, bytecode, installer output, logs
 packages/local-win/.venv/
 packages/local-win/.last-wtp
+packages/local-win/.last-rank
 packages/local-win/.tracker-pid
 packages/local-win/tracker.log
 packages/local-win/debug_captures/

@@ -10,6 +10,7 @@ on:
   push:
     paths:
       - "packages/local-linux/**"
+      - "packages/tracker-templates/**"
       - ".github/workflows/build-linux.yml"
     tags:
       - "v*"

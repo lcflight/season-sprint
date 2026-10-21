@@ -30,7 +30,7 @@ import season_tracker as st
 SCRIPT_DIR = Path(__file__).resolve().parent
 
 # Win32 single-instance guard. Two tray instances would run two tracker loops
-# (double OCR + double pushes, racing on tracker.log / .last-wtp). A named
+# (double reads + double pushes, racing on tracker.log / .last-wtp). A named
 # mutex is the simplest cross-process lock; ERROR_ALREADY_EXISTS (183) means
 # another instance already holds it.
 _MUTEX_NAME = "Global\\SeasonSprintTracker"
@@ -125,7 +125,7 @@ def main() -> int:
         _load_icon_image(),
         "Season Sprint Tracker",
         menu=pystray.Menu(
-            pystray.MenuItem("OCR diagnostics", on_open_diagnostics),
+            pystray.MenuItem("Capture diagnostics", on_open_diagnostics),
             pystray.MenuItem("Open log", on_open_log),
             pystray.MenuItem("Quit", on_quit),
         ),

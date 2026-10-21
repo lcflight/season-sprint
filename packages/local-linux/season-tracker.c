@@ -1,23 +1,29 @@
 /*
- * season-tracker — Fast World Tour Points tracker using X11 SHM + Tesseract C API.
+ * season-tracker — World Tour / Ranked score tracker for THE FINALS (Linux).
  *
- * Replaces ffmpeg screen capture (~545ms) with XShmGetImage (~0.2ms) and
- * Tesseract subprocess (~80ms) with in-process C API (~5ms).
- * Still uses the Python EasyOCR daemon for accurate points reading.
+ * Grabs the game monitor via X11 shared memory (XShmGetImage, sub-ms) and
+ * reads the World Tour / Ranked score by template matching — no OCR engine —
+ * from two screens: the lobby's MODES tab (bottom-centre panel) and the
+ * post-match "WORLD TOUR SCORE" panel shown after every match. Changes are
+ * POSTed to the Season Sprint server.
+ *
+ * The reader is a C port of packages/local-win/screen_reader.py; keep the
+ * two in step (same masks, thresholds and geometry). Templates are the PGM
+ * files in packages/tracker-templates (shipped as ./templates).
  *
  * Build:
- *   gcc -O2 -o season-tracker season-tracker.c \
- *       $(pkg-config --cflags --libs tesseract libcurl x11 xext)
+ *   make season-tracker
  *
  * Usage:
  *   ./season-tracker                   # run tracker (reads .env)
  *   ./season-tracker game_cmd args...  # launch game, then track
+ *   ./season-tracker --read shot.ppm   # read one screenshot (P6 PPM), print result
  */
 
 #define _GNU_SOURCE
-#include <ctype.h>
 #include <errno.h>
 #include <limits.h>
+#include <math.h>
 #include <signal.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -28,25 +34,39 @@
 #include <sys/time.h>
 #include <sys/wait.h>
 #include <time.h>
-#include <fcntl.h>
-#include <sys/stat.h>
 #include <unistd.h>
 
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 #include <X11/extensions/XShm.h>
 
-#include <tesseract/capi.h>
 #include <curl/curl.h>
 
 /* ── Constants ─────────────────────────────────────────────────────────────── */
 
 #define MAX_LOG_LINES    500
 #define LOG_PRUNE_EVERY  50
-#define MAX_WTP          2400
-#define MAX_RANK         50000
-#define SENTINEL         "---END---"
-#define RESP_BUF_SIZE    4096
+
+#define POLL_SECS        1    /* seconds between frames */
+#define FAST_POLL_USEC   200000 /* while the post-match panel is up (~2s) */
+#define COOLDOWN_SECS    300  /* MODES: per-mode rest after a confirmed read */
+#define CONFIRM_READS    2    /* MODES: identical reads in a row before pushing */
+#define POST_CONFIRM_READS 3  /* post-match: more, so a count-up never confirms */
+#define POST_REST_SECS   10   /* post-match: ignore the panel once confirmed */
+
+/* Reader constants — must match screen_reader.py */
+#define REF_H            1440
+#define GATE_MIN         0.60
+#define GATE_MIN_YELLOW  0.5   /* pre-check: share of the tab's yellow needed */
+#define HEADER_MIN       0.60
+#define DIGIT_MIN        0.70
+#define DIGIT_MARGIN     0.04
+#define DIGIT_H          24
+#define DIGIT_W          20
+#define MAX_COMPS        512
+#define MAX_DIGITS       9
+#define MIN_SCALE        0.6  /* below ~900p digits are too small to trust */
+#define POST_MIN_WHITE   0.5  /* post-match pre-check: share of header white */
 
 /* ── Globals ───────────────────────────────────────────────────────────────── */
 
@@ -56,22 +76,15 @@ typedef struct {
     char server_url[512];
     char auth_token[256];
     int  mon_w, mon_h, mon_x, mon_y;
-    /* Derived regions */
-    int  gate_x, gate_y, gate_w, gate_h;
-    int  pts_x,  pts_y,  pts_w,  pts_h;
-    /* Paths */
     char script_dir[PATH_MAX];
     char env_file[PATH_MAX];
     char state_file_wt[PATH_MAX];
     char state_file_rank[PATH_MAX];
     char log_file[PATH_MAX];
-    char ocr_script[PATH_MAX];
 } Config;
 
 static Config g_cfg;
 static int    g_log_count = 0;
-
-/* ── Timing ────────────────────────────────────────────────────────────────── */
 
 static double now_ms(void) {
     struct timeval tv;
@@ -85,25 +98,22 @@ static void prune_log(void) {
     FILE *f = fopen(g_cfg.log_file, "r");
     if (!f) return;
 
-    /* Count lines */
-    int count = 0;
-    int ch;
+    int count = 0, ch;
     while ((ch = fgetc(f)) != EOF)
         if (ch == '\n') count++;
 
     if (count <= MAX_LOG_LINES) { fclose(f); return; }
 
-    /* Read all content */
     fseek(f, 0, SEEK_END);
     long sz = ftell(f);
     fseek(f, 0, SEEK_SET);
     char *buf = malloc(sz + 1);
     if (!buf) { fclose(f); return; }
-    fread(buf, 1, sz, f);
-    buf[sz] = '\0';
+    size_t got = fread(buf, 1, sz, f);
+    buf[got] = '\0';
     fclose(f);
 
-    /* Find start of last MAX_LOG_LINES lines */
+    /* Keep the last MAX_LOG_LINES lines */
     int skip = count - MAX_LOG_LINES;
     char *p = buf;
     for (int i = 0; i < skip && p; i++) {
@@ -128,12 +138,14 @@ static void log_impl(int to_stdout, const char *fmt, va_list ap) {
     char msg[2048];
     vsnprintf(msg, sizeof(msg), fmt, ap);
 
-    FILE *f = fopen(g_cfg.log_file, "a");
-    if (f) { fprintf(f, "[%s] %s\n", ts, msg); fclose(f); }
+    if (g_cfg.log_file[0]) {
+        FILE *f = fopen(g_cfg.log_file, "a");
+        if (f) { fprintf(f, "[%s] %s\n", ts, msg); fclose(f); }
+    }
     if (to_stdout) printf("[%s] %s\n", ts, msg);
 
     g_log_count++;
-    if (g_log_count % LOG_PRUNE_EVERY == 0)
+    if (g_cfg.log_file[0] && g_log_count % LOG_PRUNE_EVERY == 0)
         prune_log();
 }
 
@@ -149,11 +161,10 @@ static void logq(const char *fmt, ...) {
 
 /* ── Config ────────────────────────────────────────────────────────────────── */
 
-static int load_env(Config *cfg) {
-    /* Determine script_dir from /proc/self/exe */
+static int init_paths(Config *cfg) {
+    /* script_dir = directory of this binary (/proc/self/exe), else cwd */
     ssize_t len = readlink("/proc/self/exe", cfg->script_dir, PATH_MAX - 1);
     if (len <= 0) {
-        /* Fallback: use cwd */
         if (!getcwd(cfg->script_dir, PATH_MAX)) return -1;
     } else {
         cfg->script_dir[len] = '\0';
@@ -161,12 +172,14 @@ static int load_env(Config *cfg) {
         if (slash) *slash = '\0';
     }
 
-    snprintf(cfg->env_file,        PATH_MAX, "%s/.env",       cfg->script_dir);
-    snprintf(cfg->state_file_wt,   PATH_MAX, "%s/.last-wtp",  cfg->script_dir);
-    snprintf(cfg->state_file_rank, PATH_MAX, "%s/.last-rank", cfg->script_dir);
+    snprintf(cfg->env_file,        PATH_MAX, "%s/.env",        cfg->script_dir);
+    snprintf(cfg->state_file_wt,   PATH_MAX, "%s/.last-wtp",   cfg->script_dir);
+    snprintf(cfg->state_file_rank, PATH_MAX, "%s/.last-rank",  cfg->script_dir);
     snprintf(cfg->log_file,        PATH_MAX, "%s/tracker.log", cfg->script_dir);
-    snprintf(cfg->ocr_script, PATH_MAX, "%s/ocr_preprocess.py", cfg->script_dir);
+    return 0;
+}
 
+static int load_env(Config *cfg) {
     FILE *f = fopen(cfg->env_file, "r");
     if (!f) return -1;
 
@@ -174,10 +187,8 @@ static int load_env(Config *cfg) {
     char geometry[128] = {0};
 
     while (fgets(line, sizeof(line), f)) {
-        /* Strip newline */
         char *nl = strchr(line, '\n');
         if (nl) *nl = '\0';
-        /* Skip comments/empty */
         if (line[0] == '#' || line[0] == '\0') continue;
 
         char *eq = strchr(line, '=');
@@ -200,24 +211,10 @@ static int load_env(Config *cfg) {
     /* Parse WxH+X+Y (offsets can be negative, e.g. 2560x1440+-1920+0) */
     if (sscanf(geometry, "%dx%d%d%d", &cfg->mon_w, &cfg->mon_h,
                &cfg->mon_x, &cfg->mon_y) != 4) {
-        /* Try WxH without offsets */
         if (sscanf(geometry, "%dx%d", &cfg->mon_w, &cfg->mon_h) != 2)
             return -1;
         cfg->mon_x = cfg->mon_y = 0;
     }
-
-    /* Gate region: top-left quarter width, top tenth height */
-    cfg->gate_w = cfg->mon_w / 4;
-    cfg->gate_h = cfg->mon_h / 10;
-    cfg->gate_x = cfg->mon_x;
-    cfg->gate_y = cfg->mon_y;
-
-    /* Points region: bottom-center middle third width, bottom fifth height */
-    cfg->pts_w = cfg->mon_w / 3;
-    cfg->pts_h = cfg->mon_h / 5;
-    cfg->pts_x = cfg->mon_x + (cfg->mon_w - cfg->pts_w) / 2;
-    cfg->pts_y = cfg->mon_y + (cfg->mon_h - cfg->pts_h);
-
     return 0;
 }
 
@@ -236,7 +233,6 @@ static int xcap_init(XCapture *xc, int w, int h) {
 
     int screen = DefaultScreen(xc->dpy);
 
-    /* Check for XShm extension */
     if (!XShmQueryExtension(xc->dpy)) {
         fprintf(stderr, "XShm extension not available\n");
         XCloseDisplay(xc->dpy);
@@ -287,8 +283,7 @@ static int xcap_grab(XCapture *xc, int src_x, int src_y) {
 static void xcap_cleanup(XCapture *xc) {
     if (!xc->dpy) return;
     XShmDetach(xc->dpy, &xc->shminfo);
-    /* Prevent XDestroyImage from free()ing the shm pointer —
-     * shmdt handles that. */
+    /* Prevent XDestroyImage from free()ing the shm pointer — shmdt does. */
     xc->ximg->data = NULL;
     XDestroyImage(xc->ximg);
     shmdt(xc->shminfo.shmaddr);
@@ -296,370 +291,872 @@ static void xcap_cleanup(XCapture *xc) {
     xc->dpy = NULL;
 }
 
-/* ── Image processing ──────────────────────────────────────────────────────── */
+/* ── Images ────────────────────────────────────────────────────────────────── */
 
-/* Extract a grayscale + thresholded sub-region from XImage.
- * The XImage must cover the full area starting at src_x,src_y
- * (i.e., it was grabbed with those offsets). We extract a sub-rect
- * at (rx - src_x, ry - src_y) of size rw x rh.
- * Output: rw*rh bytes, 0 or 255. */
-static void extract_gate_region(XImage *ximg, int src_x, int src_y,
-                                int rx, int ry, int rw, int rh,
-                                unsigned char *out, int threshold)
-{
-    int bpp = ximg->bits_per_pixel / 8;
-    int ox = rx - src_x;
-    int oy = ry - src_y;
+/* A view of a full-monitor frame: XImage (BGRA) or a loaded PPM (RGB). */
+typedef struct {
+    const unsigned char *data;
+    int w, h, stride, bpp;
+    int ro, go, bo;  /* byte offsets of R, G, B within a pixel */
+} Frame;
 
-    for (int y = 0; y < rh; y++) {
-        unsigned char *row = (unsigned char *)ximg->data
-            + (oy + y) * ximg->bytes_per_line
-            + ox * bpp;
-        for (int x = 0; x < rw; x++) {
-            /* BGRA layout (typical X11 32-bit) */
-            int b = row[x * bpp + 0];
-            int g = row[x * bpp + 1];
-            int r = row[x * bpp + 2];
-            int gray = (r * 77 + g * 150 + b * 29) >> 8;
-            out[y * rw + x] = (gray > threshold) ? 255 : 0;
+typedef struct { int w, h; unsigned char *px; } BitMask;  /* 0/1 */
+typedef struct { int w, h; float *px; } FImg;          /* 0..1 */
+
+static inline const unsigned char *frame_px(const Frame *f, int x, int y) {
+    return f->data + (size_t)y * f->stride + (size_t)x * f->bpp;
+}
+
+/* INK_WHITE_POST: the post-match value is small, thin upright text on a
+ * saturated background, so it's masked at a lower brightness (150 vs 200) —
+ * at 200 its strokes break apart at 1080p. Mirrors POST_WHITE_MIN etc. */
+enum { INK_YELLOW, INK_WHITE, INK_WHITE_POST };
+
+/* Binary colour mask of a frame rect (mirrors yellow_mask / white_mask). */
+static void make_mask(const Frame *f, int x0, int y0, int w, int h,
+                      int which, BitMask *out) {
+    out->w = w; out->h = h;
+    out->px = malloc((size_t)w * h);
+    for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            const unsigned char *p = frame_px(f, x0 + x, y0 + y);
+            int r = p[f->ro], g = p[f->go], b = p[f->bo];
+            int on;
+            if (which == INK_YELLOW) {
+                on = r > 190 && g > 130 && b < 110 && r - b > 110;
+            } else {
+                int mn = r < g ? r : g;
+                if (b < mn) mn = b;
+                on = mn > (which == INK_WHITE_POST ? 150 : 200);
+            }
+            out->px[y * w + x] = (unsigned char)on;
         }
     }
 }
 
-/* Write a sub-region of XImage as a 24-bit BMP file.
- * Region is at (rx - src_x, ry - src_y) of size rw x rh. */
-static int write_region_bmp(const char *path, XImage *ximg,
-                            int src_x, int src_y,
-                            int rx, int ry, int rw, int rh)
-{
-    FILE *f = fopen(path, "wb");
-    if (!f) return -1;
+static inline float clamp01(float v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
 
-    int bpp_in = ximg->bits_per_pixel / 8;
-    int ox = rx - src_x;
-    int oy = ry - src_y;
-
-    int row_bytes = rw * 3;
-    int pad = (4 - (row_bytes % 4)) % 4;
-    int stride = row_bytes + pad;
-    int img_size = stride * rh;
-    int file_size = 54 + img_size;
-
-    /* BMP file header (14 bytes) */
-    unsigned char hdr[54] = {0};
-    hdr[0] = 'B'; hdr[1] = 'M';
-    hdr[2]  = file_size;        hdr[3]  = file_size >> 8;
-    hdr[4]  = file_size >> 16;  hdr[5]  = file_size >> 24;
-    hdr[10] = 54; /* pixel offset */
-
-    /* DIB header (40 bytes) */
-    hdr[14] = 40; /* header size */
-    hdr[18] = rw;        hdr[19] = rw >> 8;
-    hdr[20] = rw >> 16;  hdr[21] = rw >> 24;
-    hdr[22] = rh;        hdr[23] = rh >> 8;
-    hdr[24] = rh >> 16;  hdr[25] = rh >> 24;
-    hdr[26] = 1;  /* planes */
-    hdr[28] = 24; /* bpp */
-    hdr[34] = img_size;       hdr[35] = img_size >> 8;
-    hdr[36] = img_size >> 16; hdr[37] = img_size >> 24;
-
-    fwrite(hdr, 1, 54, f);
-
-    /* Pixel data: bottom-up row order */
-    unsigned char padding[3] = {0};
-    for (int y = rh - 1; y >= 0; y--) {
-        unsigned char *row = (unsigned char *)ximg->data
-            + (oy + y) * ximg->bytes_per_line
-            + ox * bpp_in;
-        for (int x = 0; x < rw; x++) {
-            /* XImage is BGRA, BMP is BGR */
-            unsigned char pixel[3];
-            pixel[0] = row[x * bpp_in + 0]; /* B */
-            pixel[1] = row[x * bpp_in + 1]; /* G */
-            pixel[2] = row[x * bpp_in + 2]; /* R */
-            fwrite(pixel, 1, 3, f);
+/* Soft ink of a frame rect (mirrors yellow_ink / white_ink). */
+static void make_ink(const Frame *f, int x0, int y0, int w, int h,
+                     int which, FImg *out) {
+    out->w = w; out->h = h;
+    out->px = malloc(sizeof(float) * (size_t)w * h);
+    for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            const unsigned char *p = frame_px(f, x0 + x, y0 + y);
+            int r = p[f->ro], g = p[f->go], b = p[f->bo];
+            float v;
+            if (which == INK_YELLOW) {
+                v = (float)(r - b - 60) / 120.0f;
+            } else {
+                int mn = r < g ? r : g;
+                if (b < mn) mn = b;
+                v = which == INK_WHITE_POST ? (float)(mn - 100) / 110.0f
+                                            : (float)(mn - 130) / 90.0f;
+            }
+            out->px[y * w + x] = clamp01(v);
         }
-        if (pad) fwrite(padding, 1, pad, f);
     }
+}
 
+/* Read a binary PGM (P5) or PPM (P6) with maxval 255. Returns malloc'd
+ * pixels or NULL. */
+static unsigned char *read_pnm(const char *path, const char *magic,
+                               int channels, int *w, int *h) {
+    FILE *f = fopen(path, "rb");
+    if (!f) return NULL;
+    char m[3] = {0};
+    int maxval = 0;
+    if (fscanf(f, "%2s", m) != 1 || strcmp(m, magic) != 0) { fclose(f); return NULL; }
+    int vals[3], n = 0;
+    while (n < 3) {
+        int c = fgetc(f);
+        if (c == EOF) { fclose(f); return NULL; }
+        if (c == '#') { while (c != '\n' && c != EOF) c = fgetc(f); continue; }
+        if (c >= '0' && c <= '9') {
+            ungetc(c, f);
+            if (fscanf(f, "%d", &vals[n]) != 1) { fclose(f); return NULL; }
+            n++;
+        }
+    }
+    *w = vals[0]; *h = vals[1]; maxval = vals[2];
+    fgetc(f);  /* single whitespace after maxval */
+    if (maxval != 255 || *w <= 0 || *h <= 0) { fclose(f); return NULL; }
+    size_t sz = (size_t)*w * *h * channels;
+    unsigned char *buf = malloc(sz);
+    if (!buf || fread(buf, 1, sz, f) != sz) { free(buf); fclose(f); return NULL; }
     fclose(f);
-    return 0;
+    return buf;
 }
 
-/* ── Tesseract gate ────────────────────────────────────────────────────────── */
+/* ── Templates ─────────────────────────────────────────────────────────────── */
 
-static int tess_gate_check(TessBaseAPI *api, unsigned char *gray, int w, int h) {
-    TessBaseAPISetPageSegMode(api, PSM_SINGLE_LINE);
-    TessBaseAPISetImage(api, gray, w, h, 1, w);
-    char *text = TessBaseAPIGetUTF8Text(api);
-    if (!text) return 0;
-
-    /* Case-insensitive search for "WORLD TOUR" */
-    int found = 0;
-    for (char *p = text; *p; p++) {
-        if (strncasecmp(p, "WORLD TOUR", 10) == 0) { found = 1; break; }
-    }
-    TessDeleteText(text);
-    return found;
-}
-
-/* ── OCR Daemon (Python EasyOCR) ───────────────────────────────────────────── */
+#define N_HEADERS 3
+#define N_POST_HEADERS 2
+#define N_POST_GLYPHS 11  /* 0-9 and "/" */
 
 typedef struct {
-    pid_t pid;
-    int   in_fd;   /* write image paths to daemon */
-    int   out_fd;  /* read OCR results from daemon */
-} OcrDaemon;
+    const char *name;   /* header_<name>.pgm / post_header_<name>.pgm */
+    const char *mode;   /* server mode, NULL = nothing to push */
+    int         loaded;
+    BitMask     m;
+} HeaderTmpl;
 
-static int daemon_start(OcrDaemon *d, const Config *cfg) {
-    char fifo_in[PATH_MAX], fifo_out[PATH_MAX];
-    snprintf(fifo_in,  PATH_MAX, "/tmp/st-ocr-in-%d",  getpid());
-    snprintf(fifo_out, PATH_MAX, "/tmp/st-ocr-out-%d", getpid());
+typedef struct {
+    BitMask modes;
+    HeaderTmpl headers[N_HEADERS];
+    float digits[10][DIGIT_H * DIGIT_W];
+    /* Post-match panel; post_ok = 0 if its templates aren't installed. */
+    int        post_ok;
+    HeaderTmpl post_headers[N_POST_HEADERS];
+    float      post_glyphs[N_POST_GLYPHS][DIGIT_H * DIGIT_W];
+} Templates;
 
-    unlink(fifo_in); unlink(fifo_out);
-    if (mkfifo(fifo_in, 0600) || mkfifo(fifo_out, 0600)) {
-        perror("mkfifo");
-        return -1;
-    }
+static const char POST_CHARS[N_POST_GLYPHS + 1] = "0123456789/";
+static const char DIGIT_CHARS[11] = "0123456789";
 
-    pid_t pid = fork();
-    if (pid < 0) { perror("fork"); return -1; }
-
-    if (pid == 0) {
-        /* Child: redirect stdin/stdout to FIFOs */
-        int fd_in  = open(fifo_in, O_RDONLY);
-        int fd_out = open(fifo_out, O_WRONLY);
-        if (fd_in < 0 || fd_out < 0) _exit(1);
-        dup2(fd_in, STDIN_FILENO);
-        dup2(fd_out, STDOUT_FILENO);
-        close(fd_in); close(fd_out);
-
-        /* Redirect stderr to log file */
-        char err_file[PATH_MAX];
-        snprintf(err_file, PATH_MAX, "%s.ocr_err", cfg->log_file);
-        FILE *ef = fopen(err_file, "w");
-        if (ef) { dup2(fileno(ef), STDERR_FILENO); fclose(ef); }
-
-        /* Prefer the installer-created venv (has EasyOCR); fall back to system python3 */
-        char venv_py[PATH_MAX];
-        snprintf(venv_py, PATH_MAX, "%s/.venv/bin/python3", cfg->script_dir);
-        if (access(venv_py, X_OK) == 0) {
-            execl(venv_py, "python3", cfg->ocr_script, "--daemon", (char *)NULL);
-            /* fall through on exec failure */
-        }
-        execlp("python3", "python3", cfg->ocr_script, "--daemon", (char *)NULL);
-        _exit(1);
-    }
-
-    /* Parent: open FIFOs (must open write-end first to avoid blocking) */
-    d->pid = pid;
-    d->in_fd  = open(fifo_in, O_WRONLY);
-    d->out_fd = open(fifo_out, O_RDONLY);
-    unlink(fifo_in);
-    unlink(fifo_out);
-
-    if (d->in_fd < 0 || d->out_fd < 0) {
-        fprintf(stderr, "Failed to open daemon FIFOs\n");
-        kill(pid, SIGTERM);
-        return -1;
-    }
-
-    /* Read READY signal — use raw read() to avoid buffered I/O
-     * consuming bytes meant for later daemon_query calls */
-    char ready[64];
-    int rpos = 0;
-    while (rpos < (int)sizeof(ready) - 1) {
-        ssize_t n = read(d->out_fd, &ready[rpos], 1);
-        if (n <= 0) {
-            fprintf(stderr, "Daemon did not send READY\n");
-            kill(pid, SIGTERM);
-            return -1;
-        }
-        if (ready[rpos] == '\n') break;
-        rpos++;
-    }
-    ready[rpos] = '\0';
-
-    if (strcmp(ready, "READY") != 0) {
-        fprintf(stderr, "Daemon sent unexpected: %s\n", ready);
-        kill(pid, SIGTERM);
-        return -1;
-    }
-
+static int load_mask(const char *path, BitMask *m) {
+    int w, h;
+    unsigned char *px = read_pnm(path, "P5", 1, &w, &h);
+    if (!px) return -1;
+    for (int i = 0; i < w * h; i++) px[i] = px[i] > 127;
+    m->w = w; m->h = h; m->px = px;
     return 0;
 }
 
-static int daemon_query(OcrDaemon *d, const char *msg,
-                        char *response, size_t maxlen)
-{
-    /* Send message */
-    dprintf(d->in_fd, "%s\n", msg);
-
-    /* Read response lines until sentinel */
-    size_t pos = 0;
-    response[0] = '\0';
-
-    /* We need line-buffered reading from a raw fd */
-    char ch;
-    char line[1024];
-    int line_pos = 0;
-
-    while (pos < maxlen - 1) {
-        ssize_t n = read(d->out_fd, &ch, 1);
-        if (n <= 0) return -1;
-
-        if (ch == '\n') {
-            line[line_pos] = '\0';
-            if (strcmp(line, SENTINEL) == 0)
-                break;
-
-            /* Append line to response */
-            if (pos > 0 && pos < maxlen - 1)
-                response[pos++] = '\n';
-            size_t ll = strlen(line);
-            if (pos + ll >= maxlen) ll = maxlen - 1 - pos;
-            memcpy(response + pos, line, ll);
-            pos += ll;
-            response[pos] = '\0';
-
-            line_pos = 0;
-        } else {
-            if (line_pos < (int)sizeof(line) - 1)
-                line[line_pos++] = ch;
-        }
-    }
-
-    return 0;
+static int dir_has_templates(const char *dir) {
+    char p[PATH_MAX];
+    snprintf(p, sizeof(p), "%s/modes_tab.pgm", dir);
+    return access(p, R_OK) == 0;
 }
 
-static void daemon_stop(OcrDaemon *d) {
-    if (d->in_fd >= 0)  close(d->in_fd);
-    if (d->out_fd >= 0) close(d->out_fd);
-    if (d->pid > 0) {
-        kill(d->pid, SIGTERM);
-        waitpid(d->pid, NULL, 0);
-    }
-}
-
-/* ── WTP Parser ────────────────────────────────────────────────────────────── */
-
-/* Case-insensitive strstr */
-static char *strcasestr_local(const char *haystack, const char *needle) {
-    size_t nlen = strlen(needle);
-    for (; *haystack; haystack++) {
-        if (strncasecmp(haystack, needle, nlen) == 0)
-            return (char *)haystack;
-    }
-    return NULL;
-}
-
-/* Strip commas and underscores from src into dst (so "15,053" -> "15053"). */
-static void strip_grouping(const char *src, char *dst, size_t dst_sz) {
-    size_t di = 0;
-    for (const char *p = src; *p && di + 1 < dst_sz; p++) {
-        if (*p != ',' && *p != '_')
-            dst[di++] = *p;
-    }
-    dst[di] = '\0';
-}
-
-/* Parse a "current / max" metric from OCR text. The metric is identified by a
- * header line containing hdr1 (or optional hdr2); the value follows on the same
- * or a subsequent line. Returns the current value, or -1 if not found.
- *   World Tour: parse_metric(text, "TOUR POINTS", "TOUR POINT", MAX_WTP)
- *   Ranked:     parse_metric(text, "RANK SCORE",  NULL,        MAX_RANK)
- */
-static int parse_metric(const char *text, const char *hdr1, const char *hdr2,
-                        int max_val) {
-    char buf[RESP_BUF_SIZE];
-    strncpy(buf, text, sizeof(buf) - 1);
-    buf[sizeof(buf) - 1] = '\0';
-
-    int found_header = 0;
-    int first_num = -1;
-
-    char *saveptr;
-    char *line = strtok_r(buf, "\n", &saveptr);
-
-    while (line) {
-        /* Trim whitespace */
-        while (*line && isspace(*line)) line++;
-        char *end = line + strlen(line) - 1;
-        while (end > line && isspace(*end)) { *end = '\0'; end--; }
-
-        /* Strip thousands separators so commas don't break number parsing */
-        char cleaned[128];
-        strip_grouping(line, cleaned, sizeof(cleaned));
-
-        if (found_header) {
-            /* Try "current / max" pattern */
-            int cur, max;
-            if (sscanf(cleaned, "%d / %d", &cur, &max) == 2 ||
-                sscanf(cleaned, "%d/ %d", &cur, &max) == 2 ||
-                sscanf(cleaned, "%d /%d", &cur, &max) == 2 ||
-                sscanf(cleaned, "%d/%d", &cur, &max) == 2) {
-                if (cur >= 0 && cur <= max_val && max >= 0 && max <= max_val) {
-                    return cur;
-                }
-            }
-
-            /* Try standalone number */
-            char *endp;
-            long val = strtol(cleaned, &endp, 10);
-            if (endp != cleaned && *endp == '\0' && val >= 0 && val <= max_val) {
-                if (first_num < 0) {
-                    first_num = (int)val;
-                } else {
-                    if (first_num <= (int)val)
-                        return first_num;
-                    first_num = (int)val;
-                }
-                line = strtok_r(NULL, "\n", &saveptr);
-                continue;
-            }
-
-            /* Non-numeric line after header — reset */
-            if (strlen(line) > 0) {
-                found_header = 0;
-                first_num = -1;
-            }
-            line = strtok_r(NULL, "\n", &saveptr);
-            continue;
-        }
-
-        /* Check for header */
-        if (strcasestr_local(line, hdr1) ||
-            (hdr2 && strcasestr_local(line, hdr2))) {
-            /* Try "current / max" on same line (after the header text) */
-            char *p = cleaned;
-            int cur, max;
-            while (*p) {
-                if (isdigit((unsigned char)*p)) {
-                    if (sscanf(p, "%d / %d", &cur, &max) == 2 ||
-                        sscanf(p, "%d/%d", &cur, &max) == 2) {
-                        if (cur >= 0 && cur <= max_val && max >= 0 && max <= max_val)
-                            return cur;
-                    }
-                    break;
-                }
-                p++;
-            }
-            found_header = 1;
-            first_num = -1;
-        }
-
-        line = strtok_r(NULL, "\n", &saveptr);
-    }
-
+/* Installed builds ship ./templates; a repo checkout keeps them in
+ * packages/tracker-templates. */
+static int find_templates_dir(const char *script_dir, char *out) {
+    snprintf(out, PATH_MAX, "%s/templates", script_dir);
+    if (dir_has_templates(out)) return 0;
+    snprintf(out, PATH_MAX, "%s/../tracker-templates", script_dir);
+    if (dir_has_templates(out)) return 0;
     return -1;
 }
 
-static int parse_wtp(const char *text) {
-    return parse_metric(text, "TOUR POINTS", "TOUR POINT", MAX_WTP);
+static void templates_free(Templates *t) {
+    free(t->modes.px);
+    for (int i = 0; i < N_HEADERS; i++)
+        if (t->headers[i].loaded) free(t->headers[i].m.px);
+    for (int i = 0; i < N_POST_HEADERS; i++)
+        if (t->post_headers[i].loaded) free(t->post_headers[i].m.px);
 }
 
-static int parse_rank(const char *text) {
-    return parse_metric(text, "RANK SCORE", "RANK SCORE", MAX_RANK);
+/* Load one DIGIT_H x DIGIT_W glyph template into out. */
+static int load_glyph(const char *path, float *out) {
+    int w, h;
+    unsigned char *px = read_pnm(path, "P5", 1, &w, &h);
+    if (!px || w != DIGIT_W || h != DIGIT_H) { free(px); return -1; }
+    for (int i = 0; i < DIGIT_W * DIGIT_H; i++) out[i] = px[i] / 255.0f;
+    free(px);
+    return 0;
+}
+
+/* Optional post-match templates; disables that screen if any are missing. */
+static void load_post_templates(Templates *t, const char *dir) {
+    static const char *names[N_POST_HEADERS] = { "world_tour", "ranked" };
+    static const char *modes[N_POST_HEADERS] = { "world-tour", "ranked" };
+    char p[PATH_MAX];
+    int any = 0;
+    for (int i = 0; i < N_POST_HEADERS; i++) {
+        t->post_headers[i].name = names[i];
+        t->post_headers[i].mode = modes[i];
+        snprintf(p, sizeof(p), "%s/post_header_%s.pgm", dir, names[i]);
+        t->post_headers[i].loaded = load_mask(p, &t->post_headers[i].m) == 0;
+        any |= t->post_headers[i].loaded;
+    }
+    int glyphs_ok = 1;
+    for (int g = 0; g < N_POST_GLYPHS; g++) {
+        if (g < 10) snprintf(p, sizeof(p), "%s/post_digit_%d.pgm", dir, g);
+        else        snprintf(p, sizeof(p), "%s/post_digit_slash.pgm", dir);
+        if (load_glyph(p, t->post_glyphs[g]) != 0) glyphs_ok = 0;
+    }
+    t->post_ok = any && glyphs_ok;
+}
+
+static int templates_load(Templates *t, const char *dir) {
+    static const char *names[N_HEADERS] = { "world_tour", "ranked", "placement" };
+    static const char *modes[N_HEADERS] = { "world-tour", "ranked", NULL };
+    char p[PATH_MAX];
+
+    memset(t, 0, sizeof(*t));
+    snprintf(p, sizeof(p), "%s/modes_tab.pgm", dir);
+    if (load_mask(p, &t->modes) != 0) {
+        logmsg("ERROR: cannot load %s", p);
+        return -1;
+    }
+    for (int i = 0; i < N_HEADERS; i++) {
+        t->headers[i].name = names[i];
+        t->headers[i].mode = modes[i];
+        snprintf(p, sizeof(p), "%s/header_%s.pgm", dir, names[i]);
+        t->headers[i].loaded = load_mask(p, &t->headers[i].m) == 0;
+    }
+    for (int d = 0; d < 10; d++) {
+        snprintf(p, sizeof(p), "%s/digit_%d.pgm", dir, d);
+        if (load_glyph(p, t->digits[d]) != 0) {
+            logmsg("ERROR: cannot load %s", p);
+            return -1;
+        }
+    }
+    load_post_templates(t, dir);
+    return 0;
+}
+
+/* ── Template matching ─────────────────────────────────────────────────────── */
+
+/* Nearest-neighbour resize of a 0/1 mask by factor s (mirrors scale_mask). */
+static void scale_mask(const BitMask *src, double s, BitMask *dst) {
+    int nh = (int)(src->h * s + 0.5), nw = (int)(src->w * s + 0.5);
+    if (nh < 1) nh = 1;
+    if (nw < 1) nw = 1;
+    dst->w = nw; dst->h = nh;
+    dst->px = malloc((size_t)nw * nh);
+    for (int y = 0; y < nh; y++) {
+        int sy = (int)((y + 0.5) / s);
+        if (sy > src->h - 1) sy = src->h - 1;
+        for (int x = 0; x < nw; x++) {
+            int sx = (int)((x + 0.5) / s);
+            if (sx > src->w - 1) sx = src->w - 1;
+            dst->px[y * nw + x] = src->px[sy * src->w + sx];
+        }
+    }
+}
+
+/* d x d block mean of a 0/1 mask, floor-cropped. */
+static double *block_mean(const BitMask *m, int d, int *ow, int *oh) {
+    *ow = m->w / d; *oh = m->h / d;
+    if (*ow < 1 || *oh < 1) return NULL;
+    double *out = calloc((size_t)*ow * *oh, sizeof(double));
+    for (int y = 0; y < *oh * d; y++)
+        for (int x = 0; x < *ow * d; x++)
+            out[(y / d) * *ow + x / d] += m->px[y * m->w + x];
+    for (int i = 0; i < *ow * *oh; i++) out[i] /= (double)(d * d);
+    return out;
+}
+
+/* Exact NCC of tmpl at (x, y) in a 0/1 mask. */
+static double ncc_at(const BitMask *img, const BitMask *t, int x, int y) {
+    double n = (double)t->w * t->h, sa = 0, sb = 0;
+    for (int j = 0; j < t->h; j++)
+        for (int i = 0; i < t->w; i++) {
+            sa += img->px[(y + j) * img->w + x + i];
+            sb += t->px[j * t->w + i];
+        }
+    double ma = sa / n, mb = sb / n, num = 0, va = 0, vb = 0;
+    for (int j = 0; j < t->h; j++)
+        for (int i = 0; i < t->w; i++) {
+            double a = img->px[(y + j) * img->w + x + i] - ma;
+            double b = t->px[j * t->w + i] - mb;
+            num += a * b; va += a * a; vb += b * b;
+        }
+    double den = sqrt(va * vb);
+    return den > 1e-9 ? num / den : 0.0;
+}
+
+/* Best (x, y, score) of a 0/1 template in a 0/1 mask: coarse NCC search on
+ * d-times downsampled copies, then exact refine within ±d px. */
+static double match_template(const BitMask *img, const BitMask *t, int d,
+                             int *bx, int *by) {
+    *bx = *by = 0;
+    if (t->h > img->h || t->w > img->w) return 0.0;
+
+    int cw, ch, tw, th, cx = 0, cy = 0;
+    double *cm = block_mean(img, d, &cw, &ch);
+    double *ct = block_mean(t, d, &tw, &th);
+    if (cm && ct && th <= ch && tw <= cw) {
+        int n = tw * th;
+        double tmean = 0, tnorm = 0;
+        for (int i = 0; i < n; i++) tmean += ct[i];
+        tmean /= n;
+        for (int i = 0; i < n; i++) ct[i] -= tmean, tnorm += ct[i] * ct[i];
+        tnorm = sqrt(tnorm);
+        double best = -INFINITY;
+        for (int oy = 0; oy + th <= ch; oy++) {
+            for (int ox = 0; ox + tw <= cw; ox++) {
+                double num = 0, s1 = 0, s2 = 0;
+                for (int j = 0; j < th; j++) {
+                    const double *row = cm + (oy + j) * cw + ox;
+                    const double *trow = ct + j * tw;
+                    for (int i = 0; i < tw; i++) {
+                        num += trow[i] * row[i];
+                        s1 += row[i];
+                        s2 += row[i] * row[i];
+                    }
+                }
+                double var = s2 - s1 * s1 / n;
+                if (var < 0) var = 0;
+                double den = sqrt(var) * tnorm;
+                double sc = den > 1e-9 ? num / den : 0.0;
+                if (sc > best) { best = sc; cx = ox; cy = oy; }
+            }
+        }
+    }
+    free(cm);
+    free(ct);
+
+    double best = -1.0;
+    int ylo = cy * d - d < 0 ? 0 : cy * d - d;
+    int yhi = cy * d + d < img->h - t->h ? cy * d + d : img->h - t->h;
+    int xlo = cx * d - d < 0 ? 0 : cx * d - d;
+    int xhi = cx * d + d < img->w - t->w ? cx * d + d : img->w - t->w;
+    for (int y = ylo; y <= yhi; y++)
+        for (int x = xlo; x <= xhi; x++) {
+            double sc = ncc_at(img, t, x, y);
+            if (sc > best) { best = sc; *bx = x; *by = y; }
+        }
+    return best;
+}
+
+/* ── Glyphs ────────────────────────────────────────────────────────────────── */
+
+typedef struct { int x0, y0, x1, y1, id; } Comp;  /* x1/y1 exclusive */
+
+/* 8-connected components of a 0/1 mask, sorted left to right (stable).
+ * labels[] receives component ids (0 = background). Returns the count. */
+static int components(const BitMask *m, int *labels, Comp *out, int max_out) {
+    int w = m->w, h = m->h, n = 0;
+    memset(labels, 0, sizeof(int) * (size_t)w * h);
+    int *stack = malloc(sizeof(int) * (size_t)w * h);
+    for (int sy = 0; sy < h; sy++) {
+        for (int sx = 0; sx < w; sx++) {
+            if (!m->px[sy * w + sx] || labels[sy * w + sx]) continue;
+            if (n >= max_out) { free(stack); goto sorted; }
+            int id = n + 1, top = 0;
+            Comp c = { sx, sy, sx + 1, sy + 1, id };
+            labels[sy * w + sx] = id;
+            stack[top++] = sy * w + sx;
+            while (top) {
+                int p = stack[--top], y = p / w, x = p % w;
+                if (x < c.x0) c.x0 = x;
+                if (x + 1 > c.x1) c.x1 = x + 1;
+                if (y < c.y0) c.y0 = y;
+                if (y + 1 > c.y1) c.y1 = y + 1;
+                for (int ny = y - 1; ny <= y + 1; ny++) {
+                    if (ny < 0 || ny >= h) continue;
+                    for (int nx = x - 1; nx <= x + 1; nx++) {
+                        if (nx < 0 || nx >= w) continue;
+                        int q = ny * w + nx;
+                        if (m->px[q] && !labels[q]) {
+                            labels[q] = id;
+                            stack[top++] = q;
+                        }
+                    }
+                }
+            }
+            out[n++] = c;
+        }
+    }
+    free(stack);
+sorted:
+    /* Stable insertion sort by x0 */
+    for (int i = 1; i < n; i++) {
+        Comp c = out[i];
+        int j = i - 1;
+        while (j >= 0 && out[j].x0 > c.x0) { out[j + 1] = out[j]; j--; }
+        out[j + 1] = c;
+    }
+    return n;
+}
+
+/* Soft ink inside a component's bbox, limited to the component grown by one
+ * pixel (mirrors glyph_image). Writes into g (bbox-sized). */
+static void glyph_image(const FImg *ink, const int *labels, const Comp *c,
+                        float *g) {
+    int gw = c->x1 - c->x0, gh = c->y1 - c->y0;
+    for (int y = 0; y < gh; y++) {
+        for (int x = 0; x < gw; x++) {
+            int grown = 0;
+            for (int dy = -1; dy <= 1 && !grown; dy++) {
+                int yy = y + dy;
+                if (yy < 0 || yy >= gh) continue;
+                for (int dx = -1; dx <= 1; dx++) {
+                    int xx = x + dx;
+                    if (xx < 0 || xx >= gw) continue;
+                    if (labels[(c->y0 + yy) * ink->w + c->x0 + xx] == c->id) {
+                        grown = 1;
+                        break;
+                    }
+                }
+            }
+            g[y * gw + x] = grown ? ink->px[(c->y0 + y) * ink->w + c->x0 + x] : 0.0f;
+        }
+    }
+}
+
+/* Scale a glyph image to DIGIT_H tall on a DIGIT_H x DIGIT_W canvas (mirrors
+ * normalize_glyph: 4x4 nearest-neighbour supersampling per output pixel). */
+static void normalize_glyph(const float *g, int w, int h, float *out) {
+    int nw = (int)(w * (double)DIGIT_H / h + 0.5);
+    if (nw < 1) nw = 1;
+    if (nw > DIGIT_W) nw = DIGIT_W;
+    int off = (DIGIT_W - nw) / 2;
+    memset(out, 0, sizeof(float) * DIGIT_H * DIGIT_W);
+    for (int oy = 0; oy < DIGIT_H; oy++) {
+        int sy[4];
+        for (int k = 0; k < 4; k++) {
+            sy[k] = (int)((oy + (k + 0.5) / 4.0) * h / DIGIT_H);
+            if (sy[k] > h - 1) sy[k] = h - 1;
+        }
+        for (int ox = 0; ox < nw; ox++) {
+            int sx[4];
+            for (int k = 0; k < 4; k++) {
+                sx[k] = (int)((ox + (k + 0.5) / 4.0) * w / nw);
+                if (sx[k] > w - 1) sx[k] = w - 1;
+            }
+            float sum = 0;
+            for (int a = 0; a < 4; a++)
+                for (int b = 0; b < 4; b++)
+                    sum += g[sy[a] * w + sx[b]];
+            out[oy * DIGIT_W + ox + off] = sum / 16.0f;
+        }
+    }
+}
+
+static double ncc_f(const float *a, const float *b, int n) {
+    double ma = 0, mb = 0;
+    for (int i = 0; i < n; i++) { ma += a[i]; mb += b[i]; }
+    ma /= n; mb /= n;
+    double num = 0, va = 0, vb = 0;
+    for (int i = 0; i < n; i++) {
+        double x = a[i] - ma, y = b[i] - mb;
+        num += x * y; va += x * x; vb += y * y;
+    }
+    double den = sqrt(va * vb);
+    return den > 1e-9 ? num / den : 0.0;
+}
+
+/* Classify one glyph against a template set. Returns its index, or -1 if
+ * not confident. */
+static int classify_glyph(const float (*set)[DIGIT_H * DIGIT_W], int nset,
+                          const FImg *ink, const int *labels,
+                          const Comp *c, double *best_out, double *second_out) {
+    int gw = c->x1 - c->x0, gh = c->y1 - c->y0;
+    float *g = malloc(sizeof(float) * (size_t)gw * gh);
+    float norm[DIGIT_H * DIGIT_W];
+    glyph_image(ink, labels, c, g);
+    normalize_glyph(g, gw, gh, norm);
+    free(g);
+
+    double best = -2, second = -2;
+    int bd = -1;
+    for (int d = 0; d < nset; d++) {
+        double sc = ncc_f(norm, set[d], DIGIT_H * DIGIT_W);
+        if (sc > best) { second = best; best = sc; bd = d; }
+        else if (sc > second) second = sc;
+    }
+    *best_out = best; *second_out = second;
+    if (best < DIGIT_MIN || best - second < DIGIT_MARGIN) return -1;
+    return bd;
+}
+
+static int digit_like(const Comp *c, double s) {
+    int w = c->x1 - c->x0, h = c->y1 - c->y0;
+    return h >= 14 * s && h <= 32 * s && w <= h;
+}
+
+/* Classify a left-to-right run of glyphs into text (mirrors read_glyphs):
+ * stops at a gap wider than a glyph height or a glyph of a different height.
+ * Returns the length, or -1 with a reason in info. */
+#define MAX_TEXT 24
+static int read_glyphs(const float (*set)[DIGIT_H * DIGIT_W], const char *chars,
+                       int nset, const Comp *comps, int n,
+                       const FImg *ink, const int *labels,
+                       char *out, char *info, size_t info_sz) {
+    int len = 0, prev_x1 = -1;
+    int first_h = n > 0 ? comps[0].y1 - comps[0].y0 : 0;
+    for (int i = 0; i < n; i++) {
+        const Comp *c = &comps[i];
+        int h = c->y1 - c->y0;
+        if (prev_x1 >= 0 && c->x0 - prev_x1 > h * 1.2) break;
+        if (abs(h - first_h) > first_h * 0.15) break;  /* e.g. heart icon */
+        double best, second;
+        int d = classify_glyph(set, nset, ink, labels, c, &best, &second);
+        if (d < 0) {
+            snprintf(info, info_sz, "unrecognised glyph #%d (best %.2f, next %.2f)",
+                     len + 1, best, second);
+            return -1;
+        }
+        if (len >= MAX_TEXT) {
+            snprintf(info, info_sz, "too many glyphs");
+            return -1;
+        }
+        out[len++] = chars[d];
+        prev_x1 = c->x1;
+    }
+    if (!len) { snprintf(info, info_sz, "no digits"); return -1; }
+    out[len] = '\0';
+    snprintf(info, info_sz, "%s", out);
+    return len;
+}
+
+/* A run of MODES digits as one number. Returns the value or -1. */
+static long read_number(const Templates *t, const Comp *comps, int n,
+                        const FImg *ink, const int *labels,
+                        char *info, size_t info_sz) {
+    char out[MAX_TEXT + 1];
+    int len = read_glyphs((const float (*)[DIGIT_H * DIGIT_W])t->digits, DIGIT_CHARS, 10,
+                          comps, n, ink, labels, out, info, info_sz);
+    if (len < 0) return -1;
+    if (len > MAX_DIGITS) { snprintf(info, info_sz, "too many digits"); return -1; }
+    return strtol(out, NULL, 10);
+}
+
+/* ── Screen read ───────────────────────────────────────────────────────────── */
+
+typedef struct {
+    int    post;                        /* 1 = read from the post-match panel */
+    int    on_modes;
+    double gate_score;
+    int    header;                      /* index into headers (or post_headers), -1 */
+    double header_scores[N_HEADERS];    /* -2 = template not loaded */
+    long   value, max_value;            /* -1 = none */
+    char   verdict[256];
+} Reading;
+
+static int imin(int a, int b) { return a < b ? a : b; }
+static int imax(int a, int b) { return a > b ? a : b; }
+
+/* Collect digit-like comps; if min_x0 >= 0 also require x0 >= min_x0. */
+static int filter_digits(const Comp *in, int n, double s, int min_x0, Comp *out) {
+    int k = 0;
+    for (int i = 0; i < n; i++)
+        if (digit_like(&in[i], s) && (min_x0 < 0 || in[i].x0 >= min_x0))
+            out[k++] = in[i];
+    return k;
+}
+
+/* Top-left zone the MODES tab is searched in (mirrors gate_zone). The tab
+ * sits at x~270-413, y 0-85 at 1440p; the extra width allows for a shifted
+ * nav bar (e.g. ultrawide). ~3% of the screen, so the main loop grabs just
+ * this zone each poll and the full frame only on a hit. */
+static void gate_zone(int screen_w, int screen_h, int *zw, int *zh) {
+    double s = (double)screen_h / REF_H;
+    *zw = imin(screen_w, (int)(960 * s));
+    *zh = imin(screen_h, (int)(130 * s));
+}
+
+/* MODES-tab match score. f is the full monitor or just its gate zone;
+ * screen_h is the monitor height (sets the template scale). */
+static double check_gate(const Frame *f, const Templates *t, int screen_h) {
+    double s = (double)screen_h / REF_H;
+    int zw, zh, bx, by;
+    gate_zone(f->w, screen_h, &zw, &zh);
+    zh = imin(zh, f->h);
+    BitMask region, tm;
+    make_mask(f, 0, 0, zw, zh, INK_YELLOW, &region);
+
+    /* Pre-check: without roughly a tab's worth of yellow in the zone (e.g.
+     * mid-match) skip the template match entirely. */
+    long have = 0, tab = 0;
+    for (int i = 0; i < zw * zh; i++) have += region.px[i];
+    for (int i = 0; i < t->modes.w * t->modes.h; i++) tab += t->modes.px[i];
+    if (have < GATE_MIN_YELLOW * tab * s * s) {
+        free(region.px);
+        return 0.0;
+    }
+
+    scale_mask(&t->modes, s, &tm);
+    double score = match_template(&region, &tm, imax(1, (int)(4 * s)), &bx, &by);
+    free(region.px);
+    free(tm.px);
+    return score;
+}
+
+/* ── Post-match panel ──────────────────────────────────────────────────────── */
+
+/* Centre zone holding the post-match "WORLD TOUR SCORE" header and value
+ * (mirrors post_zone). At 1440p the header sits at x 1130-1437, y 654-683
+ * and the value just below it. ~4% of the screen. */
+static void post_zone(int screen_w, int screen_h, int *x, int *y, int *w, int *h) {
+    double s = (double)screen_h / REF_H;
+    int x0 = imax(0, (int)(screen_w / 2.0 - 360 * s));
+    int y0 = imax(0, (int)(screen_h / 2.0 - 150 * s));
+    int x1 = imin(screen_w, (int)(screen_w / 2.0 + 360 * s));
+    int y1 = imin(screen_h, (int)(screen_h / 2.0 + 60 * s));
+    *x = x0; *y = y0; *w = x1 - x0; *h = y1 - y0;
+}
+
+static void reading_init(Reading *r) {
+    memset(r, 0, sizeof(*r));
+    r->header = -1;
+    r->value = r->max_value = -1;
+    for (int i = 0; i < N_HEADERS; i++) r->header_scores[i] = -2;
+}
+
+/* Read the post-match panel from its post_zone() crop (mirrors read_post).
+ * r->post is set as soon as the header is found, even if the value can't be
+ * read yet (still counting up / fading in) — the loop polls faster then. */
+static void read_post(const Frame *z, const Templates *t, int screen_h, Reading *r) {
+    reading_init(r);
+    if (!t->post_ok) {
+        snprintf(r->verdict, sizeof(r->verdict), "post-match templates not installed");
+        return;
+    }
+    double s = (double)screen_h / REF_H;
+    if (s < MIN_SCALE) {
+        snprintf(r->verdict, sizeof(r->verdict), "resolution too low for the post-match panel");
+        return;
+    }
+
+    BitMask wmask;
+    make_mask(z, 0, 0, z->w, z->h, INK_WHITE, &wmask);
+
+    /* Pre-check: the header alone is a lot of white. */
+    long have = 0, need = -1;
+    for (int i = 0; i < wmask.w * wmask.h; i++) have += wmask.px[i];
+    for (int i = 0; i < N_POST_HEADERS; i++) {
+        if (!t->post_headers[i].loaded) continue;
+        long c = 0;
+        const BitMask *m = &t->post_headers[i].m;
+        for (int k = 0; k < m->w * m->h; k++) c += m->px[k];
+        if (need < 0 || c < need) need = c;
+    }
+    if (have < POST_MIN_WHITE * need * s * s) {
+        free(wmask.px);
+        snprintf(r->verdict, sizeof(r->verdict), "no post-match panel");
+        return;
+    }
+
+    int d = imax(1, (int)(4 * s));
+    int best = -1, hx = 0, hy = 0, tw = 0, th = 0, bx, by;
+    double best_sc = 0;
+    for (int i = 0; i < N_POST_HEADERS; i++) {
+        if (!t->post_headers[i].loaded) continue;
+        BitMask tm;
+        scale_mask(&t->post_headers[i].m, s, &tm);
+        double sc = match_template(&wmask, &tm, d, &bx, &by);
+        r->header_scores[i] = sc;
+        if (sc >= HEADER_MIN && (best < 0 || sc > best_sc)) {
+            best = i; best_sc = sc; hx = bx; hy = by; tw = tm.w; th = tm.h;
+        }
+        free(tm.px);
+    }
+    free(wmask.px);
+    if (best < 0) {
+        snprintf(r->verdict, sizeof(r->verdict), "no post-match panel");
+        return;
+    }
+    r->post = 1;
+    r->header = best;
+    const char *name = t->post_headers[best].name;
+
+    /* Value row just under the header: "5,736/8,000" in white. */
+    int vx0 = imax(0, (int)(hx - 60 * s));
+    int vx1 = imin(z->w, (int)(hx + tw + 60 * s));
+    int vy0 = (int)(hy + th + 2 * s);
+    int vy1 = imin(z->h, (int)(hy + th + 50 * s));
+    if (vx1 <= vx0 || vy1 <= vy0) {
+        snprintf(r->verdict, sizeof(r->verdict),
+                 "post-match '%s' panel, value not visible yet", name);
+        return;
+    }
+    int vw = vx1 - vx0, vh = vy1 - vy0;
+    BitMask vm;
+    FImg ink;
+    make_mask(z, vx0, vy0, vw, vh, INK_WHITE_POST, &vm);
+    make_ink(z, vx0, vy0, vw, vh, INK_WHITE_POST, &ink);
+    int *lab = malloc(sizeof(int) * (size_t)vw * vh);
+    Comp *all = malloc(sizeof(Comp) * MAX_COMPS);
+    Comp *dig = malloc(sizeof(Comp) * MAX_COMPS);
+    char text[MAX_TEXT + 1], info[128];
+
+    int n = components(&vm, lab, all, MAX_COMPS);
+    int nd = filter_digits(all, n, s, -1, dig);
+    if (nd == 0) {
+        snprintf(r->verdict, sizeof(r->verdict),
+                 "post-match '%s' panel, value not visible yet", name);
+        goto done;
+    }
+    if (read_glyphs((const float (*)[DIGIT_H * DIGIT_W])t->post_glyphs, POST_CHARS,
+                    N_POST_GLYPHS, dig, nd, &ink, lab, text, info, sizeof(info)) < 0) {
+        snprintf(r->verdict, sizeof(r->verdict),
+                 "post-match '%s' value unreadable: %s", name, info);
+        goto done;
+    }
+    /* Expect "<digits>/<digits>" */
+    char *slash = strchr(text, '/');
+    int ok = slash && slash != text && slash[1] && !strchr(slash + 1, '/');
+    if (ok) {
+        *slash = '\0';
+        int lc = (int)strlen(text), lm = (int)strlen(slash + 1);
+        ok = lc <= MAX_DIGITS && lm <= MAX_DIGITS;
+        if (!ok) *slash = '/';
+    }
+    if (!ok) {
+        snprintf(r->verdict, sizeof(r->verdict),
+                 "post-match '%s' value malformed: '%s'", name, text);
+        goto done;
+    }
+    long value = strtol(text, NULL, 10), max_value = strtol(slash + 1, NULL, 10);
+    if (value > max_value) {
+        snprintf(r->verdict, sizeof(r->verdict),
+                 "post-match '%s' read %ld / %ld — current > max, rejecting",
+                 name, value, max_value);
+        goto done;
+    }
+    r->value = value;
+    r->max_value = max_value;
+    snprintf(r->verdict, sizeof(r->verdict), "post-match %s: %ld / %ld",
+             name, value, max_value);
+done:
+    free(vm.px); free(ink.px); free(lab); free(all); free(dig);
+}
+
+/* Server mode of a reading, or NULL. */
+static const char *reading_mode(const Templates *t, const Reading *r) {
+    if (r->header < 0) return NULL;
+    return r->post ? t->post_headers[r->header].mode : t->headers[r->header].mode;
+}
+
+static const char *reading_header_name(const Templates *t, const Reading *r, int i) {
+    return r->post ? t->post_headers[i].name : t->headers[i].name;
+}
+
+/* Gate -> header -> value pipeline on one full-monitor frame
+ * (mirrors read_frame in screen_reader.py). */
+static void read_frame(const Frame *f, const Templates *t, Reading *r) {
+    reading_init(r);
+
+    int W = f->w, H = f->h;
+    double s = (double)H / REF_H;
+    int d = imax(1, (int)(4 * s));
+    int bx, by;
+
+    /* 1. Gate: yellow MODES tab, top-left */
+    r->gate_score = check_gate(f, t, H);
+    r->on_modes = r->gate_score >= GATE_MIN;
+    if (!r->on_modes) {
+        /* Not the lobby — maybe the post-match score panel. */
+        double gate = r->gate_score;
+        int px, py, pw, ph;
+        post_zone(W, H, &px, &py, &pw, &ph);
+        Frame z = { frame_px(f, px, py), pw, ph, f->stride, f->bpp, f->ro, f->go, f->bo };
+        read_post(&z, t, H, r);
+        r->gate_score = gate;
+        if (r->post) return;
+        reading_init(r);
+        r->gate_score = gate;
+        snprintf(r->verdict, sizeof(r->verdict),
+                 "not on the MODES tab (tab match %.2f)", r->gate_score);
+        return;
+    }
+
+    /* 2. Header: bottom-centre panel, anchored on the screen centre */
+    int rx0 = imax(0, (int)(W / 2.0 - 640 * s));
+    int rx1 = imin(W, (int)(W / 2.0 + 640 * s));
+    int ry0 = imax(0, (int)(H - 380 * s));
+    int rw = rx1 - rx0, rh = H - ry0;
+
+    BitMask wmask;
+    make_mask(f, rx0, ry0, rw, rh, INK_WHITE, &wmask);
+    int best = -1, hx = 0, hy = 0, tw = 0, th = 0;
+    double best_sc = 0;
+    for (int i = 0; i < N_HEADERS; i++) {
+        if (!t->headers[i].loaded) continue;
+        BitMask tm;
+        scale_mask(&t->headers[i].m, s, &tm);
+        double sc = match_template(&wmask, &tm, d, &bx, &by);
+        r->header_scores[i] = sc;
+        if (sc >= HEADER_MIN && (best < 0 || sc > best_sc)) {
+            best = i; best_sc = sc; hx = bx; hy = by; tw = tm.w; th = tm.h;
+        }
+        free(tm.px);
+    }
+    free(wmask.px);
+
+    if (best < 0) {
+        char scores[160] = "";
+        size_t len = 0;
+        for (int i = 0; i < N_HEADERS; i++) {
+            if (!t->headers[i].loaded) continue;
+            len += snprintf(scores + len, sizeof(scores) - len, "%s%s %.2f",
+                            len ? ", " : "", t->headers[i].name, r->header_scores[i]);
+            if (len >= sizeof(scores)) break;
+        }
+        snprintf(r->verdict, sizeof(r->verdict),
+                 "on MODES, but no known score header (%s)", scores);
+        return;
+    }
+
+    r->header = best;
+    const char *name = t->headers[best].name;
+    if (!t->headers[best].mode) {
+        snprintf(r->verdict, sizeof(r->verdict), "'%s' panel — nothing to record", name);
+        return;
+    }
+
+    if (s < MIN_SCALE) {
+        snprintf(r->verdict, sizeof(r->verdict),
+                 "'%s' found, but %dx%d is too low to read digits (need 900p+)", name, W, H);
+        return;
+    }
+
+    /* 3. Value row under the header: yellow current, then white "/ max" */
+    int vx0 = imax(0, (int)(hx - 40 * s));
+    int vx1 = imin(rw, (int)(hx + tw + 40 * s));
+    int vy0 = (int)(hy + th + 2 * s);
+    int vy1 = imin(rh, (int)(hy + th + 42 * s));
+    if (vx1 <= vx0 || vy1 <= vy0) {
+        snprintf(r->verdict, sizeof(r->verdict),
+                 "'%s' header found, but no yellow value under it", name);
+        return;
+    }
+    int ox = rx0 + vx0, oy = ry0 + vy0, vw = vx1 - vx0, vh = vy1 - vy0;
+
+    BitMask ym, wm;
+    FImg yink, wink;
+    make_mask(f, ox, oy, vw, vh, INK_YELLOW, &ym);
+    make_mask(f, ox, oy, vw, vh, INK_WHITE, &wm);
+    make_ink(f, ox, oy, vw, vh, INK_YELLOW, &yink);
+    make_ink(f, ox, oy, vw, vh, INK_WHITE, &wink);
+    int *ylab = malloc(sizeof(int) * (size_t)vw * vh);
+    int *wlab = malloc(sizeof(int) * (size_t)vw * vh);
+    Comp *all = malloc(sizeof(Comp) * MAX_COMPS);
+    Comp *ycomps = malloc(sizeof(Comp) * MAX_COMPS);
+    Comp *wcomps = malloc(sizeof(Comp) * MAX_COMPS);
+    char info[128];
+
+    int n = components(&ym, ylab, all, MAX_COMPS);
+    int ny = filter_digits(all, n, s, -1, ycomps);
+    if (ny == 0) {
+        snprintf(r->verdict, sizeof(r->verdict),
+                 "'%s' header found, but no yellow value under it", name);
+        goto done;
+    }
+    long value = read_number(t, ycomps, ny, &yink, ylab, info, sizeof(info));
+    if (value < 0) {
+        snprintf(r->verdict, sizeof(r->verdict), "'%s' value unreadable: %s", name, info);
+        goto done;
+    }
+
+    /* Max: white glyphs right of the current value; the first is the "/" */
+    n = components(&wm, wlab, all, MAX_COMPS);
+    int nw = filter_digits(all, n, s, ycomps[ny - 1].x1, wcomps);
+    long max_value = -1;
+    if (nw >= 2)
+        max_value = read_number(t, wcomps + 1, nw - 1, &wink, wlab, info, sizeof(info));
+    if (max_value >= 0 && value > max_value) {
+        snprintf(r->verdict, sizeof(r->verdict),
+                 "'%s' read %ld / %ld — current > max, rejecting", name, value, max_value);
+        goto done;
+    }
+
+    r->value = value;
+    r->max_value = max_value;
+    if (max_value >= 0)
+        snprintf(r->verdict, sizeof(r->verdict), "%s: %ld / %ld", name, value, max_value);
+    else
+        snprintf(r->verdict, sizeof(r->verdict), "%s: %ld", name, value);
+
+done:
+    free(ym.px); free(wm.px); free(yink.px); free(wink.px);
+    free(ylab); free(wlab); free(all); free(ycomps); free(wcomps);
 }
 
 /* ── HTTP API ──────────────────────────────────────────────────────────────── */
@@ -669,7 +1166,7 @@ static size_t curl_discard(void *ptr, size_t size, size_t nmemb, void *ud) {
     return size * nmemb;
 }
 
-static int push_record(const Config *cfg, const char *mode, int win_points) {
+static int push_record(const Config *cfg, const char *mode, long win_points) {
     time_t now = time(NULL);
     struct tm tm;
     localtime_r(&now, &tm);
@@ -678,7 +1175,7 @@ static int push_record(const Config *cfg, const char *mode, int win_points) {
 
     char body[256];
     snprintf(body, sizeof(body),
-             "{\"date\":\"%s\",\"winPoints\":%d,\"mode\":\"%s\"}",
+             "{\"date\":\"%s\",\"winPoints\":%ld,\"mode\":\"%s\"}",
              date, win_points, mode);
 
     char url[600];
@@ -714,7 +1211,7 @@ static int push_record(const Config *cfg, const char *mode, int win_points) {
     }
 
     if (http_code == 200 || http_code == 201) {
-        logmsg("Pushed %s winPoints=%d for %s (HTTP %ld)",
+        logmsg("Pushed %s winPoints=%ld for %s (HTTP %ld)",
                mode, win_points, date, http_code);
         return 0;
     }
@@ -725,59 +1222,99 @@ static int push_record(const Config *cfg, const char *mode, int win_points) {
 
 /* ── State file ────────────────────────────────────────────────────────────── */
 
-static int read_state(const char *path) {
+static long read_state(const char *path) {
     FILE *f = fopen(path, "r");
     if (!f) return -1;
-    int val = -1;
-    fscanf(f, "%d", &val);
+    long val = -1;
+    if (fscanf(f, "%ld", &val) != 1) val = -1;
     fclose(f);
     return val;
 }
 
-static void write_state(const char *path, int val) {
+static void write_state(const char *path, long val) {
     FILE *f = fopen(path, "w");
-    if (f) { fprintf(f, "%d\n", val); fclose(f); }
+    if (f) { fprintf(f, "%ld\n", val); fclose(f); }
 }
 
-/* ── Per-mode tracking ─────────────────────────────────────────────────────────
- * The points screen shows World Tour Points or Rank Score depending on the
- * selected tab. Each mode rests independently after its value is confirmed, so
- * we stop re-reading it while the loop keeps running for the other mode. Only
- * when BOTH modes are resting does the loop take the long sleep. */
-
-#define COOLDOWN_SECS    300  /* per-mode rest after a confirmed read */
-#define CONFIRM_READS    2    /* consecutive reads before a mode rests */
+/* ── Per-(screen, mode) tracking ───────────────────────────────────────────────
+ * World Tour / Ranked are each read from two screens: the MODES tab and the
+ * post-match panel. Each pair has its own streak: a value is pushed once
+ * it's been read identically `confirm` times in a row, then that pair rests
+ * for `rest` seconds. Separate pairs mean a MODES confirmation never hides
+ * the next post-match result. */
 
 typedef struct {
     const char *name;        /* human label for logs */
     const char *mode;        /* mode string posted to the server */
     const char *state_file;  /* last-pushed value path */
     time_t      rest_until;  /* dormant until this time (0 = active) */
-    int         reads;       /* consecutive successful reads */
+    int         reads;       /* identical reads in a row */
+    long        last_val;    /* value of the current streak, -1 = none */
+    int         confirm;     /* identical reads needed */
+    int         rest;        /* seconds to rest after confirming */
 } ModeState;
 
-/* Process one frame for a mode. value < 0 means its header wasn't on screen.
- * A mode goes to rest once its value is confirmed; until then the loop keeps
- * polling so a mode switch is picked up within a cycle. Returns 1 if read. */
-static int handle_mode(const Config *cfg, ModeState *m, int value, time_t now) {
-    if (value < 0) {
-        m->reads = 0;
-        return 0;
-    }
+static void handle_read(const Config *cfg, ModeState *m, long value, time_t now,
+                        double ms) {
+    if (now < m->rest_until) return;
 
-    int last = read_state(m->state_file);
+    if (value == m->last_val) {
+        m->reads++;
+    } else {
+        m->reads = 1;
+        m->last_val = value;
+    }
+    logq("%s=%ld read #%d | %.0fms", m->name, value, m->reads, ms);
+
+    if (m->reads < m->confirm) return;
+
+    long last = read_state(m->state_file);
     if (value != last) {
-        logmsg("%s changed: %d -> %d", m->name, last, value);
+        logmsg("%s changed: %ld -> %ld", m->name, last, value);
         if (push_record(cfg, m->mode, value) == 0)
             write_state(m->state_file, value);
     }
+    m->rest_until = now + m->rest;
+    m->reads = 0;
+    m->last_val = -1;
+    logmsg("%s confirmed (%ld). Resting %ds.", m->name, value, m->rest);
+}
 
-    if (++m->reads >= CONFIRM_READS) {
-        m->rest_until = now + COOLDOWN_SECS;
-        m->reads = 0;
-        logmsg("%s confirmed (%d). Resting %ds.", m->name, value, COOLDOWN_SECS);
+/* ── --read: one screenshot ────────────────────────────────────────────────── */
+
+static int read_file(const char *path) {
+    char dir[PATH_MAX];
+    Templates t;
+    if (find_templates_dir(g_cfg.script_dir, dir) != 0 || templates_load(&t, dir) != 0) {
+        fprintf(stderr, "ERROR: templates not found next to the binary\n");
+        return 1;
     }
-    return 1;
+    int w, h;
+    unsigned char *px = read_pnm(path, "P6", 3, &w, &h);
+    if (!px) {
+        fprintf(stderr, "ERROR: %s is not a binary (P6) PPM\n", path);
+        return 1;
+    }
+    Frame f = { px, w, h, w * 3, 3, 0, 1, 2 };
+    Reading r;
+    double t0 = now_ms();
+    read_frame(&f, &t, &r);
+    double ms = now_ms() - t0;
+
+    printf("gate %.3f  headers {", r.gate_score);
+    int first = 1;
+    for (int i = 0; i < N_HEADERS; i++) {
+        if (r.header_scores[i] < -1) continue;
+        printf("%s'%s': %.3f", first ? "" : ", ", reading_header_name(&t, &r, i),
+               r.header_scores[i]);
+        first = 0;
+    }
+    const char *mode = reading_mode(&t, &r);
+    printf("}\n=> %s  (mode=%s, value=%ld, max=%ld) [%.1fms]\n", r.verdict,
+           mode ? mode : "None", r.value, r.max_value, ms);
+    free(px);
+    templates_free(&t);
+    return r.value >= 0 ? 0 : 2;
 }
 
 /* ── Signal handler ────────────────────────────────────────────────────────── */
@@ -790,11 +1327,29 @@ static void sig_handler(int sig) {
 /* ── Main ──────────────────────────────────────────────────────────────────── */
 
 int main(int argc, char **argv) {
-    /* Load config */
+    if (init_paths(&g_cfg) != 0) {
+        fprintf(stderr, "ERROR: cannot determine install directory\n");
+        return 1;
+    }
+
+    if (argc == 3 && strcmp(argv[1], "--read") == 0) {
+        g_cfg.log_file[0] = '\0';  /* don't touch tracker.log */
+        return read_file(argv[2]);
+    }
+
     if (load_env(&g_cfg) != 0) {
         fprintf(stderr, "ERROR: Failed to load .env (run season-tracker.sh for setup)\n");
         return 1;
     }
+
+    Templates tmpl;
+    char tmpl_dir[PATH_MAX];
+    if (find_templates_dir(g_cfg.script_dir, tmpl_dir) != 0) {
+        logmsg("ERROR: templates folder not found (expected %s/templates)", g_cfg.script_dir);
+        return 1;
+    }
+    if (templates_load(&tmpl, tmpl_dir) != 0)
+        return 1;
 
     signal(SIGINT,  sig_handler);
     signal(SIGTERM, sig_handler);
@@ -812,72 +1367,46 @@ int main(int argc, char **argv) {
         sleep(5);
     }
 
-    /* Init X11 capture — size covers both gate and points regions */
-    int cap_x = g_cfg.mon_x;
-    int cap_y = g_cfg.mon_y;
-    int cap_w = g_cfg.mon_w;
-    int cap_h = g_cfg.mon_h;
-
-    XCapture xc = {0};
-    if (xcap_init(&xc, cap_w, cap_h) != 0) {
+    /* Three capture buffers: the small top-left gate zone and the centre
+     * post-match zone, grabbed every poll, and the full monitor, grabbed only
+     * when the MODES tab is up. */
+    int zone_w, zone_h, post_x, post_y, post_w, post_h;
+    gate_zone(g_cfg.mon_w, g_cfg.mon_h, &zone_w, &zone_h);
+    post_zone(g_cfg.mon_w, g_cfg.mon_h, &post_x, &post_y, &post_w, &post_h);
+    XCapture xz = {0}, xp = {0}, xc = {0};
+    if (xcap_init(&xz, zone_w, zone_h) != 0 ||
+        xcap_init(&xp, post_w, post_h) != 0 ||
+        xcap_init(&xc, g_cfg.mon_w, g_cfg.mon_h) != 0) {
         logmsg("ERROR: X11 SHM init failed");
+        xcap_cleanup(&xz);
+        xcap_cleanup(&xp);
         return 1;
     }
 
-    /* Init Tesseract — suppress debug output */
-    TessBaseAPI *tess = TessBaseAPICreate();
-    TessBaseAPISetVariable(tess, "debug_file", "/dev/null");
-    if (TessBaseAPIInit3(tess, NULL, "eng") != 0) {
-        logmsg("ERROR: Tesseract init failed");
-        xcap_cleanup(&xc);
-        return 1;
-    }
-
-    /* Init curl */
     curl_global_init(CURL_GLOBAL_DEFAULT);
 
-    /* Start EasyOCR daemon */
-    logmsg("Starting OCR daemon (loading model)...");
-    OcrDaemon daemon = { .pid = 0, .in_fd = -1, .out_fd = -1 };
-    if (daemon_start(&daemon, &g_cfg) != 0) {
-        logmsg("ERROR: OCR daemon failed to start");
-        TessBaseAPIEnd(tess); TessBaseAPIDelete(tess);
-        xcap_cleanup(&xc);
-        curl_global_cleanup();
-        return 1;
-    }
-    logmsg("OCR daemon ready (PID %d)", daemon.pid);
-
-    /* Allocate gate buffer */
-    int gate_pixels = g_cfg.gate_w * g_cfg.gate_h;
-    unsigned char *gate_buf = malloc(gate_pixels);
-    if (!gate_buf) {
-        logmsg("ERROR: malloc");
-        daemon_stop(&daemon);
-        TessBaseAPIEnd(tess); TessBaseAPIDelete(tess);
-        xcap_cleanup(&xc);
-        curl_global_cleanup();
-        return 1;
-    }
-
-    char tmp_bmp[PATH_MAX];
-    snprintf(tmp_bmp, PATH_MAX, "/tmp/st-pts-%d.bmp", getpid());
-
-    logmsg("Tracker started: gate=%dx%d+%d+%d capture=%dx%d+%d+%d",
-           g_cfg.gate_w, g_cfg.gate_h, g_cfg.gate_x, g_cfg.gate_y,
-           g_cfg.pts_w,  g_cfg.pts_h,  g_cfg.pts_x,  g_cfg.pts_y);
+    char headers[64] = "";
+    for (int i = 0, len = 0; i < N_HEADERS; i++)
+        if (tmpl.headers[i].loaded)
+            len += snprintf(headers + len, sizeof(headers) - len, "%s%s",
+                            len ? ", " : "", tmpl.headers[i].name);
+    logmsg("Tracker started: monitor=%dx%d+%d+%d templates=%s (headers: %s; post-match: %s)",
+           g_cfg.mon_w, g_cfg.mon_h, g_cfg.mon_x, g_cfg.mon_y, tmpl_dir, headers,
+           tmpl.post_ok ? "on" : "off");
     logmsg("Server: %s", g_cfg.server_url);
 
-    ModeState wt   = { "World Tour Points", "world-tour",
-                       g_cfg.state_file_wt,   0, 0 };
-    ModeState rank = { "Rank Score",        "ranked",
-                       g_cfg.state_file_rank, 0, 0 };
-    int sleep_interval  = 1;
-    int cycle_count     = 0;
-    #define GATE_INTERVAL   1    /* seconds between gate checks */
+    ModeState tracks[4] = {
+        { "World Tour",              "world-tour", g_cfg.state_file_wt,   0, 0, -1,
+          CONFIRM_READS, COOLDOWN_SECS },
+        { "Ranked",                  "ranked",     g_cfg.state_file_rank, 0, 0, -1,
+          CONFIRM_READS, COOLDOWN_SECS },
+        { "World Tour (post-match)", "world-tour", g_cfg.state_file_wt,   0, 0, -1,
+          POST_CONFIRM_READS, POST_REST_SECS },
+        { "Ranked (post-match)",     "ranked",     g_cfg.state_file_rank, 0, 0, -1,
+          POST_CONFIRM_READS, POST_REST_SECS },
+    };
 
     while (!g_exiting) {
-        /* Check if game exited */
         if (game_pid > 0) {
             int status;
             if (waitpid(game_pid, &status, WNOHANG) != 0) {
@@ -886,101 +1415,79 @@ int main(int argc, char **argv) {
             }
         }
 
-        /* If both modes are resting, skip all capture/OCR until the earlier
-         * one wakes. The loop only takes the long sleep when both are dormant. */
-        time_t now = time(NULL);
-        int wt_resting   = now < wt.rest_until;
-        int rank_resting = now < rank.rest_until;
-        if (wt_resting && rank_resting) {
-            time_t wake = wt.rest_until < rank.rest_until
-                          ? wt.rest_until : rank.rest_until;
-            long secs = (long)(wake - now);
-            if (secs < 1) secs = 1;
-            if (!g_exiting) sleep((unsigned)secs);
-            continue;
-        }
+        double t0 = now_ms();
+        Reading r;
 
-        cycle_count++;
-        double t_start = now_ms();
-
-        /* ── Stage 1: XShm capture + Tesseract gate ── */
-        if (xcap_grab(&xc, cap_x, cap_y) != 0) {
+        /* Cheap check: grab only the gate zone. Most polls (in match, other
+         * menus) stop here. */
+        if (xcap_grab(&xz, g_cfg.mon_x, g_cfg.mon_y) != 0) {
             logq("Capture failed");
-            sleep(sleep_interval);
+            sleep(POLL_SECS);
             continue;
         }
+        Frame zf = {
+            (const unsigned char *)xz.ximg->data, xz.width, xz.height,
+            xz.ximg->bytes_per_line, xz.ximg->bits_per_pixel / 8, 2, 1, 0
+        };
+        double gate = check_gate(&zf, &tmpl, g_cfg.mon_h);
 
-        double t_cap = now_ms();
-
-        extract_gate_region(xc.ximg, cap_x, cap_y,
-                            g_cfg.gate_x, g_cfg.gate_y,
-                            g_cfg.gate_w, g_cfg.gate_h,
-                            gate_buf, 180);
-
-        int gate_pass = tess_gate_check(tess, gate_buf,
-                                        g_cfg.gate_w, g_cfg.gate_h);
-        double t_gate = now_ms();
-        double ms_gate = t_gate - t_start;
-
-        if (!gate_pass) {
-            logq("Gate: not World Tour screen | %.0fms (cap=%.1fms tess=%.1fms)",
-                 ms_gate, t_cap - t_start, t_gate - t_cap);
-            wt.reads = 0;
-            rank.reads = 0;
-            sleep_interval = GATE_INTERVAL;
-            sleep(sleep_interval);
+        if (gate < GATE_MIN) {
+            /* Not the lobby: check the post-match panel's centre zone. */
+            reading_init(&r);
+            if (tmpl.post_ok &&
+                xcap_grab(&xp, g_cfg.mon_x + post_x, g_cfg.mon_y + post_y) == 0) {
+                Frame pf = {
+                    (const unsigned char *)xp.ximg->data, xp.width, xp.height,
+                    xp.ximg->bytes_per_line, xp.ximg->bits_per_pixel / 8, 2, 1, 0
+                };
+                read_post(&pf, &tmpl, g_cfg.mon_h, &r);
+            }
+            if (!r.post) {
+                reading_init(&r);
+                snprintf(r.verdict, sizeof(r.verdict),
+                         "not on the MODES tab (tab match %.2f)", gate);
+            }
+            r.gate_score = gate;
+        } else if (xcap_grab(&xc, g_cfg.mon_x, g_cfg.mon_y) != 0) {
+            logq("Capture failed");
+            sleep(POLL_SECS);
             continue;
-        }
-
-        /* ── Stage 2: Write points BMP, send to EasyOCR daemon ── */
-        write_region_bmp(tmp_bmp, xc.ximg, cap_x, cap_y,
-                         g_cfg.pts_x, g_cfg.pts_y,
-                         g_cfg.pts_w, g_cfg.pts_h);
-
-        double t_bmp = now_ms();
-
-        char response[RESP_BUF_SIZE] = {0};
-        daemon_query(&daemon, tmp_bmp, response, sizeof(response));
-        unlink(tmp_bmp);
-
-        double t_ocr = now_ms();
-        double ms_total = t_ocr - t_start;
-        double ms_ocr   = t_ocr - t_bmp;
-
-        /* The points screen shows either World Tour Points or Rank Score
-         * depending on the tab the user has selected, so try both parsers
-         * against the same OCR output. Only act on modes that aren't resting. */
-        int wtp  = parse_wtp(response);
-        int rank_pts = parse_rank(response);
-
-        int got = 0;
-        if (!wt_resting)   got |= handle_mode(&g_cfg, &wt,   wtp,      now);
-        if (!rank_resting) got |= handle_mode(&g_cfg, &rank, rank_pts, now);
-
-        if (got) {
-            logq("OCR ok | wtp=%d rank=%d | gate=%.0fms ocr=%.0fms total=%.0fms",
-                 wtp, rank_pts, ms_gate, ms_ocr, ms_total);
         } else {
-            char oneline[120];
-            strncpy(oneline, response, 119);
-            oneline[119] = '\0';
-            for (char *p = oneline; *p; p++)
-                if (*p == '\n') *p = ' ';
-            logq("OCR ok | no points | raw=\"%s\" | gate=%.0fms ocr=%.0fms total=%.0fms",
-                 oneline, ms_gate, ms_ocr, ms_total);
+            Frame f = {
+                (const unsigned char *)xc.ximg->data, xc.width, xc.height,
+                xc.ximg->bytes_per_line, xc.ximg->bits_per_pixel / 8, 2, 1, 0
+            };
+            read_frame(&f, &tmpl, &r);
         }
+        double ms = now_ms() - t0;
+        time_t now = time(NULL);
 
-        if (!g_exiting)
-            sleep(GATE_INTERVAL);
+        const char *mode = reading_mode(&tmpl, &r);
+        ModeState *m = NULL;
+        if (mode && r.value >= 0)
+            m = &tracks[(r.post ? 2 : 0) + (strcmp(mode, "ranked") == 0)];
+
+        /* Anything not read this frame loses its streak. */
+        for (int i = 0; i < 4; i++)
+            if (&tracks[i] != m) { tracks[i].reads = 0; tracks[i].last_val = -1; }
+
+        if (m)
+            handle_read(&g_cfg, m, r.value, now, ms);
+        else
+            logq("%s | %.0fms", r.verdict, ms);
+
+        /* Poll fast while the post-match panel is up: it lasts ~2s and the
+         * value counts up for the first ~0.5s of it. */
+        if (!g_exiting) {
+            if (r.post) usleep(FAST_POLL_USEC);
+            else        sleep(POLL_SECS);
+        }
     }
 
-    /* Cleanup */
     logmsg("Shutting down tracker.");
-    free(gate_buf);
-    unlink(tmp_bmp);
-    daemon_stop(&daemon);
-    TessBaseAPIEnd(tess);
-    TessBaseAPIDelete(tess);
+    templates_free(&tmpl);
+    xcap_cleanup(&xz);
+    xcap_cleanup(&xp);
     xcap_cleanup(&xc);
     curl_global_cleanup();
 
