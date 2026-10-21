@@ -5,7 +5,7 @@
 #   curl -fsSL https://www.seasonsprint.com/install.sh | bash
 #
 # Downloads the latest release tarball, extracts it to a stable location, and
-# hands off to season-tracker.sh, which installs system deps + EasyOCR, builds
+# hands off to season-tracker.sh, which installs system deps, builds
 # the tracker, and walks you through configuration.
 #
 # Env overrides:

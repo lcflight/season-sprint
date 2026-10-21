@@ -64,7 +64,10 @@ Source: "..\season_tracker.py"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\tray.py";           DestDir: "{app}"; Flags: ignoreversion
 Source: "..\debug_panel.py";    DestDir: "{app}"; Flags: ignoreversion
 Source: "..\requirements.txt";  DestDir: "{app}"; Flags: ignoreversion
-Source: "..\test_ocr.py";       DestDir: "{app}"; Flags: ignoreversion
+Source: "..\screen_reader.py";  DestDir: "{app}"; Flags: ignoreversion
+Source: "..\test_reader.py";    DestDir: "{app}"; Flags: ignoreversion
+; Template images the screen reader matches against (shared with Linux).
+Source: "..\..\tracker-templates\*.pgm"; DestDir: "{app}\templates"; Flags: ignoreversion
 Source: "..\setup.bat";         DestDir: "{app}"; Flags: ignoreversion
 Source: "..\install-deps.bat";  DestDir: "{app}"; Flags: ignoreversion
 Source: "..\launch.bat";        DestDir: "{app}"; Flags: ignoreversion
@@ -94,6 +97,7 @@ Name: "{group}\Uninstall {#AppName}"; Filename: "{uninstallexe}"
 Type: filesandordirs; Name: "{%USERPROFILE}\.season-sprint"
 Type: files; Name: "{app}\.env"
 Type: files; Name: "{app}\.last-wtp"
+Type: files; Name: "{app}\.last-rank"
 Type: files; Name: "{app}\.tracker-pid"
 Type: files; Name: "{app}\tracker.log"
 
@@ -189,7 +193,7 @@ begin
   MonitorPage := CreateInputOptionPage(TokenPage.ID,
     'Game monitor',
     'Choose the monitor that runs The Finals',
-    'The tracker reads the World Tour Points from the bottom-centre of this screen.',
+    'The tracker reads your World Tour and Ranked scores from the MODES tab on this screen.',
     True, False);
 
   // Read-only, selectable edit that holds the Steam launch line on the finish
@@ -233,7 +237,7 @@ begin
     'Setting up Python and the Season Sprint tracker.');
   Progress.Show;
   try
-    Progress.SetText('Installing Python, PyTorch and EasyOCR...',
+    Progress.SetText('Installing Python and dependencies...',
       'This can take 1-2 minutes on the first install. Please wait.');
     Progress.SetProgress(10, 100);
     // cmd /C with a redirect; the doubled "" are literal quotes in the Pascal

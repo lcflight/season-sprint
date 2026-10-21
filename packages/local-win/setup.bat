@@ -12,8 +12,8 @@ REM or to recover from a partial install.
 setlocal
 pushd "%~dp0"
 
-echo Ensuring dependencies (Python, VC++ Redist, venv, pip) ...
-echo This is fast on a re-run; first install takes ~3-5 minutes.
+echo Ensuring dependencies (Python, venv, pip) ...
+echo This is fast on a re-run; first install takes about a minute.
 echo.
 call install-deps.bat
 if errorlevel 1 (

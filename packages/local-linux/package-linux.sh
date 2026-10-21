@@ -3,7 +3,7 @@
 # package-linux.sh — Build the Linux release tarball (season-sprint-linux.tar.gz).
 #
 # Ships SOURCE, not a precompiled binary: the tracker links native libs
-# (tesseract, leptonica, libcurl, X11) whose ABIs skew across distros/glibc,
+# (libcurl, X11) whose ABIs skew across distros/glibc,
 # so building on the user's machine via season-tracker.sh is more portable than
 # shipping one binary. season-tracker.sh installs the toolchain + deps for them.
 #
@@ -23,7 +23,6 @@ TARBALL="$OUT_DIR/season-sprint-linux.tar.gz"
 FILES=(
   season-tracker.c
   Makefile
-  ocr_preprocess.py
   season-tracker.sh
   .env.example
 )
@@ -40,6 +39,10 @@ for f in "${FILES[@]}"; do
   fi
   cp "$SCRIPT_DIR/$f" "$STAGE/$f"
 done
+
+# Template images the tracker matches against (shared with Windows).
+mkdir -p "$STAGE/templates"
+cp "$SCRIPT_DIR"/../tracker-templates/*.pgm "$STAGE/templates/"
 
 chmod +x "$STAGE/season-tracker.sh"
 

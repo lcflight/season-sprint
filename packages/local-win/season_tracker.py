@@ -1,10 +1,11 @@
 """
 season_tracker.py — Proof-of-concept Windows tracker for Season Sprint.
 
-Cross-platform Python port of packages/local-linux/season-tracker.c. Polls a
-monitor at a fixed interval, runs EasyOCR on the bottom-centre region
-to find "WORLD TOUR POINTS", and pushes changes to the Season Sprint
-server.
+Cross-platform Python counterpart of packages/local-linux/season-tracker.c.
+Polls a monitor at a fixed interval and, when the lobby's MODES tab is open,
+reads the World Tour / Ranked score from the bottom-centre panel by template
+matching (screen_reader.py — no OCR engine), then pushes changes to the
+Season Sprint server.
 
 First run (interactive setup):
     python season_tracker.py
@@ -35,7 +36,7 @@ from typing import Optional
 
 # Force OpenSSL to use certifi's CA bundle. A fresh Windows install's cert
 # store can miss modern roots/intermediates (Let's Encrypt, etc.) until
-# Windows Update has run, which makes EasyOCR's model download and HTTPS
+# Windows Update has run, which makes the server's HTTPS pushes and
 # probes fail with SSL: CERTIFICATE_VERIFY_FAILED. certifi ships a current
 # Mozilla bundle and is a transitive dependency of requests, so it's
 # always present in the venv.
@@ -52,7 +53,12 @@ import requests
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 ENV_FILE = SCRIPT_DIR / ".env"
-STATE_FILE = SCRIPT_DIR / ".last-wtp"
+# Last value pushed, per server mode.
+STATE_FILES = {
+    "world-tour": SCRIPT_DIR / ".last-wtp",
+    "ranked": SCRIPT_DIR / ".last-rank",
+}
+MODE_LABELS = {"world-tour": "World Tour", "ranked": "Ranked"}
 PID_FILE = SCRIPT_DIR / ".tracker-pid"
 LOG_FILE = SCRIPT_DIR / "tracker.log"
 
@@ -63,9 +69,14 @@ LOG_FILE = SCRIPT_DIR / "tracker.log"
 # in your fork.
 SERVER_URL = "https://season-sprint-server.lcarthur747.workers.dev"
 
-POLL_INTERVAL_SECS = 3
-COOLDOWN_SECS = 300  # 5 min after a confirmed read
-CONFIRM_READS = 2    # how many identical reads in a row count as "confirmed"
+POLL_INTERVAL_SECS = 1
+# While the post-match score panel is up (~2s, and the value counts up for
+# the first ~0.5s of it) poll fast so the settled value is read in time.
+FAST_POLL_SECS = 0.2
+COOLDOWN_SECS = 300  # MODES: per-mode rest after a confirmed read
+CONFIRM_READS = 2    # MODES: identical reads in a row that count as "confirmed"
+POST_CONFIRM_READS = 3  # post-match: more, so a count-up value never confirms
+POST_REST_SECS = 10     # post-match: ignore the panel after confirming (it lasts ~2s)
 HTTP_TIMEOUT = 10
 
 
@@ -306,90 +317,28 @@ def load_or_prompt_config() -> Config:
     return cfg
 
 
-# ── Capture + OCR ─────────────────────────────────────────────────────────────
+# ── Capture ───────────────────────────────────────────────────────────────────
 
 
-def _grab_points_region(sct: mss.base.MSSBase, monitor_index: int) -> np.ndarray:
-    """Grab the bottom-centre third × bottom fifth of the chosen monitor.
-    Mirrors the region the Linux tracker sends to EasyOCR."""
+def _grab(sct: mss.base.MSSBase, monitor_index: int, size: Optional[tuple[int, int]] = None) -> np.ndarray:
+    """Grab the chosen monitor as RGB — all of it, or just the top-left
+    (width, height) zone when size is given."""
     mon = sct.monitors[monitor_index]
-    w, h = mon["width"], mon["height"]
-    pts_w = w // 3
-    pts_h = h // 5
-    pts_x = mon["left"] + (w - pts_w) // 2
-    pts_y = mon["top"] + (h - pts_h)
-    shot = sct.grab({"left": pts_x, "top": pts_y, "width": pts_w, "height": pts_h})
-    # mss returns BGRA; convert to RGB for EasyOCR.
-    frame = np.frombuffer(shot.rgb, dtype=np.uint8).reshape(pts_h, pts_w, 3)
-    return frame
+    if size is not None:
+        mon = {"left": mon["left"], "top": mon["top"], "width": size[0], "height": size[1]}
+    shot = sct.grab(mon)
+    return np.frombuffer(shot.rgb, dtype=np.uint8).reshape(shot.height, shot.width, 3)
 
 
-def analyze_ocr(results) -> tuple[Optional[int], str]:
-    """Given EasyOCR readtext() results, return the first 'current points'
-    number located spatially below a 'WORLD TOUR POINTS' header, plus a
-    human-readable verdict explaining how that conclusion was reached (shown
-    in the diagnostics panel and test_ocr.py). Mirrors the parsing logic in
-    packages/local-linux/ocr_preprocess.py."""
-    if not results:
-        return None, "No text detected in the capture region"
-
-    header_bbox = None
-    for bbox, text, _conf in results:
-        up = text.upper()
-        if "TOUR" in up and "POINT" in up:
-            header_bbox = bbox
-            break
-
-    if header_bbox is None:
-        return None, (
-            f"Found {len(results)} text box(es), but no 'WORLD TOUR POINTS' "
-            f"header — probably not on the World Tour page"
-        )
-
-    header_top = min(pt[1] for pt in header_bbox)
-    header_bottom = max(pt[1] for pt in header_bbox)
-    header_left = min(pt[0] for pt in header_bbox)
-    header_right = max(pt[0] for pt in header_bbox)
-    header_h = header_bottom - header_top
-
-    candidates: list[tuple[float, int]] = []
-    for bbox, text, _conf in results:
-        t_top = min(pt[1] for pt in bbox)
-        t_bottom = max(pt[1] for pt in bbox)
-        t_cx = (min(pt[0] for pt in bbox) + max(pt[0] for pt in bbox)) / 2
-
-        if t_bottom < header_top:
-            continue
-        if t_top > header_bottom + header_h * 3:
-            continue
-        if t_cx < header_left - header_h or t_cx > header_right + header_h:
-            continue
-
-        cleaned = text.replace(",", "").replace("_", "").strip()
-        if cleaned.isdigit():
-            candidates.append((t_cx, int(cleaned)))
-        else:
-            # "current / max", e.g. "4 / 25" — left side is current. EasyOCR
-            # frequently misreads the thin slash glyph as "|", "l", "I", or
-            # drops it, so pull digit runs out directly instead of requiring
-            # a literal "/" (which silently dropped real reads like "4 | 25").
-            nums = re.findall(r"\d+", cleaned)
-            if len(nums) >= 2:
-                return int(nums[0]), (
-                    f"Read current points = {nums[0]} "
-                    f"(from a 'current / max' readout {cleaned!r})"
-                )
-
-    candidates.sort(key=lambda c: c[0])
-    if candidates:
-        return candidates[0][1], f"Read current points = {candidates[0][1]}"
-    return None, "Found the 'WORLD TOUR POINTS' header, but no readable number near it"
-
-
-def parse_wtp_from_ocr(results) -> Optional[int]:
-    """Back-compat wrapper around analyze_ocr for callers that only want
-    the number (test_ocr.py's original interface)."""
-    return analyze_ocr(results)[0]
+def reading_details(r) -> list[str]:
+    """Human-readable match scores for the diagnostics panel / sidecars."""
+    lines = [f"MODES tab match: {r.gate_score:.2f}"]
+    for name, score in r.header_scores.items():
+        where = "post-match header" if r.screen == "post" else "header"
+        lines.append(f"{where} '{name}' match: {score:.2f}")
+    if r.value is not None:
+        lines.append(f"value: {r.value}" + (f" / {r.max_value}" if r.max_value is not None else ""))
+    return lines
 
 
 # ── Diagnostics buffer ────────────────────────────────────────────────────────
@@ -411,10 +360,11 @@ class CaptureRecord:
     seq: int
     timestamp: dt.datetime
     png_bytes: bytes
-    ocr_lines: list  # (text, confidence) per EasyOCR box, reading order
-    wtp: Optional[int]
+    details: list  # match scores etc., one line each
+    mode: Optional[str]
+    value: Optional[int]
     verdict: str
-    ocr_ms: float
+    read_ms: float
     protected: bool = False
     saved_path: Optional[Path] = None
 
@@ -455,7 +405,8 @@ class DebugBuffer:
         if not enabled:
             self.events.put(("cleared",))
 
-    def add(self, frame, ocr_results, wtp: Optional[int], verdict: str, ocr_ms: float) -> None:
+    def add(self, frame, details: list, mode: Optional[str], value: Optional[int],
+            verdict: str, read_ms: float) -> None:
         """Record one capture. No-op (including the PNG encode) when
         buffering is off, so the tracker's default hot path is unchanged."""
         with self._lock:
@@ -464,18 +415,21 @@ class DebugBuffer:
             self._seq += 1
             seq = self._seq
 
-        from PIL import Image  # deferred like easyocr: only paid when buffering
+        from PIL import Image  # deferred: only paid when buffering
 
+        img = Image.fromarray(frame)
+        img.thumbnail((1280, 1280))  # full-monitor frames; keep the buffer small
         buf = io.BytesIO()
-        Image.fromarray(frame).save(buf, format="PNG")
+        img.save(buf, format="PNG")
         rec = CaptureRecord(
             seq=seq,
             timestamp=dt.datetime.now(),
             png_bytes=buf.getvalue(),
-            ocr_lines=[(text, float(conf)) for _bbox, text, conf in (ocr_results or [])],
-            wtp=wtp,
+            details=list(details),
+            mode=mode,
+            value=value,
             verdict=verdict,
-            ocr_ms=ocr_ms,
+            read_ms=read_ms,
         )
 
         with self._lock:
@@ -508,13 +462,14 @@ class DebugBuffer:
         png_path = DEBUG_CAPTURE_DIR / f"{stem}.png"
         png_path.write_bytes(rec.png_bytes)
         sidecar = [
-            f"captured: {rec.timestamp.isoformat(timespec='seconds')}",
-            f"ocr time: {rec.ocr_ms:.0f}ms",
-            f"verdict:  {rec.verdict}",
-            f"wtp:      {rec.wtp}",
+            f"captured:  {rec.timestamp.isoformat(timespec='seconds')}",
+            f"read time: {rec.read_ms:.0f}ms",
+            f"verdict:   {rec.verdict}",
+            f"mode:      {rec.mode}",
+            f"value:     {rec.value}",
             "",
-            "raw OCR output:",
-        ] + [f"  conf={conf:.2f}  {text!r}" for text, conf in rec.ocr_lines]
+            "match details:",
+        ] + [f"  {line}" for line in rec.details]
         (DEBUG_CAPTURE_DIR / f"{stem}.txt").write_text("\n".join(sidecar) + "\n", encoding="utf-8")
         rec.saved_path = png_path
         return png_path
@@ -526,28 +481,29 @@ DEBUG_BUFFER = DebugBuffer()
 # ── State + HTTP push ─────────────────────────────────────────────────────────
 
 
-def read_state() -> int:
-    if not STATE_FILE.is_file():
+def read_state(mode: str) -> int:
+    path = STATE_FILES[mode]
+    if not path.is_file():
         return -1
     try:
-        return int(STATE_FILE.read_text().strip())
+        return int(path.read_text().strip())
     except (ValueError, OSError):
         return -1
 
 
-def write_state(wtp: int) -> None:
+def write_state(mode: str, value: int) -> None:
     try:
-        STATE_FILE.write_text(str(wtp))
+        STATE_FILES[mode].write_text(str(value))
     except OSError as e:
         print(f"[warn] could not write state: {e}")
 
 
-def push_record(cfg: Config, win_points: int) -> bool:
+def push_record(cfg: Config, mode: str, win_points: int) -> bool:
     import json
 
     today = dt.date.today().isoformat()
     url = f"{SERVER_URL}/me/records"
-    body = {"date": today, "winPoints": win_points}
+    body = {"date": today, "winPoints": win_points, "mode": mode}
     headers = {
         "Authorization": cfg.auth_token,
         "Content-Type": "application/json",
@@ -568,7 +524,7 @@ def push_record(cfg: Config, win_points: int) -> bool:
         print(f"[push] FAILED: {e}")
         return False
     ok = r.status_code in (200, 201)
-    print(f"[push] winPoints={win_points} date={today} HTTP {r.status_code} {r.reason or ''} {'OK' if ok else 'FAIL'}".rstrip())
+    print(f"[push] {mode} winPoints={win_points} date={today} HTTP {r.status_code} {r.reason or ''} {'OK' if ok else 'FAIL'}".rstrip())
     if not ok:
         # Always log the response body — even if empty — so the user can
         # tell apart "server returned an error message" from "CF rejected
@@ -606,73 +562,137 @@ def _handle_signal(signum, _frame):
     print(f"\n[signal {signum}] shutting down after current cycle ...")
 
 
-def main_loop(cfg: Config) -> None:
-    print(f"[boot] loading EasyOCR model (first run downloads ~100MB) ...")
-    import easyocr  # imported lazily so --setup doesn't pay the cost
-
-    reader = easyocr.Reader(["en"], gpu=False, verbose=False)
-    print(f"[boot] tracker started. monitor={cfg.monitor_index} server={SERVER_URL}")
-    print(f"[boot] polling every {POLL_INTERVAL_SECS}s; Ctrl+C to quit.")
-
-    consecutive_reads = 0
+@dataclass
+class _Track:
+    """Confirmation state for one (screen, mode) pair — e.g. World Tour on
+    the MODES tab, World Tour on the post-match panel. Each rests
+    independently after a confirmed read, so a MODES confirmation never
+    hides the next post-match result."""
     last_val: Optional[int] = None
+    reads: int = 0
+    rest_until: float = 0.0  # time.monotonic() deadline; 0 = active
+
+
+def _read_screen(sct, cfg: Config, sr, templates):
+    """One poll: cheap zone grabs first, the full monitor only when needed.
+    Returns (reading, frame or None)."""
+    mon = sct.monitors[cfg.monitor_index]
+    W, H = mon["width"], mon["height"]
+
+    # MODES tab: small top-left zone (~3% of the screen).
+    frame = _grab(sct, cfg.monitor_index, sr.gate_zone(W, H))
+    on_modes, gate = sr.check_gate(frame, templates, H)
+    if on_modes:
+        frame = _grab(sct, cfg.monitor_index)
+        return sr.read_frame(frame, templates), frame
+
+    # Post-match panel: small centre zone (~4%), which holds the value too.
+    if templates.post_headers:
+        x0, y0, zw, zh = sr.post_zone(W, H)
+        mon_zone = {"left": mon["left"] + x0, "top": mon["top"] + y0, "width": zw, "height": zh}
+        shot = sct.grab(mon_zone)
+        frame = np.frombuffer(shot.rgb, dtype=np.uint8).reshape(shot.height, shot.width, 3)
+        r = sr.read_post(frame, templates, H)
+        if r.screen == "post":
+            r.gate_score = gate
+            return r, frame
+
+    r = sr.Reading(gate_score=gate, verdict=f"not on the MODES tab (tab match {gate:.2f})")
+    return r, frame
+
+
+def main_loop(cfg: Config) -> None:
+    # Imported here, not at module top: the installer runs this file from a
+    # temp folder (for --list-monitors) where screen_reader.py isn't present.
+    import screen_reader as sr
+
+    templates = sr.Templates.load(sr.find_templates_dir(SCRIPT_DIR))
+    print(f"[boot] tracker started. monitor={cfg.monitor_index} server={SERVER_URL}")
+    print(f"[boot] MODES headers: {', '.join(templates.headers)}; "
+          f"post-match headers: {', '.join(templates.post_headers) or 'none'}")
+    print(f"[boot] polling every {POLL_INTERVAL_SECS}s "
+          f"({FAST_POLL_SECS}s while the post-match panel is up); Ctrl+C to quit.")
+
+    tracks: dict[tuple[str, str], _Track] = {}
+    last_status = None  # (screen, header) of the last idle line logged
 
     with mss.MSS() as sct:
         while not _stop:
-            t0 = time.monotonic()
+            now = time.monotonic()
+            t0 = now
             try:
-                frame = _grab_points_region(sct, cfg.monitor_index)
-                results = reader.readtext(frame)
-                wtp, verdict = analyze_ocr(results)
+                r, frame = _read_screen(sct, cfg, sr, templates)
+                mode, value, verdict = r.mode, r.value, r.verdict
+                status = (r.screen, r.header)
+                details = reading_details(r)
             except Exception as e:
-                print(f"[err] capture/OCR: {e}")
-                frame = results = None
-                wtp, verdict = None, f"capture/OCR error: {e}"
+                print(f"[err] capture/read: {e}")
+                frame, r = None, None
+                mode, value, verdict, details = None, None, f"capture/read error: {e}", []
+                status = ("error", str(e))
 
             dt_ms = (time.monotonic() - t0) * 1000
+            on_post = r is not None and r.screen == "post"
+            interval = FAST_POLL_SECS if on_post else POLL_INTERVAL_SECS
 
             if frame is not None:
                 try:
-                    DEBUG_BUFFER.add(frame, results, wtp, verdict, dt_ms)
+                    DEBUG_BUFFER.add(frame, details, mode, value, verdict, dt_ms)
                 except Exception as e:
                     # Diagnostics must never take down the tracker itself.
                     print(f"[warn] debug buffer: {e}")
 
-            if wtp is None:
-                consecutive_reads = 0
-                last_val = None
-                print(f"  [ocr {dt_ms:.0f}ms] no WTP header found")
+            key = (r.screen, mode) if (r is not None and mode and value is not None) else None
+            # Anything not read this poll loses its streak.
+            for k, tr in tracks.items():
+                if k != key:
+                    tr.reads, tr.last_val = 0, None
+
+            if key is None:
+                # Polls run every second (faster on the post-match panel) and
+                # tracker.log isn't trimmed, so only log idle states on change.
+                if status != last_status:
+                    print(f"  [read {dt_ms:.0f}ms] {verdict}")
+                    last_status = status
+                _sleep_interruptible(interval)
+                continue
+
+            last_status = None
+            tr = tracks.setdefault(key, _Track())
+            post = key[0] == "post"
+            label = MODE_LABELS[mode] + (" (post-match)" if post else "")
+            if now < tr.rest_until:
+                _sleep_interruptible(interval)
+                continue
+
+            if value == tr.last_val:
+                tr.reads += 1
             else:
-                if wtp == last_val:
-                    consecutive_reads += 1
+                tr.reads, tr.last_val = 1, value
+            print(f"  [read {dt_ms:.0f}ms] {label}={value} read #{tr.reads}")
+
+            if tr.reads >= (POST_CONFIRM_READS if post else CONFIRM_READS):
+                prior = read_state(mode)
+                if value != prior:
+                    print(f"[change] {label} {prior} → {value}, pushing ...")
+                    if push_record(cfg, mode, value):
+                        write_state(mode, value)
                 else:
-                    consecutive_reads = 1
-                    last_val = wtp
-
-                print(f"  [ocr {dt_ms:.0f}ms] wtp={wtp} read #{consecutive_reads}")
-
-                if consecutive_reads >= CONFIRM_READS:
-                    prior = read_state()
-                    if wtp != prior:
-                        print(f"[change] {prior} → {wtp}, pushing ...")
-                        if push_record(cfg, wtp):
-                            write_state(wtp)
-                    else:
-                        print(f"[steady] wtp={wtp} unchanged from last push")
-                    print(f"[cooldown] sleeping {COOLDOWN_SECS}s")
-                    resume = dt.datetime.now() + dt.timedelta(seconds=COOLDOWN_SECS)
+                    print(f"[steady] {label}={value} unchanged from last push")
+                rest = POST_REST_SECS if post else COOLDOWN_SECS
+                tr.rest_until = time.monotonic() + rest
+                tr.reads, tr.last_val = 0, None
+                if not post:
+                    resume = dt.datetime.now() + dt.timedelta(seconds=rest)
+                    print(f"[cooldown] {label} confirmed; resting until {resume:%H:%M:%S}")
                     DEBUG_BUFFER.post_status(
-                        f"cooldown after a confirmed read — capturing resumes at {resume:%H:%M:%S}"
+                        f"{label} confirmed — not re-read until {resume:%H:%M:%S}"
                     )
-                    _sleep_interruptible(COOLDOWN_SECS)
-                    consecutive_reads = 0
-                    last_val = None
-                    continue
 
-            _sleep_interruptible(POLL_INTERVAL_SECS)
+            _sleep_interruptible(interval)
 
 
-def _sleep_interruptible(total_secs: int) -> None:
+def _sleep_interruptible(total_secs: float) -> None:
     """Sleep in small slices so Ctrl+C is responsive."""
     end = time.monotonic() + total_secs
     while not _stop and time.monotonic() < end:

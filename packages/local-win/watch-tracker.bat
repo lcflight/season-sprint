@@ -4,7 +4,7 @@ REM while the game runs.
 REM
 REM Usage: double-click after launching the game via Steam (with the
 REM        launch.bat option set). A window opens and prints each new
-REM        log line as it arrives — you should see [ocr Xms] lines
+REM        log line as it arrives — you should see [read Xms] lines
 REM        repeating every few seconds, and "Pushed winPoints=N" when
 REM        the tracker detects a new score.
 REM

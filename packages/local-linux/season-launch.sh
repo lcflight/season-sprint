@@ -51,7 +51,14 @@ if [[ $# -gt 0 ]]; then
     make -C "$SCRIPT_DIR" season-watcher >/dev/null 2>&1 || true
   fi
 
-  [[ -x "$WATCHER" ]] && "$WATCHER" >/dev/null 2>&1 &
+  # Start the watcher as a plain backgrounded command, not a `&&` list: bash
+  # runs a backgrounded list in its own subshell, which would become the
+  # watcher's parent and never exit — so the watcher never noticed the game
+  # session ending. Backgrounded directly, its parent is this process, which
+  # execs into the tracker below and exits with the game.
+  if [[ -x "$WATCHER" ]]; then
+    "$WATCHER" >/dev/null 2>&1 &
+  fi
 fi
 
 exec "$TRACKER" "$@"
