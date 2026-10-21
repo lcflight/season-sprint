@@ -12,8 +12,12 @@ masks are rescaled to the 1440p reference the trackers expect.
   python make_templates.py header ranked shot.png
 
   # Replace digit templates with real glyphs from a screen showing a known
-  # current value (the yellow number), e.g. a World Tour score of 5,239:
+  # current value (the yellow number), e.g. a World Tour score of 5,239.
+  # --only limits which digits are written; --blend averages into the
+  # existing template instead of replacing it:
   python make_templates.py digits shot.png 5239
+  python make_templates.py digits shot.png 6998 --only 9
+  python make_templates.py digits shot.png 6998 --only 8 --variant yellow
 
   # Check what the tracker reads from a screenshot:
   python make_templates.py check shot.png
@@ -123,17 +127,31 @@ def cmd_header(name: str, shot: str) -> None:
     save_mask(f"header_{name}.pgm", to_ref(header, s))
 
 
-def cmd_digits(shot: str, value: str) -> None:
+def cmd_digits(shot: str, value: str, only: str = "", blend: bool = False,
+               variant: str = "") -> None:
+    """Write digit templates from the yellow value in `shot`. Repeated
+    digits are averaged. `only` limits which digits are written; `blend`
+    averages the new sample 50/50 into the existing template instead of
+    replacing it (keeps the margin that multi-sample templates have).
+    `variant` writes digit_<d>_<variant>.pgm alongside the main template,
+    for a digit whose yellow and white renderings differ (e.g. 8)."""
     value = value.replace(",", "")
     rgb, s = load(shot)
     _, _, region, group = find_value_row(rgb, s)
     ink = sr.yellow_ink(region)
     if len(group) != len(value):
         sys.exit(f"found {len(group)} yellow glyphs but '{value}' has {len(value)} digits")
+    samples: dict[str, list[np.ndarray]] = {}
     for ch, c in zip(value, group):
-        g = sr.normalize_glyph(sr.glyph_image(ink, c))
-        sr.write_pgm(HERE / f"digit_{ch}.pgm", np.round(g * 255).astype(np.uint8))
-        print(f"wrote digit_{ch}.pgm")
+        if not only or ch in only:
+            samples.setdefault(ch, []).append(sr.normalize_glyph(sr.glyph_image(ink, c)))
+    for ch, gs in sorted(samples.items()):
+        g = np.mean(gs, axis=0)
+        path = HERE / (f"digit_{ch}_{variant}.pgm" if variant else f"digit_{ch}.pgm")
+        if blend and path.is_file():
+            g = (g + sr.read_pgm(path).astype(np.float32) / 255.0) / 2
+        sr.write_pgm(path, np.round(g * 255).astype(np.uint8))
+        print(f"{'blended' if blend else 'wrote'} {path.name} ({len(gs)} sample{'s' * (len(gs) > 1)})")
 
 
 def cmd_check(shot: str) -> None:
@@ -145,6 +163,21 @@ def cmd_check(shot: str) -> None:
 
 
 def main(argv: list[str]) -> None:
+    # Flags (digits only): --only 39, --blend
+    only, blend, variant, args = "", False, "", []
+    it = iter(argv)
+    for a in it:
+        if a == "--only":
+            only = next(it, "")
+        elif a == "--blend":
+            blend = True
+        elif a == "--variant":
+            variant = next(it, "")
+        else:
+            args.append(a)
+    if args and args[0] == "digits" and len(args) == 3:
+        return cmd_digits(args[1], args[2], only, blend, variant)
+    argv = args
     cmds = {
         "modes": (cmd_modes, 1),
         "header": (cmd_header, 2),

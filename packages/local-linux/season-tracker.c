@@ -21,6 +21,7 @@
  */
 
 #define _GNU_SOURCE
+#include <dirent.h>
 #include <errno.h>
 #include <limits.h>
 #include <math.h>
@@ -66,6 +67,9 @@
 #define MAX_COMPS        512
 #define MAX_DIGITS       9
 #define MIN_SCALE        0.6  /* below ~900p digits are too small to trust */
+#define RUN_GAP          0.7  /* glyph gap (x height) that ends a run; see read_glyphs */
+#define SLASH_GAP_MAX    0.8  /* MODES: max gap value -> "/" (x height); see grouping_ok */
+#define MAX_DIGIT_TMPL   32   /* 0-9 plus variants (digit_<d>_<name>.pgm) */
 #define POST_MIN_WHITE   0.5  /* post-match pre-check: share of header white */
 
 /* ── Globals ───────────────────────────────────────────────────────────────── */
@@ -405,7 +409,12 @@ typedef struct {
 typedef struct {
     BitMask modes;
     HeaderTmpl headers[N_HEADERS];
-    float digits[10][DIGIT_H * DIGIT_W];
+    /* digits[i] is a template for character digit_chars[i]: 0-9 first, then
+     * variants such as digit_8_yellow.pgm. A glyph scores the best variant
+     * of each digit. */
+    float digits[MAX_DIGIT_TMPL][DIGIT_H * DIGIT_W];
+    char  digit_chars[MAX_DIGIT_TMPL];
+    int   n_digits;
     /* Post-match panel; post_ok = 0 if its templates aren't installed. */
     int        post_ok;
     HeaderTmpl post_headers[N_POST_HEADERS];
@@ -413,7 +422,6 @@ typedef struct {
 } Templates;
 
 static const char POST_CHARS[N_POST_GLYPHS + 1] = "0123456789/";
-static const char DIGIT_CHARS[11] = "0123456789";
 
 static int load_mask(const char *path, BitMask *m) {
     int w, h;
@@ -503,6 +511,24 @@ static int templates_load(Templates *t, const char *dir) {
             logmsg("ERROR: cannot load %s", p);
             return -1;
         }
+        t->digit_chars[d] = (char)('0' + d);
+    }
+    t->n_digits = 10;
+    /* Variants: digit_<d>_<name>.pgm */
+    DIR *dh = opendir(dir);
+    if (dh) {
+        struct dirent *e;
+        while ((e = readdir(dh)) && t->n_digits < MAX_DIGIT_TMPL) {
+            const char *nm = e->d_name;
+            size_t len = strlen(nm);
+            if (strncmp(nm, "digit_", 6) != 0 || len < 13 || nm[6] < '0' || nm[6] > '9' ||
+                nm[7] != '_' || strcmp(nm + len - 4, ".pgm") != 0)
+                continue;
+            snprintf(p, sizeof(p), "%s/%s", dir, nm);
+            if (load_glyph(p, t->digits[t->n_digits]) == 0)
+                t->digit_chars[t->n_digits++] = nm[6];
+        }
+        closedir(dh);
     }
     load_post_templates(t, dir);
     return 0;
@@ -731,10 +757,12 @@ static double ncc_f(const float *a, const float *b, int n) {
     return den > 1e-9 ? num / den : 0.0;
 }
 
-/* Classify one glyph against a template set. Returns its index, or -1 if
- * not confident. */
-static int classify_glyph(const float (*set)[DIGIT_H * DIGIT_W], int nset,
-                          const FImg *ink, const int *labels,
+/* Classify one glyph against a template set whose entry i is a template for
+ * character chars[i] (a character may have several variants). Each character
+ * scores its best variant; the margin is against other characters. Returns
+ * the character, or -1 if not confident (mirrors classify_digit). */
+static int classify_glyph(const float (*set)[DIGIT_H * DIGIT_W], const char *chars,
+                          int nset, const FImg *ink, const int *labels,
                           const Comp *c, double *best_out, double *second_out) {
     int gw = c->x1 - c->x0, gh = c->y1 - c->y0;
     float *g = malloc(sizeof(float) * (size_t)gw * gh);
@@ -743,16 +771,23 @@ static int classify_glyph(const float (*set)[DIGIT_H * DIGIT_W], int nset,
     normalize_glyph(g, gw, gh, norm);
     free(g);
 
-    double best = -2, second = -2;
-    int bd = -1;
+    double per[256];
+    for (int i = 0; i < 256; i++) per[i] = -2;
     for (int d = 0; d < nset; d++) {
         double sc = ncc_f(norm, set[d], DIGIT_H * DIGIT_W);
-        if (sc > best) { second = best; best = sc; bd = d; }
-        else if (sc > second) second = sc;
+        unsigned char ch = (unsigned char)chars[d];
+        if (sc > per[ch]) per[ch] = sc;
+    }
+    double best = -2, second = -2;
+    int bc = -1;
+    for (int ch = 0; ch < 256; ch++) {
+        if (per[ch] <= -2) continue;
+        if (per[ch] > best) { second = best; best = per[ch]; bc = ch; }
+        else if (per[ch] > second) second = per[ch];
     }
     *best_out = best; *second_out = second;
     if (best < DIGIT_MIN || best - second < DIGIT_MARGIN) return -1;
-    return bd;
+    return bc;
 }
 
 static int digit_like(const Comp *c, double s) {
@@ -761,22 +796,24 @@ static int digit_like(const Comp *c, double s) {
 }
 
 /* Classify a left-to-right run of glyphs into text (mirrors read_glyphs):
- * stops at a gap wider than a glyph height or a glyph of a different height.
+ * stops at a gap wider than RUN_GAP glyph heights or a glyph of a different
+ * height. With require_all, a run that stops before the last component is
+ * rejected (a missed glyph mid-number would read as a shorter number).
  * Returns the length, or -1 with a reason in info. */
 #define MAX_TEXT 24
 static int read_glyphs(const float (*set)[DIGIT_H * DIGIT_W], const char *chars,
                        int nset, const Comp *comps, int n,
-                       const FImg *ink, const int *labels,
+                       const FImg *ink, const int *labels, int require_all,
                        char *out, char *info, size_t info_sz) {
     int len = 0, prev_x1 = -1;
     int first_h = n > 0 ? comps[0].y1 - comps[0].y0 : 0;
     for (int i = 0; i < n; i++) {
         const Comp *c = &comps[i];
         int h = c->y1 - c->y0;
-        if (prev_x1 >= 0 && c->x0 - prev_x1 > h * 1.2) break;
+        if (prev_x1 >= 0 && c->x0 - prev_x1 > h * RUN_GAP) break;
         if (abs(h - first_h) > first_h * 0.15) break;  /* e.g. heart icon */
         double best, second;
-        int d = classify_glyph(set, nset, ink, labels, c, &best, &second);
+        int d = classify_glyph(set, chars, nset, ink, labels, c, &best, &second);
         if (d < 0) {
             snprintf(info, info_sz, "unrecognised glyph #%d (best %.2f, next %.2f)",
                      len + 1, best, second);
@@ -786,25 +823,72 @@ static int read_glyphs(const float (*set)[DIGIT_H * DIGIT_W], const char *chars,
             snprintf(info, info_sz, "too many glyphs");
             return -1;
         }
-        out[len++] = chars[d];
+        out[len++] = (char)d;
         prev_x1 = c->x1;
     }
     if (!len) { snprintf(info, info_sz, "no digits"); return -1; }
     out[len] = '\0';
+    if (require_all && len < n) {
+        snprintf(info, info_sz, "gap after '%s' — a glyph may be missing", out);
+        return -1;
+    }
     snprintf(info, info_sz, "%s", out);
     return len;
 }
 
-/* A run of MODES digits as one number. Returns the value or -1. */
+/* A run of MODES digits as one number; info receives the digits read.
+ * Returns the value or -1. */
 static long read_number(const Templates *t, const Comp *comps, int n,
-                        const FImg *ink, const int *labels,
+                        const FImg *ink, const int *labels, int require_all,
                         char *info, size_t info_sz) {
     char out[MAX_TEXT + 1];
-    int len = read_glyphs((const float (*)[DIGIT_H * DIGIT_W])t->digits, DIGIT_CHARS, 10,
-                          comps, n, ink, labels, out, info, info_sz);
+    int len = read_glyphs((const float (*)[DIGIT_H * DIGIT_W])t->digits, t->digit_chars,
+                          t->n_digits, comps, n, ink, labels, require_all,
+                          out, info, info_sz);
     if (len < 0) return -1;
     if (len > MAX_DIGITS) { snprintf(info, info_sz, "too many digits"); return -1; }
     return strtol(out, NULL, 10);
+}
+
+/* True if `text` (digits read from dig[0..nd-1], left to right) fits the
+ * commas among all[0..nall-1] (every component of that colour in the row):
+ * the game groups thousands with commas, so the commas fix the digit count,
+ * and a multi-digit number never starts with 0. Catches a missed first/last
+ * digit, which leaves no gap to notice (mirrors grouping_ok). */
+static int grouping_ok(const char *text, const Comp *dig, int nd,
+                       const Comp *all, int nall) {
+    int len = (int)strlen(text);
+    if (len == 0 || len != nd) return 0;
+    for (int i = 0; i < len; i++) if (text[i] < '0' || text[i] > '9') return 0;
+    if (len > 1 && text[0] == '0') return 0;
+    int h = 0, base = 0;
+    for (int i = 0; i < nd; i++) {
+        if (dig[i].y1 - dig[i].y0 > h) h = dig[i].y1 - dig[i].y0;
+        if (dig[i].y1 > base) base = dig[i].y1;
+    }
+    /* Include a stray comma just before the first digit (a missed leading
+     * digit leaves one behind). */
+    double lo = dig[0].x0 - h, hi = dig[nd - 1].x0 + 3;
+    int right[16], nc = 0;
+    for (int i = 0; i < nall; i++) {
+        const Comp *c = &all[i];
+        double cx = (c->x0 + c->x1) / 2.0;
+        int ch = c->y1 - c->y0;
+        if (ch < 0.6 * h && fabs((double)(c->y1 - base)) < 0.4 * h && cx >= lo && cx <= hi) {
+            if (nc >= 16) return 0;
+            int k = 0;
+            for (int d = 0; d < nd; d++) if ((dig[d].x0 + dig[d].x1) / 2.0 > cx) k++;
+            right[nc++] = k;
+        }
+    }
+    if (nc != (len - 1) / 3) return 0;
+    /* Digits right of each comma must be 3, 6, 9, ... */
+    for (int i = 1; i < nc; i++)
+        for (int j = i; j > 0 && right[j - 1] > right[j]; j--) {
+            int tmp = right[j]; right[j] = right[j - 1]; right[j - 1] = tmp;
+        }
+    for (int i = 0; i < nc; i++) if (right[i] != 3 * (i + 1)) return 0;
+    return 1;
 }
 
 /* ── Screen read ───────────────────────────────────────────────────────────── */
@@ -974,7 +1058,7 @@ static void read_post(const Frame *z, const Templates *t, int screen_h, Reading 
         goto done;
     }
     if (read_glyphs((const float (*)[DIGIT_H * DIGIT_W])t->post_glyphs, POST_CHARS,
-                    N_POST_GLYPHS, dig, nd, &ink, lab, text, info, sizeof(info)) < 0) {
+                    N_POST_GLYPHS, dig, nd, &ink, lab, 0, text, info, sizeof(info)) < 0) {
         snprintf(r->verdict, sizeof(r->verdict),
                  "post-match '%s' value unreadable: %s", name, info);
         goto done;
@@ -991,6 +1075,15 @@ static void read_post(const Frame *z, const Templates *t, int screen_h, Reading 
     if (!ok) {
         snprintf(r->verdict, sizeof(r->verdict),
                  "post-match '%s' value malformed: '%s'", name, text);
+        goto done;
+    }
+    int k = (int)strlen(text);
+    if (!grouping_ok(text, dig, k, all, n) ||
+        !grouping_ok(slash + 1, dig + k + 1, (int)strlen(slash + 1), all, n)) {
+        *slash = '/';
+        snprintf(r->verdict, sizeof(r->verdict),
+                 "post-match '%s' read %s, but its commas don't fit — a digit may be missing",
+                 name, text);
         goto done;
     }
     long value = strtol(text, NULL, 10), max_value = strtol(slash + 1, NULL, 10);
@@ -1129,18 +1222,37 @@ static void read_frame(const Frame *f, const Templates *t, Reading *r) {
                  "'%s' header found, but no yellow value under it", name);
         goto done;
     }
-    long value = read_number(t, ycomps, ny, &yink, ylab, info, sizeof(info));
+    /* The yellow current value is the only yellow text in the row, so every
+     * digit-shaped glyph must be part of it. */
+    long value = read_number(t, ycomps, ny, &yink, ylab, 1, info, sizeof(info));
     if (value < 0) {
         snprintf(r->verdict, sizeof(r->verdict), "'%s' value unreadable: %s", name, info);
+        goto done;
+    }
+    if (!grouping_ok(info, ycomps, ny, all, n)) {
+        snprintf(r->verdict, sizeof(r->verdict),
+                 "'%s' read %s, but its commas don't fit — a digit may be missing", name, info);
         goto done;
     }
 
     /* Max: white glyphs right of the current value; the first is the "/" */
     n = components(&wm, wlab, all, MAX_COMPS);
     int nw = filter_digits(all, n, s, ycomps[ny - 1].x1, wcomps);
+    if (nw > 0 && wcomps[0].x0 - ycomps[ny - 1].x1 >
+                  SLASH_GAP_MAX * (ycomps[0].y1 - ycomps[0].y0)) {
+        snprintf(r->verdict, sizeof(r->verdict),
+                 "'%s' read %ld, but the '/' is too far after it — a digit may be missing",
+                 name, value);
+        goto done;
+    }
     long max_value = -1;
-    if (nw >= 2)
-        max_value = read_number(t, wcomps + 1, nw - 1, &wink, wlab, info, sizeof(info));
+    if (nw >= 2) {
+        max_value = read_number(t, wcomps + 1, nw - 1, &wink, wlab, 0, info, sizeof(info));
+        /* An inconsistent max just skips the sanity check below. */
+        if (max_value >= 0 &&
+            !grouping_ok(info, wcomps + 1, (int)strlen(info), all, n))
+            max_value = -1;
+    }
     if (max_value >= 0 && value > max_value) {
         snprintf(r->verdict, sizeof(r->verdict),
                  "'%s' read %ld / %ld — current > max, rejecting", name, value, max_value);
