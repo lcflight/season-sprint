@@ -74,7 +74,7 @@
       </div>
 
       <StatsPanel
-        v-if="isSeasonValid"
+        v-if="isSeasonValid && !awaitingNewSeason"
         :required-per-day-zero="requiredPerDayZero"
         :required-per-day-from-last="requiredPerDayFromLast"
         :is-from-last-defined="isFromLastDefined"
@@ -107,9 +107,34 @@
       @close="closePointsModal"
     />
 
-    <p v-if="!isSeasonValid" class="error">Season start must be before end.</p>
+    <!-- Past the end of every season the server knows about: the new season
+         hasn't been picked up yet, so show an empty frame and a notice rather
+         than plotting new-season points against last season's window. -->
+    <div v-if="awaitingNewSeason" class="chart-wrapper awaiting-season">
+      <svg
+        :viewBox="`0 0 ${width} ${height}`"
+        :width="width"
+        :height="height"
+        role="img"
+        aria-label="Empty chart for the upcoming season"
+        class="nav-disabled"
+      >
+        <g class="axes">
+          <line :x1="padding" :y1="height - padding" :x2="width - padding" :y2="height - padding" />
+          <line :x1="padding" :y1="padding" :x2="padding" :y2="height - padding" />
+        </g>
+      </svg>
+      <div class="chart-overlay">
+        <p class="chart-overlay-text awaiting-season-text">
+          Please stand by. We are updating SeasonSprint to track the new season.
+          Reach out if the issue persists.
+        </p>
+      </div>
+    </div>
 
-    <div class="chart-wrapper" v-if="isSeasonValid">
+    <p v-if="!isSeasonValid && !awaitingNewSeason" class="error">Season start must be before end.</p>
+
+    <div class="chart-wrapper" v-if="isSeasonValid && !awaitingNewSeason">
       <!-- In-graph overlays: today's gain (top-left), live DB status (top-right) -->
       <div class="graph-overlay">
         <div class="today-progress">
@@ -555,6 +580,12 @@ const isViewingPastSeason = computed(
     selectedSeasonKey.value !== currentSeasonKey.value
 );
 
+// True while the new season hasn't been picked up by the server yet (see
+// useSeasons): the live view shows an empty placeholder instead of a chart.
+const awaitingNewSeason = computed(
+  () => !!currentSeason.value?.upcoming && !isViewingPastSeason.value
+);
+
 // The window the chart actually renders. For the live season this is the
 // persisted seasonStart/seasonEnd (unchanged behavior); for a past season it's
 // that season's fixed window.
@@ -601,13 +632,17 @@ const seasonOptions = computed(() =>
 );
 const overlayOptions = computed(() =>
   seasonsDesc.value.filter(
-    (s) => s.key !== selectedSeasonKey.value && dataSeasonKeys.value.has(s.key)
+    (s) =>
+      !s.upcoming &&
+      s.key !== selectedSeasonKey.value &&
+      dataSeasonKeys.value.has(s.key)
   )
 );
 
 const displayTitle = computed(() => {
   if (isViewingPastSeason.value && selectedSeason.value)
     return selectedSeason.value.name;
+  if (awaitingNewSeason.value) return currentSeason.value.name;
   return props.headerTitle || seasonTitle.value || "Interactive Line Graph";
 });
 
@@ -839,7 +874,8 @@ onMounted(async () => {
     // Default the live season's window to the current season (unchanged
     // behavior) and open the picker on it.
     const cur = currentSeason.value;
-    if (cur) {
+    // The upcoming-season placeholder has no dates — keep the persisted window.
+    if (cur && !cur.upcoming) {
       seasonStart.value = cur.start;
       seasonEnd.value = cur.end;
       seasonTitle.value = cur.name;
