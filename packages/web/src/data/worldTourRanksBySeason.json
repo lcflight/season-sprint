@@ -1,0 +1,10 @@
+{
+  "Season 12": {
+    "note": "Season 12 thresholds are partly known so far: Bronze 2, Bronze 1 and Silver 4.",
+    "thresholds": [
+      { "badge": "Bronze 2", "points": 6000 },
+      { "badge": "Bronze 1", "points": 8000 },
+      { "badge": "Silver 4", "points": 10000 }
+    ]
+  }
+}

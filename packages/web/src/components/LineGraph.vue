@@ -6,8 +6,8 @@
         {{ displayTitle }}
         <span v-if="isViewingPastSeason" class="readonly-badge">read-only</span>
       </h2>
-      <div v-if="headerDisclaimer" class="lg-disclaimer">
-        {{ headerDisclaimer }}
+      <div v-if="activeDisclaimer" class="lg-disclaimer">
+        {{ activeDisclaimer }}
       </div>
     </header>
 
@@ -60,7 +60,7 @@
     <section class="lg-status">
       <div class="controls" v-if="showGoalControl">
         <GoalControls
-          :goal-options="goalOptions"
+          :goal-options="activeGoalOptions"
           :selected-goal-index="selectedGoalIndex"
           :goal-win-points="goalWinPoints"
           :rank-info="rankInfo"
@@ -472,6 +472,7 @@ import {
 } from "@/utils/date";
 import { buildCSV } from "@/utils/csv";
 import { seasonsWithDataKeys } from "@/utils/chart";
+import { resolveSeasonGoals } from "@/utils/seasonGoals";
 import { useRankInfo } from "@/composables/useRankInfo";
 import { usePanZoom } from "@/composables/usePanZoom";
 import { useGraphSettings } from "@/composables/useGraphSettings";
@@ -495,6 +496,10 @@ const props = defineProps({
   // Optional list of rank thresholds to show a dropdown instead of raw numeric input
   // Expected shape: [{ badge: string, points: number }, ...]
   goalOptions: { type: Array, default: () => [] },
+  // Per-season overrides of goalOptions, keyed by season name ("Season 12"):
+  // { thresholds: [{ badge, points }], note?: string }. Seasons not listed
+  // use goalOptions; `note` replaces headerDisclaimer for that season.
+  seasonGoalOptions: { type: Object, default: () => ({}) },
   headerDisclaimer: { type: String, default: "" },
   headerTitle: { type: String, default: "" },
   // Which game mode's data this graph reads/writes. Keeps World Tour and
@@ -598,6 +603,25 @@ const placeholderMessage = computed(() =>
     ? "Please stand by. SeasonSprint is under maintenance. Reach out if the issue persists."
     : "Please stand by. We are updating SeasonSprint to track the new season. Reach out if the issue persists."
 );
+
+// Rank thresholds for the season on screen. Thresholds can change between
+// seasons (Season 12 rescaled World Tour), so a season listed in
+// seasonGoalOptions uses its own table; any other season uses goalOptions.
+// The upcoming-season placeholder has no known thresholds.
+const viewedSeasonKey = computed(() =>
+  isViewingPastSeason.value ? selectedSeasonKey.value : currentSeasonKey.value
+);
+const seasonGoals = computed(() =>
+  resolveSeasonGoals({
+    bySeason: props.seasonGoalOptions,
+    seasonKey: viewedSeasonKey.value,
+    fallback: props.goalOptions,
+    fallbackNote: props.headerDisclaimer,
+    upcoming: !!currentSeason.value?.upcoming && !isViewingPastSeason.value,
+  })
+);
+const activeGoalOptions = computed(() => seasonGoals.value.thresholds);
+const activeDisclaimer = computed(() => seasonGoals.value.note);
 
 // The window the chart actually renders. For the live season this is the
 // persisted seasonStart/seasonEnd (unchanged behavior); for a past season it's
@@ -754,7 +778,7 @@ const {
   pacePadY,
   today,
   mode: props.mode,
-  goalOptions: () => props.goalOptions,
+  goalOptions: () => activeGoalOptions.value,
   seasonStart: viewedStart,
   seasonEnd: viewedEnd,
   goalWinPoints,
@@ -765,9 +789,8 @@ const {
   overlayEnd,
 });
 
-// Rank info based on goalOptions thresholds
-const goalOptionsRef = computed(() => props.goalOptions);
-const { rankInfo, toNext, progressPct } = useRankInfo(currentWinPoints, goalOptionsRef);
+// Rank info based on the viewed season's thresholds
+const { rankInfo, toNext, progressPct } = useRankInfo(currentWinPoints, activeGoalOptions);
 
 // Pan/Zoom
 const {
@@ -796,11 +819,10 @@ function getGoalWinPoints() {
 function applySelectedGoal() {
   const idx = Number(selectedGoalIndex.value);
   if (
-    Array.isArray(props.goalOptions) &&
     idx >= 0 &&
-    idx < props.goalOptions.length
+    idx < activeGoalOptions.value.length
   ) {
-    const pts = Number(props.goalOptions[idx]?.points);
+    const pts = Number(activeGoalOptions.value[idx]?.points);
     if (Number.isFinite(pts)) {
       goalWinPoints.value = pts;
     }
@@ -856,10 +878,10 @@ defineExpose({
 
 // Keep selectedGoalIndex in sync with goalWinPoints and provided options
 watch(
-  [() => props.goalOptions, goalWinPoints],
+  [activeGoalOptions, goalWinPoints],
   () => {
-    if (Array.isArray(props.goalOptions) && props.goalOptions.length) {
-      const idx = props.goalOptions.findIndex(
+    if (activeGoalOptions.value.length) {
+      const idx = activeGoalOptions.value.findIndex(
         (o) => Number(o.points) === Number(goalWinPoints.value)
       );
       selectedGoalIndex.value = idx;

@@ -7,6 +7,7 @@
           storageKey="world-tour"
           gamemode="World Tour"
           :goalOptions="thresholds"
+          :seasonGoalOptions="seasonThresholds"
           headerDisclaimer="Based on World Tour wiki thresholds."
           season-controls-to="#season-controls-world-tour"
           @win-points="onWinPoints"
@@ -38,7 +39,10 @@ import PointsCheatsheet from "@/components/PointsCheatsheet.vue";
 import SetPointsCard from "@/components/SetPointsCard.vue";
 import ModeLayout from "@/components/ModeLayout.vue";
 import { useRankInfo } from "@/composables/useRankInfo";
+// worldTourRanks.json is the table for Season 11 and earlier; seasons whose
+// thresholds changed are listed in worldTourRanksBySeason.json.
 import WT_THRESHOLDS from "@/data/worldTourRanks.json";
+import WT_THRESHOLDS_BY_SEASON from "@/data/worldTourRanksBySeason.json";
 
 export default {
   name: "WorldTourView",
@@ -46,8 +50,9 @@ export default {
   setup() {
     const winPoints = ref(0);
     const thresholds = computed(() => WT_THRESHOLDS);
+    const seasonThresholds = WT_THRESHOLDS_BY_SEASON;
     const { rankInfo, toNext, progressPct } = useRankInfo(winPoints, thresholds);
-    return { winPoints, thresholds, rankInfo, toNext, progressPct };
+    return { winPoints, thresholds, seasonThresholds, rankInfo, toNext, progressPct };
   },
   data() {
     return {
