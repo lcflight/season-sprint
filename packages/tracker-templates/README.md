@@ -14,7 +14,8 @@ them by monitor height, since the game UI scales with vertical resolution.
 | `header_world_tour.pgm` | White mask of "WORLD TOUR SCORE" | real screenshot |
 | `header_placement.pgm` | White mask of "PLACEMENT ROUNDS" (recognised, never pushed) | real screenshot |
 | `header_ranked.pgm` | **Not yet captured.** Ranked score header after placements | — |
-| `digit_0..9.pgm` | 24x20 normalised digit glyphs (MODES, italic) | 0,1,2,4,5,6,7,8 real (averaged over every sample); **3 and 9 rendered** from Saira Extra Condensed Medium, sheared to match the game's italic |
+| `digit_0..9.pgm` | 24x20 normalised digit glyphs (MODES, italic) | all real, averaged over every sample (yellow current values and white maxes) |
+| `digit_8_yellow.pgm` | Variant 8 for the yellow current value; the white-derived `digit_8` sits too close to 0 for it | real |
 | `post_header_world_tour.pgm` | White mask of the post-match "WORLD TOUR SCORE" (upright font) | real, from a match-end recording |
 | `post_header_ranked.pgm` | **Not yet captured.** Post-match ranked header | — |
 | `post_digit_0..9.pgm`, `post_digit_slash.pgm` | 24x20 glyphs of the post-match value ("5,736/8,000", upright white) | all real, averaged over the count-up frames of a recording |
@@ -36,9 +37,16 @@ python make_templates.py check shot.png
 ```
 
 `header` finds the yellow value at the bottom centre and crops the white text
-line just above it. `digits` overwrites one template per digit in the value. A
-single sample is fine, though averaging several (as the committed ones are)
-gives a little more margin between look-alikes such as 0/8.
+line just above it. `digits` writes one template per digit in the value
+(repeats are averaged). `--only 39` limits which digits are written, `--blend`
+averages into the existing template instead of replacing it, and
+`--variant NAME` writes `digit_<d>_<NAME>.pgm` beside the main one. A glyph
+scores the best variant of each digit, so add a variant when one rendering of
+a digit doesn't match the existing template well.
+
+Check margins after any change: `python make_templates.py check shot.png` on
+each screenshot you have, plus both trackers' cross-check (see the tracker
+READMEs).
 
 The ranked header needs no code change: both trackers load `header_ranked.pgm`
 (and `post_header_ranked.pgm`) if present and post its value with

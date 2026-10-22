@@ -111,7 +111,10 @@ def write_pgm(path: Path, img: np.ndarray) -> None:
 class Templates:
     modes: np.ndarray                      # 0/1 mask, reference scale
     headers: dict[str, np.ndarray]         # name -> 0/1 mask, reference scale
-    digits: dict[str, np.ndarray]          # "0".."9" -> float DIGIT_H x DIGIT_W
+    # "0".."9" -> float DIGIT_H x DIGIT_W. Variant templates for the same digit
+    # use keys like "8_yellow" (file digit_8_yellow.pgm); the first character
+    # is the digit, and a glyph scores the best of its digit's variants.
+    digits: dict[str, np.ndarray]
     # Post-match panel (both empty if its templates aren't installed).
     post_headers: dict[str, np.ndarray] = field(default_factory=dict)
     post_glyphs: dict[str, np.ndarray] = field(default_factory=dict)  # "0".."9", "/"
@@ -128,6 +131,8 @@ class Templates:
             d: read_pgm(folder / f"digit_{d}.pgm").astype(np.float32) / 255.0
             for d in "0123456789"
         }
+        for p in sorted(folder.glob("digit_[0-9]_*.pgm")):
+            digits[p.stem[len("digit_"):]] = read_pgm(p).astype(np.float32) / 255.0
         post_headers = {}
         for name in POST_HEADER_MODES:
             p = folder / f"post_header_{name}.pgm"
@@ -354,9 +359,16 @@ def _ncc(a: np.ndarray, b: np.ndarray) -> float:
 
 
 def classify_digit(g_img: np.ndarray, digits: dict[str, np.ndarray]) -> tuple[Optional[str], float, float]:
-    """Return (digit or None, best score, runner-up score)."""
+    """Return (glyph or None, best score, runner-up score). Keys may be
+    variants ("8_yellow"): each glyph character scores the best of its
+    variants, and the margin is measured against other characters."""
     g = normalize_glyph(g_img)
-    scores = sorted(((_ncc(g, t), d) for d, t in digits.items()), reverse=True)
+    per_char: dict[str, float] = {}
+    for key, t in digits.items():
+        sc = _ncc(g, t)
+        if sc > per_char.get(key[0], -2.0):
+            per_char[key[0]] = sc
+    scores = sorted(((sc, ch) for ch, sc in per_char.items()), reverse=True)
     (best, d), (second, _) = scores[0], scores[1]
     if best < DIGIT_MIN or best - second < DIGIT_MARGIN:
         return None, best, second
@@ -367,15 +379,25 @@ def _digit_like(c: Comp, s: float) -> bool:
     return 14 * s <= c.h <= 32 * s and c.w <= c.h
 
 
-def read_glyphs(comps: list[Comp], ink: np.ndarray, glyphs: dict[str, np.ndarray]) -> tuple[Optional[str], str]:
+# Gap between glyphs (as a fraction of glyph height) that ends a run. Normal
+# digit and comma gaps are <= ~0.47h; a digit missing from the middle of a
+# number leaves ~0.75h, so it ends the run rather than being skipped over.
+RUN_GAP = 0.7
+
+
+def read_glyphs(comps: list[Comp], ink: np.ndarray, glyphs: dict[str, np.ndarray],
+                require_all: bool = False) -> tuple[Optional[str], str]:
     """Classify a left-to-right run of glyph components into a string.
-    Stops at the first gap wider than a glyph height, or a glyph of a
-    different height (end of the run). Returns (text or None, info)."""
+    Stops at a gap wider than RUN_GAP glyph heights, or a glyph of a
+    different height (end of the run). With require_all, a run that stops
+    before the last component is rejected — a missed glyph mid-number would
+    otherwise read as a shorter, wrong number. Returns (text or None, info)."""
     out = ""
     prev_x1 = None
     first_h = comps[0].h if comps else 0
+    used = 0
     for c in comps:
-        if prev_x1 is not None and c.x0 - prev_x1 > c.h * 1.2:
+        if prev_x1 is not None and c.x0 - prev_x1 > c.h * RUN_GAP:
             break
         # A glyph of a different height ends the number (e.g. the heart
         # icon after the World Tour max).
@@ -386,14 +408,50 @@ def read_glyphs(comps: list[Comp], ink: np.ndarray, glyphs: dict[str, np.ndarray
             return None, f"unrecognised glyph #{len(out) + 1} (best {best:.2f}, next {second:.2f})"
         out += d
         prev_x1 = c.x1
+        used += 1
     if not out:
         return None, "no digits"
+    if require_all and used < len(comps):
+        return None, f"gap after '{out}' — a glyph may be missing"
     return out, out
 
 
-def read_number(comps: list[Comp], ink: np.ndarray, digits: dict[str, np.ndarray]) -> tuple[Optional[int], str]:
+# A missed glyph at the start or end of a number leaves no gap to notice, so
+# two formatting rules the game always follows are checked instead:
+#  - thousands are grouped with commas ("2,726"): the commas fix how many
+#    digits there must be, and a multi-digit number never starts with 0;
+#  - on MODES the white "/" sits a fixed ~0.45 glyph heights after the value
+#    (a missed last digit pushes it past ~1.0).
+SLASH_GAP_MAX = 0.8
+
+
+def grouping_ok(text: str, digit_comps: list[Comp], all_comps: list[Comp]) -> bool:
+    """True if `text` (the digits read from `digit_comps`, left to right) is
+    consistent with the commas among `all_comps` (every component of the
+    same colour in the row)."""
+    if not text.isdigit() or len(text) != len(digit_comps):
+        return False
+    if len(text) > 1 and text[0] == "0":
+        return False
+    h = max(c.h for c in digit_comps)
+    base = max(c.y1 for c in digit_comps)
+    # Include a stray comma just before the first digit: that's what a missed
+    # leading digit leaves behind ("2,726" read as ",726").
+    lo, hi = digit_comps[0].x0 - h, digit_comps[-1].x0 + 3
+    commas = [
+        (c.x0 + c.x1) / 2 for c in all_comps
+        if c.h < 0.6 * h and abs(c.y1 - base) < 0.4 * h and lo <= (c.x0 + c.x1) / 2 <= hi
+    ]
+    # Digits to the right of each comma must be 3, 6, 9, ... and there must
+    # be exactly as many commas as the digit count calls for.
+    right = sorted(sum(1 for d in digit_comps if (d.x0 + d.x1) / 2 > cx) for cx in commas)
+    return right == [3 * (i + 1) for i in range(len(right))] and len(right) == (len(text) - 1) // 3
+
+
+def read_number(comps: list[Comp], ink: np.ndarray, digits: dict[str, np.ndarray],
+                require_all: bool = False) -> tuple[Optional[int], str]:
     """Classify a left-to-right run of glyph components as one number."""
-    text, info = read_glyphs(comps, ink, digits)
+    text, info = read_glyphs(comps, ink, digits, require_all)
     return (int(text), info) if text is not None else (None, info)
 
 
@@ -503,17 +561,29 @@ def read_frame(frame: np.ndarray, t: Templates) -> Reading:
     if not ycomps:
         r.verdict = f"'{name}' header found, but no yellow value under it"
         return r
-    value, info = read_number(ycomps, yellow_ink(row), t.digits)
+    # The yellow current value is the only yellow text in the row, so every
+    # digit-shaped glyph must be part of it.
+    value, info = read_number(ycomps, yellow_ink(row), t.digits, require_all=True)
     if value is None:
         r.verdict = f"'{name}' value unreadable: {info}"
+        return r
+    if not grouping_ok(info, ycomps, components(yellow_mask(row))):
+        r.verdict = f"'{name}' read {info}, but its commas don't fit — a digit may be missing"
         return r
 
     # Max: white glyphs right of the current value; the first is the "/".
     last_x1 = ycomps[-1].x1
-    wcomps = [c for c in components(white_mask(row)) if c.x0 >= last_x1 and _digit_like(c, s)]
+    wall = components(white_mask(row))
+    wcomps = [c for c in wall if c.x0 >= last_x1 and _digit_like(c, s)]
+    if wcomps and wcomps[0].x0 - last_x1 > SLASH_GAP_MAX * ycomps[0].h:
+        r.verdict = f"'{name}' read {info}, but the '/' is too far after it — a digit may be missing"
+        return r
     max_value = None
     if len(wcomps) >= 2:
-        max_value, _ = read_number(wcomps[1:], white_ink(row), t.digits)
+        max_value, mtext = read_number(wcomps[1:], white_ink(row), t.digits)
+        # An inconsistent max just skips the sanity check below.
+        if max_value is not None and not grouping_ok(mtext, wcomps[1:1 + len(mtext)], wall):
+            max_value = None
     if max_value is not None and value > max_value:
         r.verdict = f"'{name}' read {value} / {max_value} — current > max, rejecting"
         return r
@@ -600,6 +670,12 @@ def read_post(zone: np.ndarray, t: Templates, screen_h: int) -> Reading:
     cur, sep, mx = text.partition("/")
     if not sep or not cur.isdigit() or not mx.isdigit():
         r.verdict = f"post-match '{name}' value malformed: {text!r}"
+        return r
+    wall = components(white_mask(row, POST_WHITE_MIN))
+    k = len(cur)
+    if not (grouping_ok(cur, comps[:k], wall)
+            and grouping_ok(mx, comps[k + 1:k + 1 + len(mx)], wall)):
+        r.verdict = f"post-match '{name}' read {text}, but its commas don't fit — a digit may be missing"
         return r
     value, max_value = int(cur), int(mx)
     if value > max_value:

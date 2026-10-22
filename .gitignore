@@ -61,3 +61,4 @@ packages/local-win/debug_captures/
 packages/local-win/__pycache__/
 packages/local-win/**/__pycache__/
 packages/local-win/dist/
+packages/tracker-templates/__pycache__/
