@@ -1,10 +1,31 @@
 {
   "Season 12": {
-    "note": "Season 12 thresholds are partly known so far: Bronze 2, Bronze 1 and Silver 4.",
+    "note": "Season 12 thresholds: Bronze 2, Bronze 1 and Silver 4 are confirmed; the rest are estimated at 2,000 per tier.",
     "thresholds": [
+      { "badge": "Bronze 4", "points": 2000 },
+      { "badge": "Bronze 3", "points": 4000 },
       { "badge": "Bronze 2", "points": 6000 },
       { "badge": "Bronze 1", "points": 8000 },
-      { "badge": "Silver 4", "points": 10000 }
+      { "badge": "Silver 4", "points": 10000 },
+      { "badge": "Silver 3", "points": 12000 },
+      { "badge": "Silver 2", "points": 14000 },
+      { "badge": "Silver 1", "points": 16000 },
+      { "badge": "Gold 4", "points": 18000 },
+      { "badge": "Gold 3", "points": 20000 },
+      { "badge": "Gold 2", "points": 22000 },
+      { "badge": "Gold 1", "points": 24000 },
+      { "badge": "Platinum 4", "points": 26000 },
+      { "badge": "Platinum 3", "points": 28000 },
+      { "badge": "Platinum 2", "points": 30000 },
+      { "badge": "Platinum 1", "points": 32000 },
+      { "badge": "Diamond 4", "points": 34000 },
+      { "badge": "Diamond 3", "points": 36000 },
+      { "badge": "Diamond 2", "points": 38000 },
+      { "badge": "Diamond 1", "points": 40000 },
+      { "badge": "Emerald 4", "points": 42000 },
+      { "badge": "Emerald 3", "points": 44000 },
+      { "badge": "Emerald 2", "points": 46000 },
+      { "badge": "Emerald 1", "points": 48000 }
     ]
   }
 }

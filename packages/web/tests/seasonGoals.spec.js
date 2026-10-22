@@ -8,12 +8,16 @@ const base = { bySeason: WT_BY_SEASON, fallback: WT_THRESHOLDS, fallbackNote: 'B
 describe('resolveSeasonGoals', () => {
   it('uses the season 12 table for season 12', () => {
     const r = resolveSeasonGoals({ ...base, seasonKey: 'Season 12' })
-    expect(r.thresholds).toEqual([
-      { badge: 'Bronze 2', points: 6000 },
-      { badge: 'Bronze 1', points: 8000 },
-      { badge: 'Silver 4', points: 10000 },
-    ])
-    expect(r.note).toMatch(/partly known/)
+    const byBadge = Object.fromEntries(r.thresholds.map((t) => [t.badge, t.points]))
+    // Confirmed in-game
+    expect(byBadge['Bronze 2']).toBe(6000)
+    expect(byBadge['Bronze 1']).toBe(8000)
+    expect(byBadge['Silver 4']).toBe(10000)
+    // Estimated: a flat 2,000 per tier across all 24 badges
+    expect(r.thresholds).toHaveLength(24)
+    expect(byBadge['Bronze 4']).toBe(2000)
+    expect(byBadge['Emerald 1']).toBe(48000)
+    expect(r.note).toMatch(/estimated/)
   })
 
   it('keeps the original table for earlier seasons', () => {
