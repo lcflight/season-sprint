@@ -63,7 +63,7 @@ fun DashboardScreen(
                 points = state.seasonPoints,
                 goal = state.goal,
                 season = state.viewedSeason,
-                thresholds = state.thresholds,
+                thresholds = state.viewedThresholds,
                 baseline = baseline,
                 overlayPoints = state.overlayPoints,
                 rank = state.rank,
@@ -108,7 +108,10 @@ private fun RankSummaryCard(state: DashboardState) {
                     LiveIndicator(state.liveStatus)
                 }
                 Column(horizontalAlignment = Alignment.End) {
-                    Text("${state.currentPoints} pts", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "%,d %s".format(state.currentPoints, if (state.usesFansEntry) "fans" else "pts"),
+                        style = MaterialTheme.typography.titleMedium,
+                    )
                     state.todayGain?.let { gain ->
                         Text(
                             (if (gain >= 0) "+$gain today" else "$gain today"),
@@ -123,7 +126,16 @@ private fun RankSummaryCard(state: DashboardState) {
                 modifier = Modifier.fillMaxWidth(),
                 color = accent,
             )
-            val toNextText = rank.nextTarget?.let { "${rank.toNext} pts to ${rank.nextBadge}  ·  ${rank.points}/$it" }
+            // Fans seasons show the in-game "fans in this badge / fans it needs".
+            val toNextText = rank.nextTarget?.let {
+                if (state.usesFansEntry) {
+                    "%,d fans to %s  ·  %,d/%,d".format(
+                        rank.toNext, rank.nextBadge, rank.points - rank.currentFloor, it - rank.currentFloor,
+                    )
+                } else {
+                    "${rank.toNext} pts to ${rank.nextBadge}  ·  ${rank.points}/$it"
+                }
+            }
                 ?: "Top rank reached"
             Text(toNextText, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }

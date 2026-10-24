@@ -11,7 +11,7 @@ struct GraphTabView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 16) {
-                    CompactSummary(rank: store.rank, liveStatus: store.liveStatus)
+                    CompactSummary(rank: store.rank, liveStatus: store.liveStatus, inGameReadout: store.usesFansEntry)
 
                     if store.isViewingPastSeason {
                         Text("Viewing a past season — read-only")
@@ -25,7 +25,7 @@ struct GraphTabView: View {
                         points: store.seasonPoints.sorted { $0.date < $1.date },
                         season: store.viewedSeason,
                         goal: store.goal,
-                        thresholds: store.thresholds,
+                        thresholds: store.viewedThresholds,
                         baseline: baseline,
                         rank: store.rank,
                         pace: store.pace,
@@ -59,6 +59,8 @@ struct GraphTabView: View {
 private struct CompactSummary: View {
     let rank: RankInfo
     let liveStatus: LiveStatus
+    /// Fans seasons: show "fans in this badge / fans it needs", as the game does.
+    var inGameReadout = false
 
     var body: some View {
         let accent = tierColor(rank.badge)
@@ -71,7 +73,7 @@ private struct CompactSummary: View {
                     LiveIndicatorView(status: liveStatus)
                 }
                 Spacer()
-                Text("\(rank.points)")
+                Text(rank.points.formatted())
                     .font(.title.bold())
                     .monospacedDigit()
             }
@@ -80,9 +82,11 @@ private struct CompactSummary: View {
                 ProgressView(value: rank.progressFraction)
                     .tint(accent)
                 HStack {
-                    Text("\(rank.toNext) to \(nextBadge)")
+                    Text("\(rank.toNext.formatted()) to \(nextBadge)")
                     Spacer()
-                    Text("\(rank.points)/\(next)")
+                    Text(inGameReadout
+                         ? "\((rank.points - rank.currentFloor).formatted())/\((next - rank.currentFloor).formatted())"
+                         : "\(rank.points)/\(next)")
                         .monospacedDigit()
                 }
                 .font(.caption2)

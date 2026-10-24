@@ -51,6 +51,10 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          # The default also installs the legacy "tools" package, which
+          # cmdline-tools 16+ no longer ships (sdkmanager then fails).
+          packages: platform-tools
 
       - name: Reconstruct signing config
         working-directory: packages/android

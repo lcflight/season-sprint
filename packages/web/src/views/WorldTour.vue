@@ -12,6 +12,7 @@
           season-controls-to="#season-controls-world-tour"
           @win-points="onWinPoints"
           @read-only="onReadOnly"
+          @season-goals="onSeasonGoals"
         />
       </template>
       <template #aside>
@@ -21,8 +22,12 @@
           <div id="season-controls-world-tour"></div>
         </div>
         <template v-if="!readOnly">
-          <PointsCheatsheet :values="quickAddValues" @quick-add="onQuickAdd" />
-          <SetPointsCard @add-at-date="addCustom" @add-today="addToday" />
+          <SetPointsCard
+            :fans="fans"
+            :title="fans ? 'Set fans' : 'Set points'"
+            @add-at-date="addCustom"
+            @add-today="addToday"
+          />
         </template>
         <p v-else class="past-season-note">
           Viewing a past season — read-only. Switch back to the current season to
@@ -35,7 +40,6 @@
 <script>
 import { ref, computed } from "vue";
 import LineGraph from "@/components/LineGraph.vue";
-import PointsCheatsheet from "@/components/PointsCheatsheet.vue";
 import SetPointsCard from "@/components/SetPointsCard.vue";
 import ModeLayout from "@/components/ModeLayout.vue";
 import { useRankInfo } from "@/composables/useRankInfo";
@@ -46,7 +50,7 @@ import WT_THRESHOLDS_BY_SEASON from "@/data/worldTourRanksBySeason.json";
 
 export default {
   name: "WorldTourView",
-  components: { LineGraph, PointsCheatsheet, SetPointsCard, ModeLayout },
+  components: { LineGraph, SetPointsCard, ModeLayout },
   setup() {
     const winPoints = ref(0);
     const thresholds = computed(() => WT_THRESHOLDS);
@@ -56,8 +60,9 @@ export default {
   },
   data() {
     return {
-      quickAddValues: { round1: 2, round2: 6, finalLose: 14, finalWin: 25 },
       readOnly: false,
+      // Season 12+ counts fans (see utils/fans.js); set from the viewed season.
+      fans: true,
     };
   },
   methods: {
@@ -67,13 +72,9 @@ export default {
     onReadOnly(v) {
       this.readOnly = !!v;
     },
-    onQuickAdd(inc) {
-      const graph = this.$refs.graphRef;
-      if (graph && typeof graph.incrementWinPoints === "function") {
-        graph.incrementWinPoints(inc);
-      } else if (graph && typeof graph.addWinPoints === "function") {
-        graph.addWinPoints(inc);
-      }
+    onSeasonGoals(goals) {
+      // Ignore the fallback table shown before the season list loads.
+      if (goals?.resolved) this.fans = !!goals.fans;
     },
     addCustom({ date, y }) {
       const graph = this.$refs.graphRef;

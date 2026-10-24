@@ -159,7 +159,7 @@ def cmd_check(shot: str) -> None:
     t = sr.Templates.load(HERE)
     r = sr.read_frame(rgb, t)
     print(f"gate {r.gate_score:.3f}  headers {r.header_scores}")
-    print(f"=> {r.verdict}  (mode={r.mode}, value={r.value}, max={r.max_value})")
+    print(f"=> {r.verdict}  (mode={r.mode}, value={r.value}, max={r.max_value}, total={r.total})")
 
 
 def main(argv: list[str]) -> None:

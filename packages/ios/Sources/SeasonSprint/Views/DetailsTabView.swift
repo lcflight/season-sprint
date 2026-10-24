@@ -14,9 +14,6 @@ struct DetailsTabView: View {
                     StatsGridView(store: store)
                     GoalControlView(store: store)
                     RankReferenceView(thresholds: store.thresholds, rank: store.rank)
-                    if store.mode == .worldTour {
-                        CheatsheetView()
-                    }
 
                     if let errorMessage = store.errorMessage {
                         Text(errorMessage)

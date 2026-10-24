@@ -5,10 +5,42 @@ import com.lcarthur.seasonsprint.GameMode
 /** A rank threshold: reach [points] to earn [badge]. */
 data class Threshold(val badge: String, val points: Int)
 
-/** The rank/RS threshold table for a mode. */
-fun thresholdsFor(mode: GameMode): List<Threshold> = when (mode) {
-    GameMode.WorldTour -> worldTourThresholds
+/**
+ * The rank/RS threshold table for a mode in a season (a `/seasons` name like "Season 12").
+ * World Tour switched from win points to fans in Season 12; null or an unknown name means the
+ * live season, which is always a fans season now.
+ */
+fun thresholdsFor(mode: GameMode, seasonKey: String? = null): List<Threshold> = when (mode) {
+    GameMode.WorldTour -> if (usesFans(seasonKey)) worldTourFansThresholds else worldTourThresholds
     GameMode.Ranked -> rankedThresholds
+}
+
+// Fans (World Tour, Season 12+). Ported from packages/web/src/utils/fans.js + iOS Rank.swift.
+//
+// The game shows "X / Y": fans since entering the current badge / fans that badge needs.
+// Badge n (Bronze 4 = 1 … Emerald 1 = 24) needs 2,000·n, so Y identifies the badge and the
+// season total is 1,000·n·(n-1) + X. Records store that season total.
+
+const val FIRST_FANS_SEASON = 12
+const val FANS_STEP = 2000
+const val FANS_BADGES = 24
+
+/** "Season 12" -> 12; null for names without a trailing number. */
+fun seasonNumber(name: String?): Int? =
+    name?.let { Regex("""(\d+)\s*$""").find(it)?.groupValues?.get(1)?.toIntOrNull() }
+
+/** Whether World Tour counts fans in this season. null/unknown = the live season = fans. */
+fun usesFans(seasonKey: String?): Boolean = seasonNumber(seasonKey)?.let { it >= FIRST_FANS_SEASON } ?: true
+
+/** Season-total fans at the moment you enter badge [n] (1-based). */
+fun fansToEnter(n: Int): Int = FANS_STEP / 2 * n * (n - 1)
+
+/** Season-total fans from the in-game "X / Y" readout, or null if it isn't a real badge. */
+fun fansTotal(inRank: Int, required: Int): Int? {
+    if (inRank < 0 || required <= 0 || required % FANS_STEP != 0) return null
+    val n = required / FANS_STEP
+    if (n < 1 || n > FANS_BADGES || inRank > required) return null
+    return fansToEnter(n) + inRank
 }
 
 /** Derived rank state. Ported from packages/web/src/composables/useRankInfo.js + iOS Rank.swift. */
@@ -48,7 +80,21 @@ fun computeRank(points: Int, thresholds: List<Threshold> = worldTourThresholds):
     return RankInfo(prevBadge, prevPoints, null, null, wp)
 }
 
-/** World Tour rank thresholds, verbatim from packages/web/src/data/worldTourRanks.json. */
+/**
+ * A World Tour goal saved on the old win-points scale, moved to the same badge's fans
+ * threshold; null if [goal] isn't an old badge threshold (a custom goal). Callers run it
+ * once, keyed on a saved scale marker: the number alone is ambiguous (2,000 is Emerald 3 in
+ * points but Bronze 3 in fans).
+ */
+fun fansGoalFromLegacy(goal: Int): Int? {
+    val old = worldTourThresholds.firstOrNull { it.points == goal } ?: return null
+    return worldTourFansThresholds.firstOrNull { it.badge == old.badge }?.points
+}
+
+/**
+ * World Tour rank thresholds for Season 11 and earlier (win points), verbatim from
+ * packages/web/src/data/worldTourRanks.json.
+ */
 val worldTourThresholds: List<Threshold> = listOf(
     Threshold("Bronze 4", 25),
     Threshold("Bronze 3", 50),
@@ -77,6 +123,37 @@ val worldTourThresholds: List<Threshold> = listOf(
 )
 
 /**
+ * World Tour fans thresholds for Season 12 onward (season total to enter each badge), verbatim
+ * from packages/web/src/data/worldTourRanksBySeason.json ("Season 12").
+ */
+val worldTourFansThresholds: List<Threshold> = listOf(
+    Threshold("Bronze 4", 0),
+    Threshold("Bronze 3", 2000),
+    Threshold("Bronze 2", 6000),
+    Threshold("Bronze 1", 12000),
+    Threshold("Silver 4", 20000),
+    Threshold("Silver 3", 30000),
+    Threshold("Silver 2", 42000),
+    Threshold("Silver 1", 56000),
+    Threshold("Gold 4", 72000),
+    Threshold("Gold 3", 90000),
+    Threshold("Gold 2", 110000),
+    Threshold("Gold 1", 132000),
+    Threshold("Platinum 4", 156000),
+    Threshold("Platinum 3", 182000),
+    Threshold("Platinum 2", 210000),
+    Threshold("Platinum 1", 240000),
+    Threshold("Diamond 4", 272000),
+    Threshold("Diamond 3", 306000),
+    Threshold("Diamond 2", 342000),
+    Threshold("Diamond 1", 380000),
+    Threshold("Emerald 4", 420000),
+    Threshold("Emerald 3", 462000),
+    Threshold("Emerald 2", 506000),
+    Threshold("Emerald 1", 552000),
+)
+
+/**
  * Ranked RS thresholds, verbatim from packages/web/src/views/Ranked.vue (RANKED_THRESHOLDS).
  * Bronze (0 → 7,500), Silver (10,000 → 17,500), Gold (20,000 → 27,500), Platinum
  * (30,000 → 37,500), Diamond (40,000 → 47,500). Ruby = Top 500, not threshold-based.
@@ -102,16 +179,6 @@ val rankedThresholds: List<Threshold> = listOf(
     Threshold("Diamond 3", 42500),
     Threshold("Diamond 2", 45000),
     Threshold("Diamond 1", 47500),
-)
-
-/** World Tour win-points cheatsheet, from packages/web/src/components/PointsCheatsheet.vue. */
-data class CheatsheetRow(val label: String, val value: Int)
-
-val worldTourCheatsheet: List<CheatsheetRow> = listOf(
-    CheatsheetRow("Knocked out of round one", 2),
-    CheatsheetRow("Knocked out of round two", 6),
-    CheatsheetRow("Lose the final round", 14),
-    CheatsheetRow("Win the final round", 25),
 )
 
 /** Tier key for a badge string (e.g. "Gold 2" → "gold"). Maps to colors in ui/theme/Color.kt. */

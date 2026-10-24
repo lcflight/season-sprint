@@ -67,7 +67,8 @@
           :current-win-points="currentWinPoints"
           :to-next="toNext"
           :progress-pct="progressPct"
-          :unit="unit"
+          :unit="activeUnit"
+          :fans="seasonGoals.fans"
           @select-goal="onSelectGoal"
           @set-goal-win-points="setGoalWinPoints"
         />
@@ -140,7 +141,7 @@
           <template v-if="todayPoint">
             <span class="today-label">Today</span>
             <span class="today-value" :class="{ 'today-loss': todayGain < 0 }"
-              >{{ todayGain >= 0 ? "+" : "" }}{{ todayGain }} pts</span
+              >{{ todayGain >= 0 ? "+" : "" }}{{ todayGain.toLocaleString() }} {{ seasonGoals.fans ? "fans" : "pts" }}</span
             >
           </template>
           <template v-else>
@@ -397,7 +398,7 @@
             :y="paceTop + paceHeight / 2"
             text-anchor="middle"
             :transform="`rotate(-90 22 ${paceTop + paceHeight / 2})`"
-          >Pts / Day</text>
+          >{{ seasonGoals.fans ? "Fans" : "Pts" }} / Day</text>
           <!-- Pace legend -->
           <text class="pace-legend" :x="width - padding - 4" :y="paceTop + 10" text-anchor="end">
             <tspan class="pace-legend-required">-- required</tspan>
@@ -414,7 +415,7 @@
           :y="height / 2"
           text-anchor="middle"
           :transform="`rotate(-90 22 ${height / 2})`"
-        >{{ yAxisLabel }}</text>
+        >{{ activeYAxisLabel }}</text>
         <text
           class="axis-label"
           :x="width / 2"
@@ -487,7 +488,7 @@ import ImportModal from "@/components/modals/ImportModal.vue";
 import PointsModal from "@/components/modals/PointsModal.vue";
 
 // eslint-disable-next-line no-undef
-const emit = defineEmits(["win-points", "read-only"]);
+const emit = defineEmits(["win-points", "read-only", "season-goals"]);
 
 // eslint-disable-next-line no-undef
 const props = defineProps({
@@ -535,6 +536,7 @@ const {
   seasonEnd,
   seasonTitle,
   goalWinPoints,
+  goalScale,
   selectedGoalIndex,
   autoSetSeasonFromImport,
   simplifyImport,
@@ -622,6 +624,19 @@ const seasonGoals = computed(() =>
 );
 const activeGoalOptions = computed(() => seasonGoals.value.thresholds);
 const activeDisclaimer = computed(() => seasonGoals.value.note);
+// A season entry can rename the unit (Season 12+ World Tour counts fans).
+const activeUnit = computed(() => seasonGoals.value.unit || props.unit);
+const activeYAxisLabel = computed(
+  () => seasonGoals.value.yAxisLabel || props.yAxisLabel
+);
+// Lets the page swap its side panels (e.g. fans entry) for the season on screen.
+// `resolved` is false until the season list has loaded: before that the
+// table is only the fallback, not the real season's.
+watch(
+  [seasonGoals, currentSeasonKey],
+  ([v, key]) => emit("season-goals", { ...v, resolved: !!key }),
+  { immediate: true }
+);
 
 // The window the chart actually renders. For the live season this is the
 // persisted seasonStart/seasonEnd (unchanged behavior); for a past season it's
@@ -880,6 +895,21 @@ defineExpose({
 watch(
   [activeGoalOptions, goalWinPoints],
   () => {
+    // First time on a fans season (Season 12+): a goal saved on the old
+    // win-points scale (e.g. "Emerald 1" = 2,400 WP) moves to the same badge.
+    // Done once, keyed on the saved scale, since a number alone is ambiguous
+    // (2,000 is Emerald 3 in points but Bronze 3 in fans).
+    if (seasonGoals.value.fans && !isViewingPastSeason.value && goalScale.value !== "fans") {
+      goalScale.value = "fans";
+      const old = props.goalOptions.find(
+        (o) => Number(o.points) === Number(goalWinPoints.value)
+      );
+      const same = old ? activeGoalOptions.value.find((o) => o.badge === old.badge) : null;
+      if (same && Number(same.points) !== Number(goalWinPoints.value)) {
+        goalWinPoints.value = Number(same.points);
+        return; // the watch re-runs with the new goal
+      }
+    }
     if (activeGoalOptions.value.length) {
       const idx = activeGoalOptions.value.findIndex(
         (o) => Number(o.points) === Number(goalWinPoints.value)

@@ -1,6 +1,8 @@
 package com.lcarthur.seasonsprint.ui
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.ButtonDefaults
@@ -15,6 +17,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -36,7 +39,12 @@ fun DateField(label: String, dateMillis: Long, onClick: () -> Unit) {
 
 /** Numeric win-points input (digits only). */
 @Composable
-fun WinPointsField(value: String, onValueChange: (String) -> Unit, label: String = "Win points") {
+fun WinPointsField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String = "Win points",
+    modifier: Modifier = Modifier.fillMaxWidth(),
+) {
     val scheme = MaterialTheme.colorScheme
     OutlinedTextField(
         value = value,
@@ -44,7 +52,7 @@ fun WinPointsField(value: String, onValueChange: (String) -> Unit, label: String
         label = { Text(label) },
         singleLine = true,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier,
         colors = OutlinedTextFieldDefaults.colors(
             focusedBorderColor = scheme.primary,
             unfocusedBorderColor = scheme.onSurfaceVariant,
@@ -55,6 +63,29 @@ fun WinPointsField(value: String, onValueChange: (String) -> Unit, label: String
             cursorColor = scheme.primary,
         ),
     )
+}
+
+/**
+ * World Tour fans (Season 12+): the in-game "X / Y" — fans in the current badge / fans it
+ * needs. Callers turn the pair into a season total with domain.fansTotal.
+ */
+@Composable
+fun FansReadoutField(
+    inRank: String,
+    onInRankChange: (String) -> Unit,
+    required: String,
+    onRequiredChange: (String) -> Unit,
+    label: String = "Fans",
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        WinPointsField(inRank, onInRankChange, label = label, modifier = Modifier.weight(1f))
+        Text("/", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        WinPointsField(required, onRequiredChange, label = "Needed", modifier = Modifier.weight(1f))
+    }
 }
 
 /** Material3 date-picker dialog returning the selected UTC-midnight millis. */

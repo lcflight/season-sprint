@@ -22,11 +22,13 @@ import com.lcarthur.seasonsprint.domain.SeasonOption
 import com.lcarthur.seasonsprint.domain.Threshold
 import com.lcarthur.seasonsprint.domain.computePace
 import com.lcarthur.seasonsprint.domain.computeRank
+import com.lcarthur.seasonsprint.domain.fansGoalFromLegacy
 import com.lcarthur.seasonsprint.domain.mapOverlayByDayOfSeason
 import com.lcarthur.seasonsprint.domain.paceBaselineFor
 import com.lcarthur.seasonsprint.domain.seasonOptionsFrom
 import com.lcarthur.seasonsprint.domain.seasonsWithDataKeys
 import com.lcarthur.seasonsprint.domain.thresholdsFor
+import com.lcarthur.seasonsprint.domain.usesFans
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -56,7 +58,17 @@ data class DashboardState(
     val liveStatus: LiveStatus = LiveStatus.Disconnected,
     val goalOverride: Int? = null,
 ) {
-    val thresholds: List<Threshold> get() = thresholdsFor(mode)
+    /** The live season's table: rank, goal and the rank reference use the live total. */
+    val thresholds: List<Threshold> get() = thresholdsFor(mode, currentSeasonKey)
+
+    /**
+     * The viewed season's table, for the chart's rank bands (Season 11 and earlier counted
+     * World Tour win points, not fans).
+     */
+    val viewedThresholds: List<Threshold> get() = thresholdsFor(mode, viewedSeasonKey ?: currentSeasonKey)
+
+    /** World Tour counts fans in the live season (Season 12+). */
+    val usesFansEntry: Boolean get() = mode == GameMode.WorldTour && usesFans(currentSeasonKey)
 
     val sortedPoints: List<Point> get() = points.sortedBy { it.instant }
 
@@ -150,10 +162,28 @@ class DashboardViewModel(private val mode: GameMode, app: Application) : Android
     )
     private val goalKey = if (mode == GameMode.WorldTour) "goal.worldTour" else "goal.${mode.prefsSuffix}"
 
+    /** "fans" once the saved World Tour goal is on the fans scale (Season 12+). */
+    private val goalScaleKey = "$goalKey.scale"
+
+    /**
+     * Saved goal. A World Tour goal on the old win-points scale moves to the same badge in fans,
+     * once (keyed on [goalScaleKey], since a number alone is ambiguous).
+     */
+    private fun loadGoal(): Int? {
+        val saved = if (prefs.contains(goalKey)) prefs.getInt(goalKey, 0) else null
+        if (mode != GameMode.WorldTour || prefs.getString(goalScaleKey, null) == "fans") return saved
+        val moved = saved?.let(::fansGoalFromLegacy)
+        prefs.edit().apply {
+            if (moved != null) putInt(goalKey, moved)
+            putString(goalScaleKey, "fans")
+        }.apply()
+        return moved ?: saved
+    }
+
     private val _state = MutableStateFlow(
         DashboardState(
             mode = mode,
-            goalOverride = if (prefs.contains(goalKey)) prefs.getInt(goalKey, 0) else null,
+            goalOverride = loadGoal(),
         ),
     )
     val state = _state.asStateFlow()

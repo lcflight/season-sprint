@@ -31,7 +31,7 @@ struct StatsGridView: View {
 
     var body: some View {
         LazyVGrid(columns: columns, spacing: 10) {
-            StatCard(label: "Current win points", value: "\(store.currentPoints)")
+            StatCard(label: store.usesFansEntry ? "Current fans" : "Current win points", value: store.currentPoints.formatted())
 
             if let gain = store.todayGain {
                 StatCard(

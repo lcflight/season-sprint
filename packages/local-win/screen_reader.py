@@ -26,6 +26,12 @@ Templates are binary masks captured at 2560x1440 (see
 packages/tracker-templates/README.md) and scaled by monitor height, since
 the game's UI scales with vertical resolution.
 
+World Tour counts fans since Season 12, and "X / Y" is fans earned in the
+current badge / fans that badge needs, not a season total. Badge n needs
+2,000·n, so Y identifies the badge and the season total is 1,000·n·(n-1) + X
+(see fans_total). That total is what gets pushed (Reading.total); a World Tour
+read without a valid "/ Y" is rejected.
+
 The post-match panel uses an upright font with the whole "5,736/8,000" in
 white, so it has its own header and glyph templates (post_*.pgm), and is
 read from a small centre zone (post_zone) rather than the full frame.
@@ -54,6 +60,23 @@ POST_HEADER_MODES = {
     "world_tour": "world-tour",
     "ranked": "ranked",
 }
+# World Tour fans (Season 12+): badge n (Bronze 4 = 1 … Emerald 1 = 24) needs
+# FANS_STEP·n fans. Mirrors packages/web/src/utils/fans.js.
+FANS_STEP = 2000
+FANS_BADGES = 24
+
+
+def fans_total(in_rank: int, required: int) -> Optional[int]:
+    """Season-total fans from the in-game "X / Y", or None if Y isn't a badge's
+    requirement (2,000, 4,000 … 48,000) or X > Y."""
+    if in_rank < 0 or required <= 0 or required % FANS_STEP:
+        return None
+    n = required // FANS_STEP
+    if n > FANS_BADGES or in_rank > required:
+        return None
+    return FANS_STEP // 2 * n * (n - 1) + in_rank
+
+
 # Glyphs of the post-match value: digits plus the "/" between current and max.
 POST_GLYPHS = {**{d: d for d in "0123456789"}, "slash": "/"}
 
@@ -465,8 +488,9 @@ class Reading:
     gate_score: float = 0.0
     header: Optional[str] = None
     header_scores: dict[str, float] = field(default_factory=dict)
-    value: Optional[int] = None
+    value: Optional[int] = None       # as shown: World Tour = fans in this badge
     max_value: Optional[int] = None
+    total: Optional[int] = None       # what to push: the season total
     verdict: str = ""
 
     @property
@@ -475,6 +499,23 @@ class Reading:
             return None
         table = POST_HEADER_MODES if self.screen == "post" else HEADER_MODES
         return table.get(self.header)
+
+
+def _finish(r: Reading) -> Reading:
+    """Set r.total from a successful read. World Tour shows fans in the current
+    badge, so convert "X / Y" to the season total; without a valid Y, reject."""
+    if r.mode != "world-tour":
+        r.total = r.value
+        return r
+    total = fans_total(r.value, r.max_value) if r.max_value is not None else None
+    if total is None:
+        shown = f"{r.value} / {r.max_value}" if r.max_value is not None else f"{r.value} (no max)"
+        r.verdict = f"{r.verdict} — {shown} isn't a World Tour badge's fans, rejecting"
+        r.value = r.max_value = None
+        return r
+    r.total = total
+    r.verdict = f"{r.verdict} = {total} fans this season"
+    return r
 
 
 def gate_zone(screen_w: int, screen_h: int) -> tuple[int, int]:
@@ -590,7 +631,7 @@ def read_frame(frame: np.ndarray, t: Templates) -> Reading:
 
     r.value, r.max_value = value, max_value
     r.verdict = f"{name}: {value}" + (f" / {max_value}" if max_value is not None else "")
-    return r
+    return _finish(r)
 
 
 # ── Post-match panel ─────────────────────────────────────────────────────────
@@ -683,4 +724,4 @@ def read_post(zone: np.ndarray, t: Templates, screen_h: int) -> Reading:
         return r
     r.value, r.max_value = value, max_value
     r.verdict = f"post-match {name}: {value} / {max_value}"
-    return r
+    return _finish(r)

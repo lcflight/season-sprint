@@ -7,10 +7,15 @@ struct LogTabView: View {
 
     @State private var newDate = Date()
     @State private var newValueText = ""
+    /// Fans seasons: the "Y" of the in-game "X / Y" (newValueText holds X).
+    @State private var newRequiredText = ""
     @State private var editing: Point?
 
     private var parsedNewValue: Int? {
-        Int(newValueText.trimmingCharacters(in: .whitespaces))
+        guard let x = Int(newValueText.trimmingCharacters(in: .whitespaces)) else { return nil }
+        guard store.usesFansEntry else { return x }
+        guard let y = Int(newRequiredText.trimmingCharacters(in: .whitespaces)) else { return nil }
+        return fansTotal(inRank: x, required: y)
     }
 
     var body: some View {
@@ -18,13 +23,29 @@ struct LogTabView: View {
             Form {
                 Section {
                     DatePicker("Date", selection: $newDate, displayedComponents: .date)
-                    TextField("Win points", text: $newValueText)
-                        .keyboardType(.numberPad)
+                    if store.usesFansEntry {
+                        HStack {
+                            TextField("Fans", text: $newValueText)
+                                .keyboardType(.numberPad)
+                            Text("/").foregroundStyle(.secondary)
+                            TextField("Needed", text: $newRequiredText)
+                                .keyboardType(.numberPad)
+                        }
+                        if let total = parsedNewValue {
+                            Text("= \(total.formatted()) fans this season")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    } else {
+                        TextField("Win points", text: $newValueText)
+                            .keyboardType(.numberPad)
+                    }
                     Button {
                         guard let value = parsedNewValue else { return }
                         Task {
                             await store.addOrSet(date: DateKey.dayString(from: newDate), winPoints: value)
                             newValueText = ""
+                            newRequiredText = ""
                         }
                     } label: {
                         Text("Save point")
@@ -35,7 +56,9 @@ struct LogTabView: View {
                 } header: {
                     Text("Add point")
                 } footer: {
-                    Text("Points are your cumulative season total. Saving a date that already exists overwrites it.")
+                    Text(store.usesFansEntry
+                         ? "Enter the fans shown on the World Tour panel, e.g. 1,250 / 6,000 — it's saved as your season total. Saving a date that already exists overwrites it."
+                         : "Points are your cumulative season total. Saving a date that already exists overwrites it.")
                 }
 
                 Section("Records") {
@@ -51,7 +74,7 @@ struct LogTabView: View {
                                     Text(point.date, format: .dateTime.year().month().day())
                                         .foregroundStyle(.primary)
                                     Spacer()
-                                    Text("\(point.winPoints)")
+                                    Text(point.winPoints.formatted())
                                         .monospacedDigit()
                                         .foregroundStyle(.secondary)
                                 }

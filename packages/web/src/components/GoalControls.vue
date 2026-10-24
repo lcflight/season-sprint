@@ -6,7 +6,7 @@
         <select :value="selectedGoalIndex" @change="onSelectChange">
           <option :value="-1">Select rank…</option>
           <option v-for="(opt, i) in reversedGoalOptions" :key="opt.badge || i" :value="opt.originalIndex">
-            {{ opt.badge }} ({{ opt.points }} {{ unit }})
+            {{ opt.badge }} ({{ Number(opt.points).toLocaleString() }} {{ unit }})
           </option>
         </select>
       </label>
@@ -22,6 +22,7 @@
         :progress-pct="progressPct"
         :goal-achieved="goalAchieved"
         :goal-label="goalLabel"
+        :readout-label="readoutLabel"
       />
     </template>
     <template v-else>
@@ -47,6 +48,8 @@ const props = defineProps({
   toNext: { type: Number, default: 0 },
   progressPct: { type: Number, default: 0 },
   unit: { type: String, default: 'WP' },
+  // Season 12+ World Tour: also show the in-game "X / Y" for the current badge.
+  fans: { type: Boolean, default: false },
 })
 
 // eslint-disable-next-line no-undef
@@ -85,6 +88,13 @@ const goalLabel = computed(() => selectedGoal.value?.badge || '')
 const pointsLabel = computed(() => `${(props.currentWinPoints?.toLocaleString?.() || props.currentWinPoints)} ${props.unit}`)
 const floorLabel = computed(() => `${(props.rankInfo.currentFloor?.toLocaleString?.() || props.rankInfo.currentFloor)} ${props.unit}`)
 const nextTargetLabel = computed(() => `${(props.rankInfo.nextTarget?.toLocaleString?.() || props.rankInfo.nextTarget)} ${props.unit}`)
+// What the game shows: fans since entering this badge / fans the badge needs.
+const readoutLabel = computed(() => {
+  const { currentFloor, nextTarget } = props.rankInfo
+  if (!props.fans || nextTarget === null || nextTarget === undefined) return ''
+  const inRank = Math.max(0, Math.floor(Number(props.currentWinPoints) || 0) - currentFloor)
+  return `In game: ${inRank.toLocaleString()} / ${(nextTarget - currentFloor).toLocaleString()}`
+})
 const toNextLabel = computed(() => `${(props.toNext?.toLocaleString?.() || props.toNext)}`)
 </script>
 

@@ -17,12 +17,15 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lcarthur.seasonsprint.GameMode
+import com.lcarthur.seasonsprint.domain.fansTotal
 import com.lcarthur.seasonsprint.state.OnboardingViewModel
 
 /**
@@ -37,14 +40,26 @@ fun OnboardingScreen(viewModel: OnboardingViewModel, modifier: Modifier = Modifi
     // Kept as strings so a blank field stays blank ("don't record this mode") rather than
     // coercing to 0, which would anchor that mode's graph and pace at zero.
     val entries = remember { mutableStateMapOf<GameMode, String>() }
+    // World Tour counts fans (Season 12+): entries[WorldTour] is the X of the in-game
+    // "X / Y" and this is the Y. Saved as the season total.
+    var worldTourRequired by remember { mutableStateOf("") }
 
     val values = GameMode.entries.mapNotNull { mode ->
-        entries[mode]?.trim()?.toIntOrNull()?.let { mode to it }
+        val x = entries[mode]?.trim()?.toIntOrNull() ?: return@mapNotNull null
+        if (mode == GameMode.WorldTour) {
+            worldTourRequired.trim().toIntOrNull()?.let { y -> fansTotal(x, y) }?.let { mode to it }
+        } else {
+            mode to x
+        }
     }.toMap()
 
     // At least one total is needed — otherwise "Get started" would do nothing that
     // "Skip for now" doesn't already do.
-    val canSave = values.isNotEmpty() && !state.isSaving
+    // The World Tour pair is started (either box filled) but not usable. Blocks saving, so a
+    // typo isn't silently dropped while Ranked saves.
+    val worldTourInvalid = (!entries[GameMode.WorldTour].isNullOrBlank() || worldTourRequired.isNotBlank()) &&
+        GameMode.WorldTour !in values
+    val canSave = values.isNotEmpty() && !worldTourInvalid && !state.isSaving
 
     Column(
         modifier = modifier
@@ -55,8 +70,9 @@ fun OnboardingScreen(viewModel: OnboardingViewModel, modifier: Modifier = Modifi
     ) {
         Text("Welcome to Season Sprint", style = MaterialTheme.typography.headlineSmall)
         Text(
-            "Enter your current total win points so your graph starts from where you actually " +
-                "are. You can leave a mode blank if you don't play it.",
+            "Enter where you are now so your graph starts from there. For World Tour, copy the " +
+                "fans shown on the World Tour panel (e.g. 1,250 / 6,000). You can leave a mode " +
+                "blank if you don't play it.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -64,11 +80,28 @@ fun OnboardingScreen(viewModel: OnboardingViewModel, modifier: Modifier = Modifi
         Spacer(Modifier.height(4.dp))
 
         GameMode.entries.forEach { mode ->
-            WinPointsField(
-                value = entries[mode] ?: "",
-                onValueChange = { entries[mode] = it },
-                label = mode.label,
-            )
+            if (mode == GameMode.WorldTour) {
+                FansReadoutField(
+                    inRank = entries[mode] ?: "",
+                    onInRankChange = { entries[mode] = it },
+                    required = worldTourRequired,
+                    onRequiredChange = { worldTourRequired = it },
+                    label = "${mode.label} fans",
+                )
+                if (worldTourInvalid) {
+                    Text(
+                        "Enter both numbers. The second must be 2,000, 4,000 … 48,000, and the first can't be bigger.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            } else {
+                WinPointsField(
+                    value = entries[mode] ?: "",
+                    onValueChange = { entries[mode] = it },
+                    label = mode.label,
+                )
+            }
         }
 
         state.error?.let { error ->

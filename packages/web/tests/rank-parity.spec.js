@@ -6,7 +6,7 @@ import { resolve, dirname } from 'node:path'
 /**
  * Cross-client parity guard for the World Tour domain data.
  *
- * The rank-threshold table and the points cheatsheet are duplicated, by hand,
+ * The rank-threshold tables are duplicated, by hand,
  * in three languages: the web JSON/Vue source of truth, the iOS Swift app, and
  * the Android Kotlin app. THE FINALS re-tunes these values most seasons, and
  * nothing else stops the three copies from silently drifting (CI builds/tests
@@ -18,9 +18,9 @@ import { resolve, dirname } from 'node:path'
  * literal tables, which is enough to catch value/ordering drift.
  *
  * Sources of truth:
- *   - World Tour thresholds: packages/web/src/data/worldTourRanks.json
+ *   - World Tour thresholds: packages/web/src/data/worldTourRanks.json (Season 11 and earlier)
+ *   - World Tour fans thresholds: packages/web/src/data/worldTourRanksBySeason.json ("Season 12")
  *   - Ranked thresholds: packages/web/src/views/Ranked.vue (RANKED_THRESHOLDS)
- *   - cheatsheet: packages/web/src/components/PointsCheatsheet.vue (prop default)
  */
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -73,39 +73,23 @@ function parseWebThresholds(block) {
   }))
 }
 
-// Swift:  CheatsheetRow(label: "Lose the final round", value: 14)
-function parseSwiftCheatsheet(src) {
-  return [...src.matchAll(/CheatsheetRow\(label:\s*"([^"]+)",\s*value:\s*(\d+)\)/g)].map(
-    (m) => ({ label: m[1], value: Number(m[2]) })
-  )
-}
-
-// Kotlin:  CheatsheetRow("Lose the final round", 14)
-function parseKotlinCheatsheet(src) {
-  return [...src.matchAll(/CheatsheetRow\("([^"]+)",\s*(\d+)\)/g)].map((m) => ({
-    label: m[1],
-    value: Number(m[2]),
-  }))
-}
-
-// Vue prop default:  default: () => ({ round1: 2, round2: 6, finalLose: 14, finalWin: 25 })
-function parseVueCheatsheetValue(src, key) {
-  const m = src.match(new RegExp(`${key}:\\s*(\\d+)`))
-  return m ? Number(m[1]) : null
-}
-
 const jsonThresholds = JSON.parse(read('packages/web/src/data/worldTourRanks.json'))
+const jsonFansThresholds = JSON.parse(read('packages/web/src/data/worldTourRanksBySeason.json'))['Season 12'].thresholds
 const swiftSrc = read(SWIFT_RANK)
 const kotlinSrc = read(KOTLIN_RANK)
-const vueSrc = read('packages/web/src/components/PointsCheatsheet.vue')
 const rankedVueSrc = read('packages/web/src/views/Ranked.vue')
 
 const swiftWorldTourBlock = extractBlock(swiftSrc, 'let worldTourThresholds', '= [', ']')
 const kotlinWorldTourBlock = extractBlock(kotlinSrc, 'val worldTourThresholds', 'listOf(', ')')
 const swiftThresholds = parseSwiftThresholds(swiftWorldTourBlock)
 const kotlinThresholds = parseKotlinThresholds(kotlinWorldTourBlock)
-const swiftCheats = parseSwiftCheatsheet(swiftSrc)
-const kotlinCheats = parseKotlinCheatsheet(kotlinSrc)
+
+const swiftFansThresholds = parseSwiftThresholds(
+  extractBlock(swiftSrc, 'let worldTourFansThresholds', '= [', ']')
+)
+const kotlinFansThresholds = parseKotlinThresholds(
+  extractBlock(kotlinSrc, 'val worldTourFansThresholds', 'listOf(', ')')
+)
 
 const swiftRankedBlock = extractBlock(swiftSrc, 'let rankedThresholds', '= [', ']')
 const kotlinRankedBlock = extractBlock(kotlinSrc, 'val rankedThresholds', 'listOf(', ')')
@@ -162,21 +146,18 @@ describe('Ranked rank threshold parity (web Ranked.vue ↔ iOS ↔ Android)', ()
   })
 })
 
-describe('World Tour cheatsheet parity (web Vue ↔ iOS ↔ Android)', () => {
-  const keysInOrder = ['round1', 'round2', 'finalLose', 'finalWin']
-  const vueValues = keysInOrder.map((k) => parseVueCheatsheetValue(vueSrc, k))
-
-  it('parsers found a non-empty, equal-length cheatsheet on both clients', () => {
-    expect(swiftCheats.length).toBe(keysInOrder.length)
-    expect(kotlinCheats).toHaveLength(swiftCheats.length)
+describe('World Tour fans threshold parity (web JSON ↔ iOS ↔ Android)', () => {
+  it('parsers found the same number of thresholds as the JSON', () => {
+    expect(jsonFansThresholds.length).toBeGreaterThan(0)
+    expect(swiftFansThresholds).toHaveLength(jsonFansThresholds.length)
+    expect(kotlinFansThresholds).toHaveLength(jsonFansThresholds.length)
   })
 
-  it('iOS and Android cheatsheets are identical (labels + values, in order)', () => {
-    expect(swiftCheats).toEqual(kotlinCheats)
+  it('iOS Rank.swift matches the JSON verbatim', () => {
+    expect(swiftFansThresholds).toEqual(jsonFansThresholds)
   })
 
-  it('cheatsheet values match the web Vue prop defaults', () => {
-    expect(vueValues.every((v) => typeof v === 'number')).toBe(true)
-    expect(swiftCheats.map((r) => r.value)).toEqual(vueValues)
+  it('Android Rank.kt matches the JSON verbatim', () => {
+    expect(kotlinFansThresholds).toEqual(jsonFansThresholds)
   })
 })
