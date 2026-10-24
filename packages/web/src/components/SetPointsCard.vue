@@ -9,19 +9,28 @@
     </div>
     <div class="cp-row" v-if="useCustomDate">
       <input type="date" v-model="customDate" />
+    </div>
+    <!-- Fans (Season 12+ World Tour): enter the "X / Y" the game shows. -->
+    <div class="cp-row" v-if="fans">
       <input
         type="number"
-        step="any"
-        v-model.number="customY"
-        placeholder="points"
+        min="0"
+        step="1"
+        inputmode="numeric"
+        v-model.number="fansInRank"
+        placeholder="fans"
+        aria-label="Fans in this badge"
       />
-      <button
-        class="btn-primary"
-        @click="addAtDate"
-        :disabled="!customDate || !isFinite(customY)"
-      >
-        Add
-      </button>
+      <span class="cp-slash">/</span>
+      <input
+        type="number"
+        min="2000"
+        step="2000"
+        inputmode="numeric"
+        v-model.number="fansRequiredInput"
+        placeholder="needed"
+        aria-label="Fans this badge needs"
+      />
     </div>
     <div class="cp-row" v-else>
       <input
@@ -30,23 +39,38 @@
         v-model.number="customY"
         placeholder="points"
       />
+    </div>
+    <p v-if="fans" class="cp-hint" :class="{ 'cp-error': fansInvalid }">
+      <template v-if="fansInvalid">
+        The second number must be the badge's requirement (2,000, 4,000 … 48,000)
+        and the first can't be bigger.
+      </template>
+      <template v-else-if="fansTotal !== null">
+        = {{ fansTotal.toLocaleString() }} fans this season
+      </template>
+      <template v-else>Enter both numbers from the World Tour panel, e.g. 1,250 / 6,000.</template>
+    </p>
+    <div class="cp-row">
       <button
         class="btn-primary"
-        @click="addToday"
-        :disabled="!isFinite(customY)"
+        @click="submit"
+        :disabled="value === null || (useCustomDate && !customDate)"
       >
-        Add for today
+        {{ useCustomDate ? "Add" : "Add for today" }}
       </button>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref } from "vue";
+import { computed, ref } from "vue";
+import { fansTotalFromReadout } from "@/utils/fans";
 
 // eslint-disable-next-line no-undef
-defineProps({
+const props = defineProps({
   title: { type: String, default: "Set points" },
+  // Season 12+ World Tour: take the in-game "X / Y" and store the season total.
+  fans: { type: Boolean, default: false },
 });
 
 // eslint-disable-next-line no-undef
@@ -55,15 +79,33 @@ const emit = defineEmits(["add-at-date", "add-today"]);
 const useCustomDate = ref(false);
 const customDate = ref(new Date().toISOString().slice(0, 10));
 const customY = ref(0);
+const fansInRank = ref("");
+const fansRequiredInput = ref("");
 
-function addAtDate() {
-  if (!customDate.value || !isFinite(customY.value)) return;
-  emit("add-at-date", { date: customDate.value, y: Number(customY.value) });
-}
+const fansEntered = computed(
+  () => fansInRank.value !== "" && fansRequiredInput.value !== ""
+);
+const fansTotal = computed(() =>
+  fansEntered.value
+    ? fansTotalFromReadout(fansInRank.value, fansRequiredInput.value)
+    : null
+);
+const fansInvalid = computed(() => fansEntered.value && fansTotal.value === null);
 
-function addToday() {
-  if (!isFinite(customY.value)) return;
-  emit("add-today", { y: Number(customY.value) });
+// The season total to save, or null when the input isn't usable yet.
+const value = computed(() => {
+  if (props.fans) return fansTotal.value;
+  return isFinite(customY.value) && customY.value !== "" ? Number(customY.value) : null;
+});
+
+function submit() {
+  if (value.value === null) return;
+  if (useCustomDate.value) {
+    if (!customDate.value) return;
+    emit("add-at-date", { date: customDate.value, y: value.value });
+  } else {
+    emit("add-today", { y: value.value });
+  }
 }
 </script>
 
@@ -93,6 +135,19 @@ function addToday() {
 .cp-row input[type="number"] {
   flex: 1 1 110px;
   min-width: 0;
+}
+.cp-slash {
+  color: var(--muted);
+  font-weight: 800;
+}
+.cp-hint {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+.cp-hint.cp-error {
+  color: var(--danger, #e5484d);
 }
 .cp-row .btn-primary {
   height: 32px;

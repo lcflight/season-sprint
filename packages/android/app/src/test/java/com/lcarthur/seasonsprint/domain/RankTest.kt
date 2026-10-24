@@ -90,7 +90,37 @@ class RankTest {
 
     @Test
     fun thresholdsForPicksTheRightTable() {
-        assertSame(worldTourThresholds, thresholdsFor(GameMode.WorldTour))
+        // No season (or the live one) = fans; Season 11 and earlier = win points.
+        assertSame(worldTourFansThresholds, thresholdsFor(GameMode.WorldTour))
+        assertSame(worldTourFansThresholds, thresholdsFor(GameMode.WorldTour, "Season 12"))
+        assertSame(worldTourFansThresholds, thresholdsFor(GameMode.WorldTour, "Season 13"))
+        assertSame(worldTourThresholds, thresholdsFor(GameMode.WorldTour, "Season 11"))
         assertSame(rankedThresholds, thresholdsFor(GameMode.Ranked))
+        assertSame(rankedThresholds, thresholdsFor(GameMode.Ranked, "Season 11"))
+    }
+
+    @Test
+    fun fansTotalFromInGameReadout() {
+        assertEquals(0, fansTotal(0, 2000))
+        assertEquals(7_250, fansTotal(1_250, 6_000)) // Bronze 2: 6,000 + 1,250
+        assertEquals(600_000, fansTotal(48_000, 48_000))
+        assertNull(fansTotal(100, 3_000)) // not a badge requirement
+        assertNull(fansTotal(100, 50_000)) // past Emerald 1
+        assertNull(fansTotal(9_000, 8_000)) // X > Y
+    }
+
+    @Test
+    fun fansTableMatchesFormula() {
+        assertEquals(FANS_BADGES, worldTourFansThresholds.size)
+        worldTourFansThresholds.forEachIndexed { i, t -> assertEquals(fansToEnter(i + 1), t.points) }
+        assertEquals(worldTourThresholds.map { it.badge }, worldTourFansThresholds.map { it.badge })
+    }
+
+    @Test
+    fun legacyGoalMovesToSameBadge() {
+        assertEquals(552_000, fansGoalFromLegacy(2400)) // Emerald 1
+        assertEquals(156_000, fansGoalFromLegacy(700)) // Platinum 4
+        assertNull(fansGoalFromLegacy(552_000)) // already fans
+        assertNull(fansGoalFromLegacy(1234)) // custom goal
     }
 }

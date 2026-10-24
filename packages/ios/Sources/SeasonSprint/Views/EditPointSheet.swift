@@ -24,7 +24,7 @@ struct EditPointSheet: View {
         NavigationStack {
             Form {
                 DatePicker("Date", selection: $date, displayedComponents: .date)
-                TextField("Win points", text: $valueText)
+                TextField(store.usesFansEntry ? "Season total fans" : "Win points", text: $valueText)
                     .keyboardType(.numberPad)
             }
             .navigationTitle("Edit point")

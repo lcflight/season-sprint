@@ -3,21 +3,39 @@
     <div class="ob-card">
       <h2 id="onboarding-title">Welcome to Season Sprint</h2>
       <p class="ob-lede">
-        Enter your current total win points so your graph starts from where you
-        actually are. You can leave a mode blank if you don't play it.
+        Enter where you are now so your graph starts from there. For World Tour,
+        copy the fans shown on the World Tour panel (e.g. 1,250 / 6,000). You
+        can leave a mode blank if you don't play it.
       </p>
 
       <form class="ob-form" @submit.prevent="onSave">
         <label class="ob-field">
-          <span class="ob-label">World Tour</span>
-          <input
-            v-model="worldTour"
-            type="number"
-            step="any"
-            inputmode="numeric"
-            placeholder="e.g. 1200"
-            autofocus
-          />
+          <span class="ob-label">World Tour fans</span>
+          <span class="ob-pair">
+            <input
+              v-model="worldTour"
+              type="number"
+              min="0"
+              step="1"
+              inputmode="numeric"
+              placeholder="e.g. 1250"
+              aria-label="Fans in your current badge"
+              autofocus
+            />
+            <span class="ob-slash">/</span>
+            <input
+              v-model="worldTourRequired"
+              type="number"
+              min="2000"
+              step="2000"
+              inputmode="numeric"
+              placeholder="e.g. 6000"
+              aria-label="Fans your current badge needs"
+            />
+          </span>
+          <span v-if="worldTourInvalid" class="ob-error">
+            The second number must be 2,000, 4,000 … 48,000, and the first can't be bigger.
+          </span>
         </label>
 
         <label class="ob-field" v-if="showRanked">
@@ -50,6 +68,7 @@
 
 <script setup>
 import { computed, ref } from "vue";
+import { fansTotalFromReadout } from "@/utils/fans";
 
 // eslint-disable-next-line no-undef
 const props = defineProps({
@@ -65,13 +84,28 @@ const emit = defineEmits(["save", "skip"]);
 // Kept as strings so a blank field stays blank ("don't record this mode")
 // rather than coercing to 0, which would anchor that mode's graph at zero.
 const worldTour = ref("");
+const worldTourRequired = ref("");
 const ranked = ref("");
+
+const blank = (v) => String(v).trim() === "";
+// Season-total fans from the "X / Y" pair, or null.
+const worldTourTotal = computed(() =>
+  blank(worldTour.value) || blank(worldTourRequired.value)
+    ? null
+    : fansTotalFromReadout(Number(worldTour.value), Number(worldTourRequired.value))
+);
+const worldTourInvalid = computed(
+  () =>
+    !blank(worldTour.value) &&
+    !blank(worldTourRequired.value) &&
+    worldTourTotal.value === null
+);
 
 const showRanked = computed(() => props.modes.includes("ranked"));
 
 function entered(mode) {
-  const raw = mode === "ranked" ? ranked.value : worldTour.value;
-  return String(raw).trim() !== "" && isFinite(Number(raw));
+  if (mode !== "ranked") return worldTourTotal.value !== null;
+  return !blank(ranked.value) && isFinite(Number(ranked.value));
 }
 
 // At least one total is needed — otherwise "Get started" would do nothing that
@@ -83,7 +117,7 @@ function onSave() {
   const values = {};
   for (const mode of props.modes) {
     if (entered(mode)) {
-      values[mode] = Number(mode === "ranked" ? ranked.value : worldTour.value);
+      values[mode] = mode === "ranked" ? Number(ranked.value) : worldTourTotal.value;
     }
   }
   emit("save", values);
@@ -149,6 +183,17 @@ function skip() {
 .ob-field input {
   width: 100%;
   min-width: 0;
+}
+
+.ob-pair {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ob-slash {
+  color: var(--muted);
+  font-weight: 800;
 }
 
 .ob-error {

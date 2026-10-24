@@ -40,6 +40,10 @@ final class DashboardStore {
         if defaults.object(forKey: goalKey) != nil {
             goalOverride = defaults.integer(forKey: goalKey)
         }
+        if mode == .worldTour, let old = goalOverride, let moved = fansGoal(fromLegacy: old) {
+            goalOverride = moved
+            defaults.set(moved, forKey: goalKey)
+        }
 
         sse.onEvent = { [weak self] event in
             self?.apply(event)
@@ -61,7 +65,17 @@ final class DashboardStore {
         sortedPoints.last?.winPoints ?? 0
     }
 
-    var thresholds: [Threshold] { SeasonSprint.thresholds(for: mode) }
+    /// The live season's table: rank, goal and the rank reference use the live total.
+    var thresholds: [Threshold] { SeasonSprint.thresholds(for: mode, seasonKey: currentSeasonKey) }
+
+    /// The viewed season's table, for the chart's rank bands (Season 11 and earlier
+    /// counted World Tour win points, not fans).
+    var viewedThresholds: [Threshold] {
+        SeasonSprint.thresholds(for: mode, seasonKey: viewedSeasonKey ?? currentSeasonKey)
+    }
+
+    /// World Tour counts fans in the live season (Season 12+).
+    var usesFansEntry: Bool { mode == .worldTour && usesFans(seasonKey: currentSeasonKey) }
 
     var rank: RankInfo {
         computeRank(points: currentPoints, thresholds: thresholds)

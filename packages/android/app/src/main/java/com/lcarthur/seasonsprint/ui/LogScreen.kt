@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lcarthur.seasonsprint.domain.DateKey
 import com.lcarthur.seasonsprint.domain.Point
+import com.lcarthur.seasonsprint.domain.fansTotal
 import com.lcarthur.seasonsprint.state.DashboardViewModel
 
 /** Log tab: add/overwrite a point for a date, and an editable list of all records. */
@@ -40,9 +41,16 @@ fun LogScreen(
 
     var newDateMillis by remember { mutableStateOf(DateKey.todayUtcMillis()) }
     var newValueText by remember { mutableStateOf("") }
+    // Fans seasons: the "Y" of the in-game "X / Y" (newValueText holds X).
+    var newRequiredText by remember { mutableStateOf("") }
     var showDatePicker by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<Point?>(null) }
-    val parsedNew = newValueText.trim().toIntOrNull()
+    val parsedX = newValueText.trim().toIntOrNull()
+    val parsedNew = if (state.usesFansEntry) {
+        newRequiredText.trim().toIntOrNull()?.let { y -> parsedX?.let { fansTotal(it, y) } }
+    } else {
+        parsedX
+    }
 
     val recordsNewestFirst = state.points.sortedByDescending { it.instant }
 
@@ -63,19 +71,41 @@ fun LogScreen(
                 ) {
                     Text("Add point", style = MaterialTheme.typography.titleMedium)
                     DateField(label = "Date", dateMillis = newDateMillis, onClick = { showDatePicker = true })
-                    WinPointsField(value = newValueText, onValueChange = { newValueText = it })
+                    if (state.usesFansEntry) {
+                        FansReadoutField(
+                            inRank = newValueText,
+                            onInRankChange = { newValueText = it },
+                            required = newRequiredText,
+                            onRequiredChange = { newRequiredText = it },
+                        )
+                        parsedNew?.let {
+                            Text(
+                                "= ${"%,d".format(it)} fans this season",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    } else {
+                        WinPointsField(value = newValueText, onValueChange = { newValueText = it })
+                    }
                     Button(
                         enabled = parsedNew != null && !state.isWriting,
                         onClick = {
                             parsedNew?.let {
                                 viewModel.addOrSet(DateKey.dayStringFromUtcMillis(newDateMillis), it)
                                 newValueText = ""
+                                newRequiredText = ""
                             }
                         },
                         modifier = Modifier.fillMaxWidth(),
                     ) { Text("Save point") }
                     Text(
-                        "Points are your cumulative season total. Saving a date that already exists overwrites it.",
+                        if (state.usesFansEntry) {
+                            "Enter the fans shown on the World Tour panel, e.g. 1,250 / 6,000 — it's saved " +
+                                "as your season total. Saving a date that already exists overwrites it."
+                        } else {
+                            "Points are your cumulative season total. Saving a date that already exists overwrites it."
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

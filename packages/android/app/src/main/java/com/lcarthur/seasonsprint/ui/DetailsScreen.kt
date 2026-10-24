@@ -47,7 +47,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lcarthur.seasonsprint.GameMode
 import com.lcarthur.seasonsprint.domain.Season
 import com.lcarthur.seasonsprint.domain.SeasonOption
-import com.lcarthur.seasonsprint.domain.worldTourCheatsheet
 import com.lcarthur.seasonsprint.state.DashboardState
 import com.lcarthur.seasonsprint.state.DashboardViewModel
 import com.lcarthur.seasonsprint.ui.theme.FinalsGold
@@ -79,7 +78,6 @@ fun DetailsScreen(
         StatsGrid(state)
         GoalControl(state, viewModel)
         RankReference(state)
-        if (state.mode == GameMode.WorldTour) Cheatsheet()
         if (state.error != null) {
             Text(
                 state.error!!,
@@ -127,8 +125,8 @@ private fun StatsGrid(state: DashboardState) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             StatCard(
-                label = "Current win points",
-                value = "${state.currentPoints}",
+                label = if (state.usesFansEntry) "Current fans" else "Current win points",
+                value = "%,d".format(state.currentPoints),
                 accent = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.weight(1f),
             )
@@ -354,25 +352,7 @@ private fun RankReference(state: DashboardState) {
     }
 }
 
-@Composable
-private fun Cheatsheet() {
-    ExpandableCard(title = "World Tour win points") {
-        worldTourCheatsheet.forEach { row ->
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(row.label)
-                Spacer(Modifier.weight(1f))
-                Text("+${row.value}", fontWeight = FontWeight.Bold)
-            }
-        }
-    }
-}
-
-/** Collapsible card with a clickable header row and chevron, used by the rank and cheatsheet sections. */
+/** Collapsible card with a clickable header row and chevron, used by the rank section. */
 @Composable
 private fun ExpandableCard(title: String, content: @Composable () -> Unit) {
     var expanded by remember { mutableStateOf(false) }

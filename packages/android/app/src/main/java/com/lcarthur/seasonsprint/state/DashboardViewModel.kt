@@ -22,11 +22,13 @@ import com.lcarthur.seasonsprint.domain.SeasonOption
 import com.lcarthur.seasonsprint.domain.Threshold
 import com.lcarthur.seasonsprint.domain.computePace
 import com.lcarthur.seasonsprint.domain.computeRank
+import com.lcarthur.seasonsprint.domain.fansGoalFromLegacy
 import com.lcarthur.seasonsprint.domain.mapOverlayByDayOfSeason
 import com.lcarthur.seasonsprint.domain.paceBaselineFor
 import com.lcarthur.seasonsprint.domain.seasonOptionsFrom
 import com.lcarthur.seasonsprint.domain.seasonsWithDataKeys
 import com.lcarthur.seasonsprint.domain.thresholdsFor
+import com.lcarthur.seasonsprint.domain.usesFans
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -56,7 +58,17 @@ data class DashboardState(
     val liveStatus: LiveStatus = LiveStatus.Disconnected,
     val goalOverride: Int? = null,
 ) {
-    val thresholds: List<Threshold> get() = thresholdsFor(mode)
+    /** The live season's table: rank, goal and the rank reference use the live total. */
+    val thresholds: List<Threshold> get() = thresholdsFor(mode, currentSeasonKey)
+
+    /**
+     * The viewed season's table, for the chart's rank bands (Season 11 and earlier counted
+     * World Tour win points, not fans).
+     */
+    val viewedThresholds: List<Threshold> get() = thresholdsFor(mode, viewedSeasonKey ?: currentSeasonKey)
+
+    /** World Tour counts fans in the live season (Season 12+). */
+    val usesFansEntry: Boolean get() = mode == GameMode.WorldTour && usesFans(currentSeasonKey)
 
     val sortedPoints: List<Point> get() = points.sortedBy { it.instant }
 
@@ -150,10 +162,20 @@ class DashboardViewModel(private val mode: GameMode, app: Application) : Android
     )
     private val goalKey = if (mode == GameMode.WorldTour) "goal.worldTour" else "goal.${mode.prefsSuffix}"
 
+    /** Saved goal; a World Tour goal on the old win-points scale moves to the same badge in fans. */
+    private fun loadGoal(): Int? {
+        if (!prefs.contains(goalKey)) return null
+        val saved = prefs.getInt(goalKey, 0)
+        if (mode != GameMode.WorldTour) return saved
+        val moved = fansGoalFromLegacy(saved) ?: return saved
+        prefs.edit().putInt(goalKey, moved).apply()
+        return moved
+    }
+
     private val _state = MutableStateFlow(
         DashboardState(
             mode = mode,
-            goalOverride = if (prefs.contains(goalKey)) prefs.getInt(goalKey, 0) else null,
+            goalOverride = loadGoal(),
         ),
     )
     val state = _state.asStateFlow()

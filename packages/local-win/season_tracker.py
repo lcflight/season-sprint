@@ -338,6 +338,8 @@ def reading_details(r) -> list[str]:
         lines.append(f"{where} '{name}' match: {score:.2f}")
     if r.value is not None:
         lines.append(f"value: {r.value}" + (f" / {r.max_value}" if r.max_value is not None else ""))
+    if r.total is not None and r.total != r.value:
+        lines.append(f"season total: {r.total}")
     return lines
 
 
@@ -622,7 +624,8 @@ def main_loop(cfg: Config) -> None:
             t0 = now
             try:
                 r, frame = _read_screen(sct, cfg, sr, templates)
-                mode, value, verdict = r.mode, r.value, r.verdict
+                # The season total (World Tour: converted from fans in the badge).
+                mode, value, verdict = r.mode, r.total, r.verdict
                 status = (r.screen, r.header)
                 details = reading_details(r)
             except Exception as e:

@@ -899,8 +899,9 @@ typedef struct {
     double gate_score;
     int    header;                      /* index into headers (or post_headers), -1 */
     double header_scores[N_HEADERS];    /* -2 = template not loaded */
-    long   value, max_value;            /* -1 = none */
-    char   verdict[256];
+    long   value, max_value;            /* -1 = none; World Tour = fans in this badge */
+    long   total;                       /* what to push: the season total, -1 = none */
+    char   verdict[320];
 } Reading;
 
 static int imin(int a, int b) { return a < b ? a : b; }
@@ -969,8 +970,21 @@ static void post_zone(int screen_w, int screen_h, int *x, int *y, int *w, int *h
 static void reading_init(Reading *r) {
     memset(r, 0, sizeof(*r));
     r->header = -1;
-    r->value = r->max_value = -1;
+    r->value = r->max_value = r->total = -1;
     for (int i = 0; i < N_HEADERS; i++) r->header_scores[i] = -2;
+}
+
+/* World Tour fans (Season 12+), mirrors fans_total in screen_reader.py: the
+ * game shows "X / Y" = fans in the current badge / fans it needs. Badge n
+ * (Bronze 4 = 1 … Emerald 1 = 24) needs 2,000·n, so Y identifies the badge
+ * and the season total is 1,000·n·(n-1) + X. -1 if Y isn't a badge's need. */
+#define FANS_STEP   2000
+#define FANS_BADGES 24
+static long fans_total(long in_rank, long required) {
+    if (in_rank < 0 || required <= 0 || required % FANS_STEP) return -1;
+    long n = required / FANS_STEP;
+    if (n > FANS_BADGES || in_rank > required) return -1;
+    return FANS_STEP / 2 * n * (n - 1) + in_rank;
 }
 
 /* Read the post-match panel from its post_zone() crop (mirrors read_post).
@@ -1105,6 +1119,25 @@ done:
 static const char *reading_mode(const Templates *t, const Reading *r) {
     if (r->header < 0) return NULL;
     return r->post ? t->post_headers[r->header].mode : t->headers[r->header].mode;
+}
+
+/* Set r->total from a successful read (mirrors _finish in screen_reader.py).
+ * World Tour shows fans in the current badge, so convert "X / Y" to the
+ * season total; without a valid Y, reject the read. */
+static void reading_finish(const Templates *t, Reading *r) {
+    const char *mode = reading_mode(t, r);
+    if (!mode || r->value < 0) return;
+    if (strcmp(mode, "world-tour") != 0) { r->total = r->value; return; }
+    long total = r->max_value >= 0 ? fans_total(r->value, r->max_value) : -1;
+    size_t len = strlen(r->verdict);
+    if (total < 0) {
+        snprintf(r->verdict + len, sizeof(r->verdict) - len,
+                 " — not a World Tour badge's fans, rejecting");
+        r->value = r->max_value = -1;
+        return;
+    }
+    r->total = total;
+    snprintf(r->verdict + len, sizeof(r->verdict) - len, " = %ld fans this season", total);
 }
 
 static const char *reading_header_name(const Templates *t, const Reading *r, int i) {
@@ -1411,6 +1444,7 @@ static int read_file(const char *path) {
     Reading r;
     double t0 = now_ms();
     read_frame(&f, &t, &r);
+    reading_finish(&t, &r);
     double ms = now_ms() - t0;
 
     printf("gate %.3f  headers {", r.gate_score);
@@ -1422,11 +1456,11 @@ static int read_file(const char *path) {
         first = 0;
     }
     const char *mode = reading_mode(&t, &r);
-    printf("}\n=> %s  (mode=%s, value=%ld, max=%ld) [%.1fms]\n", r.verdict,
-           mode ? mode : "None", r.value, r.max_value, ms);
+    printf("}\n=> %s  (mode=%s, value=%ld, max=%ld, total=%ld) [%.1fms]\n", r.verdict,
+           mode ? mode : "None", r.value, r.max_value, r.total, ms);
     free(px);
     templates_free(&t);
-    return r.value >= 0 ? 0 : 2;
+    return r.total >= 0 ? 0 : 2;
 }
 
 /* ── Signal handler ────────────────────────────────────────────────────────── */
@@ -1571,12 +1605,13 @@ int main(int argc, char **argv) {
             };
             read_frame(&f, &tmpl, &r);
         }
+        reading_finish(&tmpl, &r);
         double ms = now_ms() - t0;
         time_t now = time(NULL);
 
         const char *mode = reading_mode(&tmpl, &r);
         ModeState *m = NULL;
-        if (mode && r.value >= 0)
+        if (mode && r.total >= 0)
             m = &tracks[(r.post ? 2 : 0) + (strcmp(mode, "ranked") == 0)];
 
         /* Anything not read this frame loses its streak. */
@@ -1584,7 +1619,7 @@ int main(int argc, char **argv) {
             if (&tracks[i] != m) { tracks[i].reads = 0; tracks[i].last_val = -1; }
 
         if (m)
-            handle_read(&g_cfg, m, r.value, now, ms);
+            handle_read(&g_cfg, m, r.total, now, ms);
         else
             logq("%s | %.0fms", r.verdict, ms);
 

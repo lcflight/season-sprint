@@ -48,7 +48,7 @@ def main() -> int:
             "taken on the MODES tab with the score panel visible at the bottom."
         )
         return 1
-    print(f"mode={r.mode} value={r.value} max={r.max_value}")
+    print(f"mode={r.mode} value={r.value} max={r.max_value} total={r.total}")
     return 0
 
 

@@ -48,7 +48,11 @@ fun EditPointSheet(
                 dateMillis = dateMillis,
                 onClick = { showDatePicker = true },
             )
-            WinPointsField(value = valueText, onValueChange = { valueText = it })
+            WinPointsField(
+                value = valueText,
+                onValueChange = { valueText = it },
+                label = if (viewModel.state.value.usesFansEntry) "Season total fans" else "Win points",
+            )
 
             Row(
                 modifier = Modifier.fillMaxWidth(),

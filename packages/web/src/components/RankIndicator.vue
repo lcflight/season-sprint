@@ -2,7 +2,10 @@
   <div class="rank-indicator">
     <div class="rank-header">
       <span class="rank-badge">{{ badge }}</span>
-      <span class="rank-points">{{ currentPointsLabel }}</span>
+      <span class="rank-points">
+        {{ currentPointsLabel }}
+        <span v-if="readoutLabel" class="rank-readout">{{ readoutLabel }}</span>
+      </span>
     </div>
     <div class="rank-progress">
       <div class="bar">
@@ -47,6 +50,8 @@ defineProps({
   // celebratory label replaces the "distance to next rank" copy.
   goalAchieved: { type: Boolean, default: false },
   goalLabel: { type: String, default: '' },
+  // Optional second line under the total, e.g. the in-game "In game: 1,200 / 4,000".
+  readoutLabel: { type: String, default: '' },
 })
 </script>
 
