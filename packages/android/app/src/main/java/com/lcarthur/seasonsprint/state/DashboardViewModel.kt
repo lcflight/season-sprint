@@ -162,14 +162,22 @@ class DashboardViewModel(private val mode: GameMode, app: Application) : Android
     )
     private val goalKey = if (mode == GameMode.WorldTour) "goal.worldTour" else "goal.${mode.prefsSuffix}"
 
-    /** Saved goal; a World Tour goal on the old win-points scale moves to the same badge in fans. */
+    /** "fans" once the saved World Tour goal is on the fans scale (Season 12+). */
+    private val goalScaleKey = "$goalKey.scale"
+
+    /**
+     * Saved goal. A World Tour goal on the old win-points scale moves to the same badge in fans,
+     * once (keyed on [goalScaleKey], since a number alone is ambiguous).
+     */
     private fun loadGoal(): Int? {
-        if (!prefs.contains(goalKey)) return null
-        val saved = prefs.getInt(goalKey, 0)
-        if (mode != GameMode.WorldTour) return saved
-        val moved = fansGoalFromLegacy(saved) ?: return saved
-        prefs.edit().putInt(goalKey, moved).apply()
-        return moved
+        val saved = if (prefs.contains(goalKey)) prefs.getInt(goalKey, 0) else null
+        if (mode != GameMode.WorldTour || prefs.getString(goalScaleKey, null) == "fans") return saved
+        val moved = saved?.let(::fansGoalFromLegacy)
+        prefs.edit().apply {
+            if (moved != null) putInt(goalKey, moved)
+            putString(goalScaleKey, "fans")
+        }.apply()
+        return moved ?: saved
     }
 
     private val _state = MutableStateFlow(

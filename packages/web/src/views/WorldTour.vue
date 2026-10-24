@@ -73,7 +73,8 @@ export default {
       this.readOnly = !!v;
     },
     onSeasonGoals(goals) {
-      this.fans = !!goals?.fans;
+      // Ignore the fallback table shown before the season list loads.
+      if (goals?.resolved) this.fans = !!goals.fans;
     },
     addCustom({ date, y }) {
       const graph = this.$refs.graphRef;

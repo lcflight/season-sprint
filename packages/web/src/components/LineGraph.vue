@@ -536,6 +536,7 @@ const {
   seasonEnd,
   seasonTitle,
   goalWinPoints,
+  goalScale,
   selectedGoalIndex,
   autoSetSeasonFromImport,
   simplifyImport,
@@ -629,7 +630,13 @@ const activeYAxisLabel = computed(
   () => seasonGoals.value.yAxisLabel || props.yAxisLabel
 );
 // Lets the page swap its side panels (e.g. fans entry) for the season on screen.
-watch(seasonGoals, (v) => emit("season-goals", v), { immediate: true });
+// `resolved` is false until the season list has loaded: before that the
+// table is only the fallback, not the real season's.
+watch(
+  [seasonGoals, currentSeasonKey],
+  ([v, key]) => emit("season-goals", { ...v, resolved: !!key }),
+  { immediate: true }
+);
 
 // The window the chart actually renders. For the live season this is the
 // persisted seasonStart/seasonEnd (unchanged behavior); for a past season it's
@@ -888,24 +895,25 @@ defineExpose({
 watch(
   [activeGoalOptions, goalWinPoints],
   () => {
+    // First time on a fans season (Season 12+): a goal saved on the old
+    // win-points scale (e.g. "Emerald 1" = 2,400 WP) moves to the same badge.
+    // Done once, keyed on the saved scale, since a number alone is ambiguous
+    // (2,000 is Emerald 3 in points but Bronze 3 in fans).
+    if (seasonGoals.value.fans && !isViewingPastSeason.value && goalScale.value !== "fans") {
+      goalScale.value = "fans";
+      const old = props.goalOptions.find(
+        (o) => Number(o.points) === Number(goalWinPoints.value)
+      );
+      const same = old ? activeGoalOptions.value.find((o) => o.badge === old.badge) : null;
+      if (same && Number(same.points) !== Number(goalWinPoints.value)) {
+        goalWinPoints.value = Number(same.points);
+        return; // the watch re-runs with the new goal
+      }
+    }
     if (activeGoalOptions.value.length) {
       const idx = activeGoalOptions.value.findIndex(
         (o) => Number(o.points) === Number(goalWinPoints.value)
       );
-      // A goal saved on an older season's scale (e.g. "Emerald 1" = 2,400 WP
-      // before fans) isn't in the live table: move it to the same badge.
-      if (idx === -1 && !isViewingPastSeason.value) {
-        const old = props.goalOptions.find(
-          (o) => Number(o.points) === Number(goalWinPoints.value)
-        );
-        const same = old
-          ? activeGoalOptions.value.findIndex((o) => o.badge === old.badge)
-          : -1;
-        if (same !== -1) {
-          goalWinPoints.value = Number(activeGoalOptions.value[same].points);
-          return; // the watch re-runs with the new goal
-        }
-      }
       selectedGoalIndex.value = idx;
     } else {
       selectedGoalIndex.value = -1;

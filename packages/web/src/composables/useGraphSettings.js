@@ -15,6 +15,11 @@ export function useGraphSettings(storageKey) {
 
   const goalWinPoints = ref(10)
   const selectedGoalIndex = ref(-1)
+  // Scale the saved goal is on: '' = old World Tour win points (or never
+  // checked), 'fans' = Season 12+ fans. Lets LineGraph migrate an old goal
+  // once, without guessing from the number (2,000 is Emerald 3 in points
+  // but Bronze 3 in fans).
+  const goalScale = ref('')
 
   const autoSetSeasonFromImport = ref(true)
   const simplifyImport = ref(false)
@@ -40,6 +45,7 @@ export function useGraphSettings(storageKey) {
       seasonStart: seasonStart.value,
       seasonEnd: seasonEnd.value,
       goalWinPoints: goalWinPoints.value,
+      goalScale: goalScale.value,
       autoSetSeasonFromImport: autoSetSeasonFromImport.value,
       simplifyImport: simplifyImport.value,
       navSensitivity: navSensitivity.value,
@@ -62,6 +68,7 @@ export function useGraphSettings(storageKey) {
       seasonEnd.value = parsed.seasonEnd
     if (typeof parsed.goalWinPoints === 'number' && isFinite(parsed.goalWinPoints))
       goalWinPoints.value = parsed.goalWinPoints
+    if (parsed.goalScale === 'fans') goalScale.value = 'fans'
     if (typeof parsed.autoSetSeasonFromImport === 'boolean')
       autoSetSeasonFromImport.value = parsed.autoSetSeasonFromImport
     if (typeof parsed.simplifyImport === 'boolean')
@@ -84,7 +91,7 @@ export function useGraphSettings(storageKey) {
 
   // Auto-persist on changes
   watch(
-    [seasonStart, seasonEnd, goalWinPoints, autoSetSeasonFromImport, simplifyImport],
+    [seasonStart, seasonEnd, goalWinPoints, goalScale, autoSetSeasonFromImport, simplifyImport],
     saveSettings
   )
   watch([navSensitivity, enableNavigation, showRankOverlay, showAveragePace, showDeviationWedge, showPaceGraph, paceEarnedStyle], saveSettings)
@@ -94,6 +101,7 @@ export function useGraphSettings(storageKey) {
     seasonEnd,
     seasonTitle,
     goalWinPoints,
+    goalScale,
     selectedGoalIndex,
     autoSetSeasonFromImport,
     simplifyImport,

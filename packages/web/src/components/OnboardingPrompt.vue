@@ -34,7 +34,7 @@
             />
           </span>
           <span v-if="worldTourInvalid" class="ob-error">
-            The second number must be 2,000, 4,000 … 48,000, and the first can't be bigger.
+            Enter both numbers. The second must be 2,000, 4,000 … 48,000, and the first can't be bigger.
           </span>
         </label>
 
@@ -94,11 +94,13 @@ const worldTourTotal = computed(() =>
     ? null
     : fansTotalFromReadout(Number(worldTour.value), Number(worldTourRequired.value))
 );
+// Started (either box filled) but not a usable pair. Blocks saving, so a
+// typo isn't silently dropped while Ranked saves.
+const worldTourStarted = computed(
+  () => !blank(worldTour.value) || !blank(worldTourRequired.value)
+);
 const worldTourInvalid = computed(
-  () =>
-    !blank(worldTour.value) &&
-    !blank(worldTourRequired.value) &&
-    worldTourTotal.value === null
+  () => worldTourStarted.value && worldTourTotal.value === null
 );
 
 const showRanked = computed(() => props.modes.includes("ranked"));
@@ -110,7 +112,9 @@ function entered(mode) {
 
 // At least one total is needed — otherwise "Get started" would do nothing that
 // "Skip for now" doesn't already do.
-const canSave = computed(() => props.modes.some(entered));
+const canSave = computed(
+  () => props.modes.some(entered) && !worldTourInvalid.value
+);
 
 function onSave() {
   if (!canSave.value || props.isSaving) return;

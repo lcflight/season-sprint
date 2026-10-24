@@ -120,7 +120,7 @@ class RankTest {
     fun legacyGoalMovesToSameBadge() {
         assertEquals(552_000, fansGoalFromLegacy(2400)) // Emerald 1
         assertEquals(156_000, fansGoalFromLegacy(700)) // Platinum 4
-        assertNull(fansGoalFromLegacy(552_000)) // already fans
+        assertEquals(462_000, fansGoalFromLegacy(2000)) // Emerald 3 (badge 22), not Bronze 3
         assertNull(fansGoalFromLegacy(1234)) // custom goal
     }
 }

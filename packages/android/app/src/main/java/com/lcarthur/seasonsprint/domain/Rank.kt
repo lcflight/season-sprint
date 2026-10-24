@@ -82,10 +82,11 @@ fun computeRank(points: Int, thresholds: List<Threshold> = worldTourThresholds):
 
 /**
  * A World Tour goal saved on the old win-points scale, moved to the same badge's fans
- * threshold; null if [goal] isn't an old badge threshold (or is already a fans one).
+ * threshold; null if [goal] isn't an old badge threshold (a custom goal). Callers run it
+ * once, keyed on a saved scale marker: the number alone is ambiguous (2,000 is Emerald 3 in
+ * points but Bronze 3 in fans).
  */
 fun fansGoalFromLegacy(goal: Int): Int? {
-    if (worldTourFansThresholds.any { it.points == goal }) return null
     val old = worldTourThresholds.firstOrNull { it.points == goal } ?: return null
     return worldTourFansThresholds.firstOrNull { it.badge == old.badge }?.points
 }

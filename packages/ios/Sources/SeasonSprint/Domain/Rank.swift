@@ -103,10 +103,11 @@ func computeRank(points: Int, thresholds: [Threshold]) -> RankInfo {
 }
 
 /// A World Tour goal saved on the old win-points scale, moved to the same badge's fans
-/// threshold; nil if `goal` isn't an old badge threshold (or is already a fans one).
+/// threshold; nil if `goal` isn't an old badge threshold (a custom goal). Callers run it
+/// once, keyed on a saved scale marker: the number alone is ambiguous (2,000 is Emerald 3
+/// in points but Bronze 3 in fans).
 func fansGoal(fromLegacy goal: Int) -> Int? {
-    guard !worldTourFansThresholds.contains(where: { $0.points == goal }),
-          let old = worldTourThresholds.first(where: { $0.points == goal }) else { return nil }
+    guard let old = worldTourThresholds.first(where: { $0.points == goal }) else { return nil }
     return worldTourFansThresholds.first(where: { $0.badge == old.badge })?.points
 }
 

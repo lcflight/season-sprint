@@ -12,6 +12,7 @@ struct OnboardingView: View {
     /// "X / Y" and this is the Y. Saved as the season total.
     @State private var worldTourRequired = ""
     @FocusState private var focusedMode: GameMode?
+    @FocusState private var requiredFocused: Bool
 
     private func trimmed(_ s: String?) -> String { (s ?? "").trimmingCharacters(in: .whitespaces) }
 
@@ -34,7 +35,14 @@ struct OnboardingView: View {
 
     // At least one total is needed — otherwise "Get started" would do nothing that
     // "Skip for now" doesn't already do.
-    private var canSave: Bool { !enteredValues.isEmpty }
+    /// The World Tour pair is started (either box filled) but not usable. Blocks saving, so a
+    /// typo isn't silently dropped while Ranked saves.
+    private var worldTourInvalid: Bool {
+        let started = !trimmed(entries[.worldTour]).isEmpty || !trimmed(worldTourRequired).isEmpty
+        return started && enteredValues[.worldTour] == nil
+    }
+
+    private var canSave: Bool { !enteredValues.isEmpty && !worldTourInvalid }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -70,7 +78,13 @@ struct OnboardingView: View {
                                         TextField("needed", text: $worldTourRequired)
                                             .keyboardType(.numberPad)
                                             .textFieldStyle(.roundedBorder)
+                                            .focused($requiredFocused)
                                     }
+                                }
+                                if mode == .worldTour && worldTourInvalid {
+                                    Text("Enter both numbers. The second must be 2,000, 4,000 … 48,000, and the first can't be bigger.")
+                                        .font(.caption)
+                                        .foregroundStyle(.red)
                                 }
                             }
                         }
@@ -116,7 +130,10 @@ struct OnboardingView: View {
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {
                 Spacer()
-                Button("Done") { focusedMode = nil }
+                Button("Done") {
+                    focusedMode = nil
+                    requiredFocused = false
+                }
             }
         }
     }

@@ -55,7 +55,11 @@ fun OnboardingScreen(viewModel: OnboardingViewModel, modifier: Modifier = Modifi
 
     // At least one total is needed — otherwise "Get started" would do nothing that
     // "Skip for now" doesn't already do.
-    val canSave = values.isNotEmpty() && !state.isSaving
+    // The World Tour pair is started (either box filled) but not usable. Blocks saving, so a
+    // typo isn't silently dropped while Ranked saves.
+    val worldTourInvalid = (!entries[GameMode.WorldTour].isNullOrBlank() || worldTourRequired.isNotBlank()) &&
+        GameMode.WorldTour !in values
+    val canSave = values.isNotEmpty() && !worldTourInvalid && !state.isSaving
 
     Column(
         modifier = modifier
@@ -84,6 +88,13 @@ fun OnboardingScreen(viewModel: OnboardingViewModel, modifier: Modifier = Modifi
                     onRequiredChange = { worldTourRequired = it },
                     label = "${mode.label} fans",
                 )
+                if (worldTourInvalid) {
+                    Text(
+                        "Enter both numbers. The second must be 2,000, 4,000 … 48,000, and the first can't be bigger.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
             } else {
                 WinPointsField(
                     value = entries[mode] ?: "",
