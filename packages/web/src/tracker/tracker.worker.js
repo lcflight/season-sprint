@@ -41,7 +41,8 @@ function process(image, width, height) {
   const t0 = performance.now()
   let reading
   try {
-    reading = readFrame(sourceFor(image, width, height), templates)
+    // Captured video stores colour at half resolution, so read by brightness.
+    reading = readFrame(sourceFor(image, width, height), templates, { chromaSafe: true })
   } catch (e) {
     self.postMessage({ type: 'error', message: String(e?.message || e) })
     nextDue = performance.now() + POLL_MS

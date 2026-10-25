@@ -176,6 +176,58 @@ function whiteInk(img, lo = 130, span = 90) {
   return { w: img.w, h: img.h, data: out }
 }
 
+// Browser captures store colour at half resolution (4:2:0 video), which
+// smears it across small glyphs: the yellow comma stops looking yellow, and the
+// small hole in a "0" picks up yellow and reads as "8". Brightness stays sharp,
+// so for these frames glyphs are found by brightness and coloured as a whole
+// (a glyph is yellow when its average red-minus-blue is). The threshold sits
+// above the map background showing through a "0" (luma ~110-160 at 1440p),
+// so that background never joins the glyph.
+const CS_LUMA_MIN = 165
+const CS_YELLOW_RB = 60
+const CS_INK_LO = 150
+const CS_INK_SPAN = 45
+
+const luma = (d, i) => 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]
+
+/** Yellow glyph mask for chroma-subsampled frames (see above). */
+function brightYellowMask(img) {
+  const n = img.w * img.h
+  const bright = new Uint8Array(n)
+  for (let i = 0; i < n; i++) bright[i] = luma(img.data, i * 4) > CS_LUMA_MIN ? 1 : 0
+  const out = new Uint8Array(n)
+  for (const c of components({ w: img.w, h: img.h, data: bright })) {
+    let rb = 0
+    let k = 0
+    for (let y = 0; y < c.h; y++) {
+      for (let x = 0; x < c.w; x++) {
+        if (!c.mask[y * c.w + x]) continue
+        const i = ((c.y0 + y) * img.w + c.x0 + x) * 4
+        rb += img.data[i] - img.data[i + 2]
+        k++
+      }
+    }
+    if (rb / k <= CS_YELLOW_RB) continue
+    for (let y = 0; y < c.h; y++) {
+      for (let x = 0; x < c.w; x++) {
+        if (c.mask[y * c.w + x]) out[(c.y0 + y) * img.w + c.x0 + x] = 1
+      }
+    }
+  }
+  return { w: img.w, h: img.h, data: out }
+}
+
+/** Yellow ink for chroma-subsampled frames: brightness, weighted by yellowness. */
+function brightYellowInk(img) {
+  const n = img.w * img.h
+  const out = new Float32Array(n)
+  const d = img.data
+  for (let i = 0; i < n; i++) {
+    out[i] = clip01((luma(d, i * 4) - CS_INK_LO) / CS_INK_SPAN) * clip01((d[i * 4] - d[i * 4 + 2]) / 80)
+  }
+  return { w: img.w, h: img.h, data: out }
+}
+
 // ── Template matching ────────────────────────────────────────────────────────
 
 /** Nearest-neighbour resize of a 0/1 mask by factor s. */
@@ -579,8 +631,12 @@ function bestHeader(wmask, headers, s, d, scores) {
   return best
 }
 
-/** Gate -> header -> value on one frame. */
-export function readFrame(source, t) {
+/**
+ * Gate -> header -> value on one frame. `opts.chromaSafe` reads the yellow
+ * value by brightness (for video frames with half-resolution colour); without
+ * it the reader matches the desktop trackers exactly.
+ */
+export function readFrame(source, t, opts = {}) {
   const r = newReading()
   const W = source.width
   const H = source.height
@@ -631,13 +687,14 @@ export function readFrame(source, t) {
     Math.min(region.w, int(hx + tw + 40 * s)),
     Math.min(region.h, int(hy + th + 42 * s))
   )
-  const yAll = components(yellowMask(row))
+  const yAll = components(opts.chromaSafe ? brightYellowMask(row) : yellowMask(row))
   const ycomps = yAll.filter((c) => digitLike(c, s))
   if (!ycomps.length) {
     r.verdict = `'${name}' header found, but no yellow value under it`
     return r
   }
-  const [value, info] = readNumber(ycomps, yellowInk(row), t.digits, true)
+  const yInk = opts.chromaSafe ? brightYellowInk(row) : yellowInk(row)
+  const [value, info] = readNumber(ycomps, yInk, t.digits, true)
   if (value === null) {
     r.verdict = `'${name}' value unreadable: ${info}`
     return r

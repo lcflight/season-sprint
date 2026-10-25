@@ -124,3 +124,40 @@ describe('screenReader matches the Python reader', () => {
     expect(r.total).toBe(null)
   })
 })
+
+// Browser captures arrive as video with half-resolution colour (4:2:0). The
+// *_yuv420 fixtures are the same frames put through that conversion. With the
+// desktop reader's exact-colour masks the comma vanishes and a "0" can read
+// as "8"; chromaSafe must read the right total from both versions.
+describe('screenReader chromaSafe (browser captures)', () => {
+  const cases = {
+    modes_2726: 14726,
+    modes_4051: 16051,
+    modes_5736: 17736,
+    modes_6998: 18998,
+    post_5736: 17736,
+    post_countup_5556: 17556,
+  }
+  for (const [name, total] of Object.entries(cases)) {
+    for (const variant of ['', '_yuv420']) {
+      it(`${name}${variant} reads ${total}`, () => {
+        const img = decodePng(fs.readFileSync(path.join(FIXTURES, `${name}${variant}.png`)))
+        const r = readFrame(sourceOf(img), templates, { chromaSafe: true })
+        expect(r.mode).toBe('world-tour')
+        expect(r.total).toBe(total)
+      })
+    }
+  }
+
+  it('still skips placement rounds', () => {
+    const img = decodePng(fs.readFileSync(path.join(FIXTURES, 'placement.png')))
+    const r = readFrame(sourceOf(img), templates, { chromaSafe: true })
+    expect(r.header).toBe('placement')
+    expect(r.total).toBe(null)
+  })
+
+  it('the desktop reader alone would reject a converted frame', () => {
+    const img = decodePng(fs.readFileSync(path.join(FIXTURES, 'modes_4051_yuv420.png')))
+    expect(readFrame(sourceOf(img), templates).total).toBe(null)
+  })
+})
