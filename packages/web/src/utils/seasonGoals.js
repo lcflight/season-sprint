@@ -4,7 +4,9 @@
 //
 // An entry applies from its season onward: "Season 12" covers Season 12, 13,
 // … until a later entry takes over. Seasons before the first entry use the
-// fallback table.
+// fallback table. A season whose name has no number (the wiki calls Season 12
+// "PRIME TIME") is treated as current-era and gets the newest entry, so only
+// the old numbered seasons fall back.
 
 /** "Season 12" -> 12; null for names without a number. */
 export function seasonNumber(name) {
@@ -12,12 +14,20 @@ export function seasonNumber(name) {
   return m ? Number(m[1]) : null
 }
 
+/** The entry for the highest-numbered season, or null. */
+function latestEntry(bySeason) {
+  const entries = Object.entries(bySeason || {})
+  return entries.length
+    ? entries.reduce((a, b) => ((seasonNumber(b[0]) ?? -1) > (seasonNumber(a[0]) ?? -1) ? b : a))[1]
+    : null
+}
+
 /** The bySeason entry in force for a season, or null. */
 function entryFor(bySeason, seasonKey) {
   const own = (bySeason || {})[seasonKey]
   if (own) return own
   const n = seasonNumber(seasonKey)
-  if (n === null) return null
+  if (n === null) return latestEntry(bySeason)
   let best = null
   let bestN = -Infinity
   for (const [key, entry] of Object.entries(bySeason || {})) {
@@ -44,11 +54,7 @@ function entryFor(bySeason, seasonKey) {
  * @returns {{ thresholds: Array, note: string, unit: string|null, yAxisLabel: string|null, fans: boolean }}
  */
 export function resolveSeasonGoals({ bySeason, seasonKey, fallback, fallbackNote = '', upcoming = false }) {
-  const entries = Object.entries(bySeason || {})
-  const latest = entries.length
-    ? entries.reduce((a, b) => ((seasonNumber(b[0]) ?? -1) > (seasonNumber(a[0]) ?? -1) ? b : a))[1]
-    : null
-  const own = upcoming ? latest : entryFor(bySeason, seasonKey)
+  const own = upcoming ? latestEntry(bySeason) : entryFor(bySeason, seasonKey)
   const units = {
     unit: own?.unit || null,
     yAxisLabel: own?.yAxisLabel || null,

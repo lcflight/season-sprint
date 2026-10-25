@@ -38,8 +38,15 @@ describe('resolveSeasonGoals', () => {
     }
   })
 
+  // The wiki names Season 12 "PRIME TIME": only Seasons 0–11 are old-style.
+  it('uses the newest table for seasons named without a number', () => {
+    const r = resolveSeasonGoals({ ...base, seasonKey: 'PRIME TIME' })
+    expect(r.thresholds).toBe(WT_BY_SEASON['Season 12'].thresholds)
+    expect(r.fans).toBe(true)
+  })
+
   it('keeps the original table and units for earlier seasons', () => {
-    for (const key of ['Season 11', 'Season 3']) {
+    for (const key of ['Season 11', 'Season 3', 'Season 0']) {
       const r = resolveSeasonGoals({ ...base, seasonKey: key })
       expect(r.thresholds).toBe(WT_THRESHOLDS)
       expect(r.note).toBe(base.fallbackNote)
