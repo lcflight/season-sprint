@@ -21,6 +21,7 @@
           <div class="season-card-header">Seasons</div>
           <div id="season-controls-world-tour"></div>
         </div>
+        <ScreenTrackerCard v-if="flags.screenTracker" />
         <template v-if="!readOnly">
           <SetPointsCard
             :fans="fans"
@@ -41,6 +42,8 @@
 import { ref, computed } from "vue";
 import LineGraph from "@/components/LineGraph.vue";
 import SetPointsCard from "@/components/SetPointsCard.vue";
+import ScreenTrackerCard from "@/components/ScreenTrackerCard.vue";
+import { useFlags } from "@/composables/useFlags";
 import ModeLayout from "@/components/ModeLayout.vue";
 import { useRankInfo } from "@/composables/useRankInfo";
 // worldTourRanks.json is the table for Season 11 and earlier; seasons whose
@@ -50,13 +53,15 @@ import WT_THRESHOLDS_BY_SEASON from "@/data/worldTourRanksBySeason.json";
 
 export default {
   name: "WorldTourView",
-  components: { LineGraph, SetPointsCard, ModeLayout },
+  components: { LineGraph, SetPointsCard, ScreenTrackerCard, ModeLayout },
   setup() {
     const winPoints = ref(0);
     const thresholds = computed(() => WT_THRESHOLDS);
     const seasonThresholds = WT_THRESHOLDS_BY_SEASON;
     const { rankInfo, toNext, progressPct } = useRankInfo(winPoints, thresholds);
-    return { winPoints, thresholds, seasonThresholds, rankInfo, toNext, progressPct };
+    // Screen tracker test build: shown only to users with the flag on.
+    const { flags } = useFlags();
+    return { winPoints, thresholds, seasonThresholds, rankInfo, toNext, progressPct, flags };
   },
   data() {
     return {

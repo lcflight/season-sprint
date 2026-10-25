@@ -9,7 +9,7 @@ export default { name: "PrivacyView" };
       <router-link class="btn-ghost back-link" to="/">Back</router-link>
     </header>
 
-    <p class="updated">Last updated: July 9, 2026</p>
+    <p class="updated">Last updated: October 24, 2026</p>
 
     <section class="privacy-card">
       <p>
@@ -42,6 +42,17 @@ export default { name: "PrivacyView" };
         We do not use analytics, advertising, or crash-reporting SDKs of any
         kind, and we do not collect device identifiers, location data, or
         contacts.
+      </p>
+
+      <h2 id="screen-tracker" class="card-title">Screen tracker (web, optional)</h2>
+      <p>
+        If you turn on the web app's screen tracker, your browser asks you to
+        share a screen. The app reads your score from that screen inside your
+        browser, on your own computer. The shared screen is never recorded,
+        stored, uploaded or sent to us or anyone else. Only the score it reads
+        is saved, as a season record, exactly as if you had entered it
+        yourself. Sharing stops when you press Stop, use your browser's "Stop
+        sharing" control, or close the tab.
       </p>
 
       <h2 class="card-title">How your data is used</h2>
