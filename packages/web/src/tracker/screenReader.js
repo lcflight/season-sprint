@@ -19,6 +19,17 @@
 import { fansTotalFromReadout } from '@/utils/fans'
 
 export const REF_H = 1440
+export const REF_W = 2560
+
+/**
+ * How much bigger the game UI is than in the 2560x1440 templates. The game
+ * fits its UI to a 16:9 box: wider screens (ultrawide) scale by height, and
+ * taller ones (16:10, e.g. 2560x1600) scale by width, with the extra height
+ * left as space between the top- and bottom-anchored panels.
+ */
+export function uiScale(screenW, screenH) {
+  return Math.min(screenH / REF_H, screenW / REF_W)
+}
 
 // Header template name -> server mode. null = recognised, nothing to record.
 export const HEADER_MODES = { world_tour: 'world-tour', ranked: 'ranked', placement: null }
@@ -595,12 +606,12 @@ function finish(r) {
 }
 
 export function gateZone(screenW, screenH) {
-  const s = screenH / REF_H
+  const s = uiScale(screenW, screenH)
   return [Math.min(screenW, int(960 * s)), Math.min(screenH, int(130 * s))]
 }
 
 export function postZone(screenW, screenH) {
-  const s = screenH / REF_H
+  const s = uiScale(screenW, screenH)
   const x0 = Math.max(0, int(screenW / 2 - 360 * s))
   const y0 = Math.max(0, int(screenH / 2 - 150 * s))
   const x1 = Math.min(screenW, int(screenW / 2 + 360 * s))
@@ -611,7 +622,7 @@ export function postZone(screenW, screenH) {
 /** Is the yellow MODES tab highlighted? [onModes, score] */
 function checkGate(source, t) {
   const H = source.height
-  const s = H / REF_H
+  const s = uiScale(source.width, H)
   const [zw, zh] = gateZone(source.width, H)
   const ymask = yellowMask(source.region(0, 0, zw, zh))
   if (maskSum(ymask) < GATE_MIN_YELLOW * t.modes.sum * s * s) return [false, 0]
@@ -640,13 +651,13 @@ export function readFrame(source, t, opts = {}) {
   const r = newReading()
   const W = source.width
   const H = source.height
-  const s = H / REF_H
+  const s = uiScale(W, H)
   const d = Math.max(1, int(4 * s))
 
   ;[r.onModes, r.gateScore] = checkGate(source, t)
   if (!r.onModes) {
     const [x0, y0, zw, zh] = postZone(W, H)
-    const p = readPost(source.region(x0, y0, zw, zh), t, H)
+    const p = readPost(source.region(x0, y0, zw, zh), t, s)
     if (p.screen === 'post') {
       p.gateScore = r.gateScore
       return p
@@ -728,13 +739,12 @@ export function readFrame(source, t, opts = {}) {
 }
 
 /** Read the post-match panel from its postZone() crop. */
-export function readPost(zone, t, screenH) {
+export function readPost(zone, t, s) {
   const r = newReading()
   if (!Object.keys(t.postHeaders).length) {
     r.verdict = 'post-match templates not installed'
     return r
   }
-  const s = screenH / REF_H
   if (s < MIN_SCALE) {
     r.verdict = 'resolution too low for the post-match panel'
     return r

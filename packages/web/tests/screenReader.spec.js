@@ -161,3 +161,46 @@ describe('screenReader chromaSafe (browser captures)', () => {
     expect(readFrame(sourceOf(img), templates).total).toBe(null)
   })
 })
+
+// 16:10 monitors (e.g. 2560x1600): the game fits its UI to the width, keeps the
+// nav bar at the top and the score panel at the bottom, and centres the
+// post-match panel. Build that layout from the 16:9 fixtures by adding rows
+// in the middle (lobby) or around the frame (post-match).
+function tallerSource(img, extra, centred) {
+  const H = img.h + extra
+  const mid = img.h / 2
+  const srcRow = (y) => {
+    if (centred) {
+      const sy = y - extra / 2
+      return sy >= 0 && sy < img.h ? sy : -1
+    }
+    if (y < mid) return y
+    return y >= mid + extra ? y - extra : -1
+  }
+  return {
+    width: img.w,
+    height: H,
+    region(x, y, w, h) {
+      const data = new Uint8ClampedArray(w * h * 4)
+      for (let r = 0; r < h; r++) {
+        const sy = srcRow(y + r)
+        if (sy < 0) continue
+        const from = (sy * img.w + x) * 4
+        data.set(img.data.subarray(from, from + w * 4), r * w * 4)
+      }
+      return { w, h, data }
+    },
+  }
+}
+
+describe('screenReader on a 16:10 screen (2560x1600)', () => {
+  const cases = { modes_4051: 16051, modes_6998: 18998, post_5736: 17736 }
+  for (const [name, total] of Object.entries(cases)) {
+    it(`${name} reads ${total}`, () => {
+      const img = decodePng(fs.readFileSync(path.join(FIXTURES, `${name}_yuv420.png`)))
+      const r = readFrame(tallerSource(img, 160, name.startsWith('post')), templates, { chromaSafe: true })
+      expect(r.total).toBe(total)
+    })
+  }
+})
+
