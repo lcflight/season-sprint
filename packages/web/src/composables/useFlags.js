@@ -21,6 +21,7 @@ function applyDevOverride() {
   // Turn on any flags the server reported, plus known UI-gated flags.
   for (const k of Object.keys(flags)) flags[k] = true
   flags.ranked = true
+  flags.screenTracker = true
 }
 
 // Apply immediately so the very first render already reflects dev access,

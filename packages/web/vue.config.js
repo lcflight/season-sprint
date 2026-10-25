@@ -17,6 +17,12 @@ module.exports = defineConfig({
     });
   },
   configureWebpack: {
+    module: {
+      rules: [
+        // Screen-tracker templates (src/tracker/templateFiles.js).
+        { test: /\.pgm$/, type: "asset/resource", generator: { filename: "tracker/[name].[contenthash:8][ext]" } },
+      ],
+    },
     plugins: [
       new webpack.DefinePlugin({
         __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: "false",
