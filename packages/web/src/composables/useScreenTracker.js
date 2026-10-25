@@ -19,6 +19,9 @@ const POST_CONFIRM_READS = 3 // post-match: more, so a counting-up value never c
 const COOLDOWN_MS = 5 * 60 * 1000 // MODES: rest per mode after a confirmed read
 const POST_REST_MS = 10 * 1000 // post-match: the panel lasts ~2s
 const LOG_MAX = 40
+// While nothing changes, log a heartbeat this often so a tracker that is
+// running but not recognising anything doesn't look frozen.
+const HEARTBEAT_MS = 60 * 1000
 const FALLBACK_FRAME_MS = 200
 
 const MODE_LABELS = { 'world-tour': 'World Tour', ranked: 'Ranked' }
@@ -41,6 +44,8 @@ const state = reactive({
   // How long the longest gap between reads was while this tab was hidden.
   // Answers "does it keep reading in the background?" during the test.
   maxHiddenGapMs: 0,
+  // The display reports HDR. Windows HDR can wash out shared-screen colours.
+  hdr: false,
 })
 
 let worker = null
@@ -49,6 +54,11 @@ let fallbackTimer = null
 let video = null
 let lastReadAt = 0
 let lastVerdictKey = ''
+let heartbeatAt = 0
+let heartbeatReads = 0
+let sizeLogged = false
+const previewListeners = new Set()
+let snapshotWaiter = null
 const tracks = new Map() // "screen|mode" -> { reads, lastVal, restUntil }
 
 function log(text) {
@@ -92,6 +102,16 @@ function onReading({ reading: r, ms, width, height, at }) {
   }
   lastReadAt = at
   state.reads++
+  heartbeatReads++
+  if (!sizeLogged) {
+    sizeLogged = true
+    log(`Capturing ${width}×${height}`)
+  }
+  if (at - heartbeatAt >= HEARTBEAT_MS) {
+    if (heartbeatAt) log(`Still watching: ${heartbeatReads} reads in the last minute. Last: ${r.verdict}`)
+    heartbeatAt = at
+    heartbeatReads = 0
+  }
   state.readMs = Math.round(ms)
   state.width = width
   state.height = height
@@ -147,6 +167,11 @@ function cleanup() {
   tracks.clear()
   lastReadAt = 0
   lastVerdictKey = ''
+  heartbeatAt = 0
+  heartbeatReads = 0
+  sizeLogged = false
+  snapshotWaiter?.reject(new Error('stopped'))
+  snapshotWaiter = null
 }
 
 export function stop() {
@@ -225,6 +250,13 @@ export async function start(options = {}) {
   worker.onmessage = (e) => {
     const m = e.data
     if (m.type === 'reading') onReading(m)
+    else if (m.type === 'preview') {
+      for (const fn of previewListeners) fn(m.bitmap, m.meanLuma)
+      if (!previewListeners.size) m.bitmap.close()
+    } else if (m.type === 'snapshot') {
+      snapshotWaiter?.resolve(m.blob)
+      snapshotWaiter = null
+    }
     else if (m.type === 'error') log(`Read error: ${m.message}`)
     else if (m.type === 'ended') stop()
   }
@@ -253,14 +285,48 @@ export async function start(options = {}) {
     state.path = 'fallback'
   }
   state.status = 'running'
+  try {
+    state.hdr = window.matchMedia('(dynamic-range: high)').matches
+  } catch {
+    state.hdr = false
+  }
   log(`Watching ${state.surface || 'screen'}`)
+  if (state.hdr) log('This display reports HDR. If nothing is recognised, try with HDR off')
   if (state.surface && state.surface !== 'monitor') {
     log('Tip: share your whole screen (the monitor the game is on), not a window or tab')
   }
 }
 
+/**
+ * Ask for a small copy of the next captured frame. `fn(bitmap, meanLuma)` is
+ * called with it; the listener owns the bitmap. Returns an unsubscribe.
+ */
+export function onPreview(fn) {
+  previewListeners.add(fn)
+  return () => previewListeners.delete(fn)
+}
+
+export function requestPreview() {
+  worker?.postMessage({ type: 'preview' })
+}
+
+/** The next captured frame as a PNG blob, for the user to save. */
+export function snapshot() {
+  if (!worker || state.status !== 'running') return Promise.reject(new Error('not running'))
+  if (snapshotWaiter) return snapshotWaiter.promise
+  let resolve
+  let reject
+  const promise = new Promise((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  snapshotWaiter = { promise, resolve, reject }
+  worker.postMessage({ type: 'snapshot' })
+  return promise
+}
+
 export function useScreenTracker() {
-  return { state: readonly(state), start, stop, isSupported }
+  return { state: readonly(state), start, stop, isSupported, onPreview, requestPreview, snapshot }
 }
 
 // Development builds: let a test feed in any stream, e.g. a canvas showing a

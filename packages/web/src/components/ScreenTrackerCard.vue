@@ -58,6 +58,28 @@
     </template>
 
     <div v-if="showDetails" class="tc-details">
+      <template v-if="state.status === 'running'">
+        <canvas
+          ref="previewCanvas"
+          class="tc-preview"
+          width="320"
+          height="180"
+          aria-label="What the tracker sees"
+        ></canvas>
+        <p v-if="previewDark" class="tc-warn">
+          The captured picture is almost black. Try borderless or windowed
+          mode, or share a different screen.
+        </p>
+        <div class="tc-row">
+          <button class="btn-ghost" :disabled="saving" @click="saveSnapshot">
+            {{ saving ? "Saving…" : "Save snapshot" }}
+          </button>
+        </div>
+        <p class="tc-hint">
+          Saves the captured frame to your computer only, so you can share it
+          when reporting a problem.
+        </p>
+      </template>
       <dl>
         <dt>Capture</dt>
         <dd>
@@ -69,6 +91,8 @@
           {{ state.path === "stream" ? "worker stream" : state.path || "—" }},
           {{ state.reads }} reads, {{ state.readMs }} ms each
         </dd>
+        <dt>HDR display</dt>
+        <dd>{{ state.hdr ? "yes" : "no" }}</dd>
         <dt>Background gap</dt>
         <dd>
           {{ state.maxHiddenGapMs ? `${(state.maxHiddenGapMs / 1000).toFixed(1)} s` : "—" }}
@@ -166,13 +190,68 @@
 </template>
 
 <script setup>
-import { computed, ref } from "vue";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useScreenTracker } from "@/composables/useScreenTracker";
 
-const { state, start, stop, isSupported } = useScreenTracker();
+const { state, start, stop, isSupported, onPreview, requestPreview, snapshot } =
+  useScreenTracker();
 const supported = isSupported();
 const showNotice = ref(false);
 const showDetails = ref(false);
+
+// Live preview in Details: what the tracker is capturing, refreshed every 2s.
+const PREVIEW_MS = 2000;
+const previewCanvas = ref(null);
+const previewDark = ref(false);
+let previewTimer = null;
+const offPreview = onPreview((bitmap, meanLuma) => {
+  const c = previewCanvas.value;
+  if (c) {
+    c.width = bitmap.width;
+    c.height = bitmap.height;
+    c.getContext("2d").drawImage(bitmap, 0, 0);
+  }
+  bitmap.close();
+  // A failed capture (exclusive fullscreen, wrong GPU) is solid black, ~0.
+  previewDark.value = meanLuma < 3;
+});
+
+watch(
+  () => showDetails.value && state.status === "running",
+  (on) => {
+    clearInterval(previewTimer);
+    previewTimer = null;
+    previewDark.value = false;
+    if (!on) return;
+    requestPreview();
+    previewTimer = setInterval(requestPreview, PREVIEW_MS);
+  },
+  { immediate: true }
+);
+
+onBeforeUnmount(() => {
+  clearInterval(previewTimer);
+  offPreview();
+});
+
+const saving = ref(false);
+async function saveSnapshot() {
+  saving.value = true;
+  try {
+    const blob = await snapshot();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+    a.href = url;
+    a.download = `season-sprint-capture-${stamp}.png`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  } catch {
+    // Stopped while waiting for a frame; nothing to save.
+  } finally {
+    saving.value = false;
+  }
+}
 
 const statusText = computed(() => {
   const v = state.verdict || "";
@@ -264,6 +343,19 @@ function begin() {
   margin-top: 10px;
   font-size: 12px;
   color: var(--muted);
+}
+.tc-preview {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 8px;
+  background: #000;
+  margin-bottom: 6px;
+}
+.tc-hint {
+  margin: 4px 0 8px;
+  font-size: 12px;
+  line-height: 1.4;
 }
 .tc-details dl {
   display: grid;
