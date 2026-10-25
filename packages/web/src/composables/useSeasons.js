@@ -23,7 +23,7 @@ export function useSeasons() {
   function displayName(name) {
     const nm = String(name || '').trim()
     if (!nm) return ''
-    return nm.toLowerCase().startsWith('season') ? nm : `Season ${nm}`
+    return /^\d+$/.test(nm) ? `Season ${nm}` : nm
   }
 
   // Convert a wiki season ({ name, start, end }) into a window the chart can
