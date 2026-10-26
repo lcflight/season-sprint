@@ -38,7 +38,14 @@ To check what it reads from a screenshot (convert to PPM first):
 
 ```bash
 convert shot.png shot.ppm && ./season-tracker --read shot.ppm
+# Ranked reads are placed next to your last saved ranked score; pass one:
+./season-tracker --read shot.ppm 25000
 ```
+
+Ranked shows rank score within the current tier ("189 / 2,499"), so the
+tracker also reads the badge tier numbers and fetches your latest ranked
+score from this season to work out the total. Enter one ranked score in the
+app each season to start it off (see `../tracker-templates/README.md`).
 
 ## Files
 - `season-tracker.c` — the tracker (capture → gate → read → POST). Built by the

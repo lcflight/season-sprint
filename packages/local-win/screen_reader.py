@@ -32,6 +32,13 @@ current badge / fans that badge needs, not a season total. Badge n needs
 (see fans_total). That total is what gets pushed (Reading.total); a World Tour
 read without a valid "/ Y" is rejected.
 
+Ranked shows "X / 2,499": rank score earned in the current tier, out of the
+2,500 a tier spans. Leagues (Bronze 0 … Diamond 40,000+) span 10,000 RS in
+four tiers, Tier 4 lowest. The 2,499 doesn't say which tier, so the reader
+also reads the small tier number on the badges either side of the panel
+(left = current, right = next) and places the total next to the last saved
+ranked score, which the tracker passes in (see ranked_total).
+
 The post-match panel uses an upright font with the whole "5,736/8,000" in
 white, so it has its own header and glyph templates (post_*.pgm), and is
 read from a small centre zone (post_zone) rather than the full frame.
@@ -77,6 +84,45 @@ def fans_total(in_rank: int, required: int) -> Optional[int]:
     return FANS_STEP // 2 * n * (n - 1) + in_rank
 
 
+# Ranked (Season 12+): leagues Bronze, Silver, Gold, Platinum, Diamond span
+# RANKED_LEAGUE RS each, in four tiers of RANKED_TIER RS (Tier 4 lowest). The
+# MODES panel shows "X / 2,499": RS earned in the current tier.
+RANKED_TIER = 2500
+RANKED_LEAGUE = 4 * RANKED_TIER
+RANKED_LEAGUES = 5
+# The furthest a read may land from the last saved ranked score. With the tier
+# known the league is the only guess, so a misread tier (a 2,500 shift) is what
+# this catches; without it the tier is a guess too and only small moves are
+# safe. Bigger real moves (a stale saved score) are refused, not guessed.
+RANKED_MAX_STEP = 2000
+RANKED_MAX_STEP_NO_TIER = 1000
+
+
+def ranked_total(value: int, max_value: Optional[int], tier: Optional[int],
+                 anchor: Optional[int]) -> tuple[Optional[int], str]:
+    """Season rank score from the ranked "X / 2,499" readout.
+
+    tier: the badge tier (1-4), or None if it couldn't be read.
+    anchor: the last saved ranked score; needed to pick the league.
+    Returns (total or None, reason)."""
+    if max_value != RANKED_TIER - 1:
+        shown = f"{value} / {max_value}" if max_value is not None else f"{value} (no max)"
+        return None, f"{shown} isn't a ranked tier (expected / {RANKED_TIER - 1})"
+    if anchor is None or anchor < 0:
+        return None, "no saved ranked score to place it from (enter it once in the app)"
+    if tier is not None:
+        base, step, n, limit = (4 - tier) * RANKED_TIER + value, RANKED_LEAGUE, RANKED_LEAGUES, RANKED_MAX_STEP
+    else:
+        base, step, n, limit = value, RANKED_TIER, 4 * RANKED_LEAGUES, RANKED_MAX_STEP_NO_TIER
+    # Nearest candidate to the anchor (floor division, so the C/JS ports agree).
+    k = min(n - 1, max(0, (anchor - base + step // 2) // step))
+    total = base + k * step
+    if abs(total - anchor) > limit:
+        return None, (f"nearest fit {total} is {abs(total - anchor)} from the saved "
+                      f"{anchor} (limit {limit}) — update it in the app")
+    return total, f"{total} RS"
+
+
 # Glyphs of the post-match value: digits plus the "/" between current and max.
 POST_GLYPHS = {**{d: d for d in "0123456789"}, "slash": "/"}
 
@@ -91,6 +137,17 @@ DIGIT_MIN = 0.70    # best digit template for a glyph
 DIGIT_MARGIN = 0.04 # best must beat the runner-up by this much
 
 DIGIT_H, DIGIT_W = 24, 20  # normalised glyph canvas
+
+# Ranked badge tier number: a small (17px at 1440p) badge-coloured digit in a
+# dark circle at the bottom of each badge. The badges sit either side of the
+# "RANK SCORE" header, centred TIER_DX left/right of the header's centre and
+# TIER_DY below its top. Found by brightness (the badge colour depends on the
+# league), searched within TIER_ZONE of that point.
+TIER_DX, TIER_DY, TIER_ZONE = 267, 130, 30
+TIER_LUMA_MIN = 90
+TIER_INK_LO, TIER_INK_SPAN = 50, 100
+TIER_MIN = 0.75
+TIER_MARGIN = 0.10
 # Below ~900p the digits are ~10px tall and 5/6, 0/8 stop being reliably
 # distinguishable, so refuse to read rather than risk pushing a wrong value.
 MIN_SCALE = 0.6
@@ -141,6 +198,9 @@ class Templates:
     # Post-match panel (both empty if its templates aren't installed).
     post_headers: dict[str, np.ndarray] = field(default_factory=dict)
     post_glyphs: dict[str, np.ndarray] = field(default_factory=dict)  # "0".."9", "/"
+    # Ranked badge tier numbers "1".."4" (badge_tier_<n>.pgm); any missing are
+    # skipped, and fewer than two switch tier reading off.
+    tiers: dict[str, np.ndarray] = field(default_factory=dict)
 
     @classmethod
     def load(cls, folder: Path) -> "Templates":
@@ -169,8 +229,12 @@ class Templates:
             }
         else:
             post_headers = {}
+        tiers = {
+            n: read_pgm(folder / f"badge_tier_{n}.pgm").astype(np.float32) / 255.0
+            for n in "1234" if (folder / f"badge_tier_{n}.pgm").is_file()
+        }
         return cls(modes=modes, headers=headers, digits=digits,
-                   post_headers=post_headers, post_glyphs=post_glyphs)
+                   post_headers=post_headers, post_glyphs=post_glyphs, tiers=tiers)
 
 
 def find_templates_dir(script_dir: Path) -> Path:
@@ -214,6 +278,12 @@ def yellow_ink(rgb: np.ndarray) -> np.ndarray:
 
 def white_ink(rgb: np.ndarray, lo: int = 130, span: int = 90) -> np.ndarray:
     return np.clip((rgb.min(axis=2).astype(np.float32) - lo) / span, 0, 1)
+
+
+def luma(rgb: np.ndarray) -> np.ndarray:
+    """Rec. 601 brightness, in float64 like the JS and C ports."""
+    f = rgb.astype(np.float64)
+    return 0.299 * f[..., 0] + 0.587 * f[..., 1] + 0.114 * f[..., 2]
 
 
 # ── Template matching ────────────────────────────────────────────────────────
@@ -381,7 +451,9 @@ def _ncc(a: np.ndarray, b: np.ndarray) -> float:
     return float((a * b).sum() / den) if den > 1e-9 else 0.0
 
 
-def classify_digit(g_img: np.ndarray, digits: dict[str, np.ndarray]) -> tuple[Optional[str], float, float]:
+def classify_digit(g_img: np.ndarray, digits: dict[str, np.ndarray],
+                   min_score: float = DIGIT_MIN,
+                   margin: float = DIGIT_MARGIN) -> tuple[Optional[str], float, float]:
     """Return (glyph or None, best score, runner-up score). Keys may be
     variants ("8_yellow"): each glyph character scores the best of its
     variants, and the margin is measured against other characters."""
@@ -393,7 +465,7 @@ def classify_digit(g_img: np.ndarray, digits: dict[str, np.ndarray]) -> tuple[Op
             per_char[key[0]] = sc
     scores = sorted(((sc, ch) for ch, sc in per_char.items()), reverse=True)
     (best, d), (second, _) = scores[0], scores[1]
-    if best < DIGIT_MIN or best - second < DIGIT_MARGIN:
+    if best < min_score or best - second < margin:
         return None, best, second
     return d, best, second
 
@@ -491,6 +563,7 @@ class Reading:
     value: Optional[int] = None       # as shown: World Tour = fans in this badge
     max_value: Optional[int] = None
     total: Optional[int] = None       # what to push: the season total
+    tier: Optional[int] = None        # ranked: badge tier (1-4) if both badges agree
     verdict: str = ""
 
     @property
@@ -501,9 +574,18 @@ class Reading:
         return table.get(self.header)
 
 
-def _finish(r: Reading) -> Reading:
+def _finish(r: Reading, ranked_anchor: Optional[int] = None) -> Reading:
     """Set r.total from a successful read. World Tour shows fans in the current
-    badge, so convert "X / Y" to the season total; without a valid Y, reject."""
+    badge, so convert "X / Y" to the season total; without a valid Y, reject.
+    Ranked shows RS in the current tier: placed with ranked_total."""
+    if r.mode == "ranked":
+        total, why = ranked_total(r.value, r.max_value, r.tier, ranked_anchor)
+        if total is None:
+            r.verdict = f"{r.verdict} — {why}, not saving"
+            return r
+        r.total = total
+        r.verdict = f"{r.verdict} = {why}"
+        return r
     if r.mode != "world-tour":
         r.total = r.value
         return r
@@ -516,6 +598,50 @@ def _finish(r: Reading) -> Reading:
     r.total = total
     r.verdict = f"{r.verdict} = {total} fans this season"
     return r
+
+
+def read_badge_tier(region: np.ndarray, cx: float, cy: float, s: float,
+                    tiers: dict[str, np.ndarray]) -> tuple[Optional[int], float, float]:
+    """The tier number (1-4) on the badge whose tier circle is centred near
+    (cx, cy) in region, or None. Returns (tier, best score, runner-up)."""
+    zr = int(TIER_ZONE * s)
+    x0, y0 = max(0, int(cx) - zr), max(0, int(cy) - zr)
+    x1, y1 = min(region.shape[1], int(cx) + zr), min(region.shape[0], int(cy) + zr)
+    if x1 - x0 < 4 or y1 - y0 < 4:
+        return None, 0.0, 0.0
+    lum = luma(region[y0:y1, x0:x1])
+    zh, zw = lum.shape
+    # A glyph of tier-number size, clear of the zone's edge (the badge's rim
+    # and emblem are bigger and run off it).
+    comps = [
+        c for c in components((lum > TIER_LUMA_MIN).astype(np.uint8))
+        if 11 * s <= c.h <= 24 * s and c.w <= c.h
+        and c.x0 > 0 and c.y0 > 0 and c.x1 < zw and c.y1 < zh
+    ]
+    if not comps:
+        return None, 0.0, 0.0
+    lx, ly = cx - x0, cy - y0
+    c = min(comps, key=lambda c: abs((c.x0 + c.x1) / 2 - lx) + abs((c.y0 + c.y1) / 2 - ly))
+    ink = np.clip((lum - TIER_INK_LO) / TIER_INK_SPAN, 0, 1)
+    d, best, second = classify_digit(glyph_image(ink, c), tiers, TIER_MIN, TIER_MARGIN)
+    return (int(d) if d is not None else None), best, second
+
+
+def badge_tier(region: np.ndarray, hx: int, hy: int, tw: int, s: float,
+               tiers: dict[str, np.ndarray]) -> tuple[Optional[int], str]:
+    """Current tier from the badges either side of the ranked header (found at
+    hx, hy with width tw in region). Both must be read and agree: the next
+    badge is one tier up (Tier 1 is followed by the next league's Tier 4).
+    Returns (tier or None, description)."""
+    if len(tiers) < 2:
+        return None, "tier templates not installed"
+    cx, cy = hx + tw / 2, hy + TIER_DY * s
+    a, _, _ = read_badge_tier(region, cx - TIER_DX * s, cy, s, tiers)
+    b, _, _ = read_badge_tier(region, cx + TIER_DX * s, cy, s, tiers)
+    shown = f"badges {a if a is not None else '?'} → {b if b is not None else '?'}"
+    if a is None or b is None or not (b == a - 1 or (a == 1 and b == 4)):
+        return None, f"tier unknown ({shown})"
+    return a, f"tier {a} ({shown})"
 
 
 def gate_zone(screen_w: int, screen_h: int) -> tuple[int, int]:
@@ -541,9 +667,10 @@ def check_gate(frame: np.ndarray, t: Templates, screen_h: Optional[int] = None) 
     return score >= GATE_MIN, score
 
 
-def read_frame(frame: np.ndarray, t: Templates) -> Reading:
+def read_frame(frame: np.ndarray, t: Templates, ranked_anchor: Optional[int] = None) -> Reading:
     """Run the full gate -> header -> value pipeline on one full-monitor
-    RGB frame."""
+    RGB frame. ranked_anchor is the last saved ranked score (see
+    ranked_total); without it a ranked read isn't saved."""
     r = Reading()
     H, W = frame.shape[:2]
     s = H / REF_H
@@ -553,7 +680,7 @@ def read_frame(frame: np.ndarray, t: Templates) -> Reading:
     if not r.on_modes:
         # Not the lobby — maybe the post-match score panel.
         x0, y0, zw, zh = post_zone(W, H)
-        p = read_post(frame[y0:y0 + zh, x0:x0 + zw], t, H)
+        p = read_post(frame[y0:y0 + zh, x0:x0 + zw], t, H, ranked_anchor)
         if p.screen == "post":
             p.gate_score = r.gate_score
             return p
@@ -631,7 +758,10 @@ def read_frame(frame: np.ndarray, t: Templates) -> Reading:
 
     r.value, r.max_value = value, max_value
     r.verdict = f"{name}: {value}" + (f" / {max_value}" if max_value is not None else "")
-    return _finish(r)
+    if r.mode == "ranked":
+        r.tier, tier_info = badge_tier(region, hx, hy, tw, s, t.tiers)
+        r.verdict = f"{r.verdict}, {tier_info}"
+    return _finish(r, ranked_anchor)
 
 
 # ── Post-match panel ─────────────────────────────────────────────────────────
@@ -656,7 +786,8 @@ def post_zone(screen_w: int, screen_h: int) -> tuple[int, int, int, int]:
     return x0, y0, x1 - x0, y1 - y0
 
 
-def read_post(zone: np.ndarray, t: Templates, screen_h: int) -> Reading:
+def read_post(zone: np.ndarray, t: Templates, screen_h: int,
+              ranked_anchor: Optional[int] = None) -> Reading:
     """Read the post-match panel from its post_zone() crop. screen.post is
     set as soon as the header is found, even if the value can't be read yet
     (it's still counting up or fading in) — the tracker uses that to poll
@@ -724,4 +855,4 @@ def read_post(zone: np.ndarray, t: Templates, screen_h: int) -> Reading:
         return r
     r.value, r.max_value = value, max_value
     r.verdict = f"post-match {name}: {value} / {max_value}"
-    return _finish(r)
+    return _finish(r, ranked_anchor)
