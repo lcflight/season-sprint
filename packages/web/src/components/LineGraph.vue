@@ -486,6 +486,7 @@ import StatsPanel from "@/components/StatsPanel.vue";
 import SeasonControls from "@/components/SeasonControls.vue";
 import ImportModal from "@/components/modals/ImportModal.vue";
 import PointsModal from "@/components/modals/PointsModal.vue";
+import { legacyFansToEnter } from "@/utils/fans";
 
 // eslint-disable-next-line no-undef
 const emit = defineEmits(["win-points", "read-only", "season-goals"]);
@@ -895,15 +896,23 @@ defineExpose({
 watch(
   [activeGoalOptions, goalWinPoints],
   () => {
-    // First time on a fans season (Season 12+): a goal saved on the old
-    // win-points scale (e.g. "Emerald 1" = 2,400 WP) moves to the same badge.
-    // Done once, keyed on the saved scale, since a number alone is ambiguous
-    // (2,000 is Emerald 3 in points but Bronze 3 in fans).
-    if (seasonGoals.value.fans && !isViewingPastSeason.value && goalScale.value !== "fans") {
-      goalScale.value = "fans";
-      const old = props.goalOptions.find(
-        (o) => Number(o.points) === Number(goalWinPoints.value)
-      );
+    // First time on a fans season (Season 12+): a goal saved on an older
+    // scale moves to the same badge. "" = World Tour win points (e.g.
+    // "Emerald 1" = 2,400 WP); "fans" = the first fans table, which had every
+    // badge one requirement too low. Done once, keyed on the saved scale,
+    // since a number alone is ambiguous (2,000 is Emerald 3 in points but
+    // Bronze 3 on the first fans table).
+    if (seasonGoals.value.fans && !isViewingPastSeason.value && goalScale.value !== "fans2") {
+      const from = goalScale.value;
+      goalScale.value = "fans2";
+      const goal = Number(goalWinPoints.value);
+      let old = null;
+      if (from === "fans") {
+        const n = activeGoalOptions.value.findIndex((_, i) => legacyFansToEnter(i + 1) === goal);
+        old = n >= 0 ? activeGoalOptions.value[n] : null;
+      } else {
+        old = props.goalOptions.find((o) => Number(o.points) === goal);
+      }
       const same = old ? activeGoalOptions.value.find((o) => o.badge === old.badge) : null;
       if (same && Number(same.points) !== Number(goalWinPoints.value)) {
         goalWinPoints.value = Number(same.points);

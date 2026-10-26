@@ -26,7 +26,7 @@
             <input
               v-model="worldTourRequired"
               type="number"
-              min="2000"
+              min="4000"
               step="2000"
               inputmode="numeric"
               placeholder="e.g. 6000"
@@ -34,7 +34,7 @@
             />
           </span>
           <span v-if="worldTourInvalid" class="ob-error">
-            Enter both numbers. The second must be 2,000, 4,000 … 48,000, and the first can't be bigger.
+            Enter both numbers. The second must be 4,000, 6,000 … 50,000, and the first can't be bigger.
           </span>
         </label>
 

@@ -21,10 +21,10 @@ describe('resolveSeasonGoals', () => {
     const byBadge = Object.fromEntries(r.thresholds.map((t) => [t.badge, t.points]))
     expect(r.thresholds).toHaveLength(24)
     expect(byBadge['Bronze 4']).toBe(0)
-    expect(byBadge['Bronze 3']).toBe(2000)
-    expect(byBadge['Silver 4']).toBe(20000)
-    expect(byBadge['Platinum 4']).toBe(156000)
-    expect(byBadge['Emerald 1']).toBe(552000)
+    expect(byBadge['Bronze 3']).toBe(4000)
+    expect(byBadge['Silver 4']).toBe(28000)
+    expect(byBadge['Platinum 4']).toBe(180000)
+    expect(byBadge['Emerald 1']).toBe(598000)
     expect(r.fans).toBe(true)
     expect(r.unit).toBe('fans')
     expect(r.yAxisLabel).toBe('Total Fans')
@@ -78,15 +78,15 @@ describe('worldTourRanksBySeason.json', () => {
     })
   }
 
-  it('the Season 12 table is the fans formula (badge n needs 2,000·n)', () => {
+  it('the Season 12 table is the fans formula (badge n needs 2,000·(n+1))', () => {
     const t = WT_BY_SEASON['Season 12'].thresholds
     expect(t).toHaveLength(FANS_BADGES)
     t.forEach((row, i) => {
       expect(row.points).toBe(fansToEnter(i + 1))
       if (i + 1 < t.length) expect(t[i + 1].points - row.points).toBe(fansRequired(i + 1))
     })
-    // Completing Emerald 1 is 600,000 fans in total.
-    expect(t[t.length - 1].points + fansRequired(FANS_BADGES)).toBe(600000)
+    // Completing Emerald 1 is 648,000 fans in total.
+    expect(t[t.length - 1].points + fansRequired(FANS_BADGES)).toBe(648000)
   })
 
   it('keeps the same badges, in order, as the original table', () => {

@@ -82,7 +82,7 @@ struct OnboardingView: View {
                                     }
                                 }
                                 if mode == .worldTour && worldTourInvalid {
-                                    Text("Enter both numbers. The second must be 2,000, 4,000 … 48,000, and the first can't be bigger.")
+                                    Text("Enter both numbers. The second must be 4,000, 6,000 … 50,000, and the first can't be bigger.")
                                         .font(.caption)
                                         .foregroundStyle(.red)
                                 }

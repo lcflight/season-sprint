@@ -32,7 +32,8 @@ final class DashboardStore {
 
     private let defaults = UserDefaults.standard
     private var goalKey: String { "goal.\(mode.prefsSuffix)" }
-    /// "fans" once the saved World Tour goal is on the fans scale (Season 12+).
+    /// Scale of the saved World Tour goal: unset = old win points, "fans" = the first fans
+    /// table, "fans2" = the corrected fans table (Season 12+).
     private var goalScaleKey: String { "\(goalKey).scale" }
 
     private let sse = SSEClient()
@@ -42,13 +43,15 @@ final class DashboardStore {
         if defaults.object(forKey: goalKey) != nil {
             goalOverride = defaults.integer(forKey: goalKey)
         }
-        // A goal saved on the old win-points scale moves to the same badge in fans, once.
-        if mode == .worldTour, defaults.string(forKey: goalScaleKey) != "fans" {
-            if let old = goalOverride, let moved = fansGoal(fromLegacy: old) {
+        // A goal saved on an older scale moves to the same badge on the fans table, once.
+        let scale = defaults.string(forKey: goalScaleKey)
+        if mode == .worldTour, scale != "fans2" {
+            if let old = goalOverride,
+               let moved = scale == "fans" ? fansGoal(fromFirstFansTable: old) : fansGoal(fromLegacy: old) {
                 goalOverride = moved
                 defaults.set(moved, forKey: goalKey)
             }
-            defaults.set("fans", forKey: goalScaleKey)
+            defaults.set("fans2", forKey: goalScaleKey)
         }
 
         sse.onEvent = { [weak self] event in

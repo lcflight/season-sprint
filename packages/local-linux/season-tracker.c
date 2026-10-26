@@ -976,15 +976,16 @@ static void reading_init(Reading *r) {
 
 /* World Tour fans (Season 12+), mirrors fans_total in screen_reader.py: the
  * game shows "X / Y" = fans in the current badge / fans it needs. Badge n
- * (Bronze 4 = 1 … Emerald 1 = 24) needs 2,000·n, so Y identifies the badge
- * and the season total is 1,000·n·(n-1) + X. -1 if Y isn't a badge's need. */
+ * (Bronze 4 = 1 … Emerald 1 = 24) needs 2,000·(n+1), so Y identifies the
+ * badge and the season total is 1,000·(n-1)·(n+2) + X. -1 if Y isn't a
+ * badge's need. */
 #define FANS_STEP   2000
 #define FANS_BADGES 24
 static long fans_total(long in_rank, long required) {
     if (in_rank < 0 || required <= 0 || required % FANS_STEP) return -1;
-    long n = required / FANS_STEP;
-    if (n > FANS_BADGES || in_rank > required) return -1;
-    return FANS_STEP / 2 * n * (n - 1) + in_rank;
+    long n = required / FANS_STEP - 1;
+    if (n < 1 || n > FANS_BADGES || in_rank > required) return -1;
+    return FANS_STEP / 2 * (n - 1) * (n + 2) + in_rank;
 }
 
 /* Read the post-match panel from its post_zone() crop (mirrors read_post).
