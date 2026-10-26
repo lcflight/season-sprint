@@ -9,9 +9,11 @@
 // Module-level state, so tracking keeps running when the user switches pages.
 
 import { reactive, readonly } from 'vue'
-import { getAuthorizationHeader, upsertRecord } from '@/services/api'
+import { getAuthorizationHeader, getRecords, upsertRecord } from '@/services/api'
 import { formatDate } from '@/utils/date'
 import { loadTemplateFiles } from '@/tracker/templateFiles'
+import { loadSeasonJson } from '@/utils/season'
+import { currentSeasonStart, rankedAnchorFrom } from '@/tracker/rankedAnchor'
 
 // Confirm rules, as in packages/local-win/season_tracker.py.
 const CONFIRM_READS = 2 // MODES: identical reads in a row
@@ -23,6 +25,10 @@ const LOG_MAX = 40
 // running but not recognising anything doesn't look frozen.
 const HEARTBEAT_MS = 60 * 1000
 const FALLBACK_FRAME_MS = 200
+// Ranked reads are placed next to the last saved ranked score (the "anchor").
+// When a ranked read can't be placed, re-fetch it at most this often, so an
+// entry made in the app while tracking is picked up.
+const ANCHOR_REFRESH_MS = 60 * 1000
 
 const MODE_LABELS = { 'world-tour': 'World Tour', ranked: 'Ranked' }
 const lastKey = (mode) => `season-sprint:screen-tracker:last:${mode}`
@@ -46,6 +52,8 @@ const state = reactive({
   maxHiddenGapMs: 0,
   // The display reports HDR. Windows HDR can wash out shared-screen colours.
   hdr: false,
+  // Last saved ranked score, used to place ranked reads (null = none saved).
+  rankedAnchor: null,
 })
 
 let worker = null
@@ -59,6 +67,7 @@ let heartbeatReads = 0
 let sizeLogged = false
 const previewListeners = new Set()
 let snapshotWaiter = null
+let anchorFetchedAt = 0
 const tracks = new Map() // "screen|mode" -> { reads, lastVal, restUntil }
 
 function log(text) {
@@ -83,12 +92,41 @@ function writeLast(mode, value) {
   }
 }
 
+function setRankedAnchor(value) {
+  state.rankedAnchor = value
+  worker?.postMessage({ type: 'anchor', ranked: value })
+}
+
+/** Fetch the latest saved ranked score from this season. */
+async function refreshRankedAnchor() {
+  const first = !anchorFetchedAt
+  anchorFetchedAt = performance.now()
+  try {
+    const auth = await getAuthorizationHeader()
+    if (!auth) return
+    const [records, seasonJson] = await Promise.all([
+      getRecords(auth, 'ranked'),
+      loadSeasonJson().catch(() => null),
+    ])
+    const latest = rankedAnchorFrom(records, currentSeasonStart(seasonJson?.seasons, Date.now()))
+    if (first || latest !== state.rankedAnchor) {
+      setRankedAnchor(latest)
+      log(latest === null
+        ? 'No ranked score saved this season: enter your current one in the app so ranked reads can be placed'
+        : `Ranked reads placed from your saved ${latest.toLocaleString()} RS`)
+    }
+  } catch (e) {
+    log(`Couldn't fetch your saved ranked score: ${e?.message || e}`)
+  }
+}
+
 async function save(mode, value, label) {
   try {
     const auth = await getAuthorizationHeader()
     if (!auth) throw new Error('signed out')
     await upsertRecord(formatDate(new Date()), value, auth, mode)
     writeLast(mode, value)
+    if (mode === 'ranked') setRankedAnchor(value)
     state.lastSaved = { mode, value, at: Date.now() }
     log(`Saved ${label}: ${value.toLocaleString()}`)
   } catch (e) {
@@ -116,6 +154,12 @@ function onReading({ reading: r, ms, width, height, at }) {
   state.width = width
   state.height = height
   state.verdict = r.verdict
+
+  // A ranked read that couldn't be placed: maybe the saved score changed.
+  if (r.mode === 'ranked' && r.total === null && r.value !== null &&
+      performance.now() - anchorFetchedAt > ANCHOR_REFRESH_MS) {
+    refreshRankedAnchor()
+  }
 
   const key = r.mode && r.total !== null ? `${r.screen}|${r.mode}` : null
   for (const [k, tr] of tracks) {
@@ -172,6 +216,7 @@ function cleanup() {
   sizeLogged = false
   snapshotWaiter?.reject(new Error('stopped'))
   snapshotWaiter = null
+  anchorFetchedAt = 0
 }
 
 export function stop() {
@@ -285,6 +330,8 @@ export async function start(options = {}) {
     state.path = 'fallback'
   }
   state.status = 'running'
+  state.rankedAnchor = null
+  refreshRankedAnchor()
   try {
     state.hdr = window.matchMedia('(dynamic-range: high)').matches
   } catch {

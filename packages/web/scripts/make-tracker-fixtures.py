@@ -10,6 +10,8 @@ same thing.
     python3 -I make-tracker-fixtures.py OUT_DIR name=shot.png [name=shot.png@1080 ...]
 
 "@1080" downsizes the shot to 1920x1080 first, to test the template scaling.
+"+N" (after the path, e.g. shot.png+25000) reads it with N as the last saved
+ranked score, which ranked reads need (stored as rankedAnchor).
 """
 
 from __future__ import annotations
@@ -49,6 +51,12 @@ def keep_regions(img: np.ndarray, r: sr.Reading, t: sr.Templates) -> np.ndarray:
         pad = int(PAD * s)
         x0, y0 = max(0, rx0 + hx - pad), max(0, ry0 + hy - pad)
         x1, y1 = min(W, rx0 + hx + tm.shape[1] + pad), min(H, ry0 + hy + tm.shape[0] + pad)
+        if r.header == "ranked":
+            # Also keep the tier badges either side.
+            cx = rx0 + hx + tm.shape[1] / 2
+            reach = (sr.TIER_DX + sr.TIER_ZONE + 20) * s
+            x0, x1 = max(0, int(cx - reach)), min(W, int(cx + reach))
+            y1 = min(H, int(ry0 + hy + (sr.TIER_DY + sr.TIER_ZONE + 20) * s))
         out[y0:y1, x0:x1] = img[y0:y1, x0:x1]
     return out
 
@@ -64,6 +72,7 @@ def describe(r: sr.Reading) -> dict:
         "value": r.value,
         "maxValue": r.max_value,
         "total": r.total,
+        "tier": r.tier,
         "verdict": r.verdict,
     }
 
@@ -73,8 +82,13 @@ def main() -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
     t = sr.Templates.load(ROOT / "tracker-templates")
     expected = {}
+    saved: dict[str, np.ndarray] = {}
     for arg in sys.argv[2:]:
         name, src = arg.split("=", 1)
+        anchor = None
+        if "+" in src:
+            src, a = src.rsplit("+", 1)
+            anchor = int(a)
         size = None
         if src.endswith("@1080"):
             src, size = src[:-5], (1920, 1080)
@@ -82,11 +96,19 @@ def main() -> int:
         if size:
             im = im.resize(size, Image.LANCZOS)
         img = np.array(im)
-        kept = keep_regions(img, sr.read_frame(img, t), t)
+        kept = keep_regions(img, sr.read_frame(img, t, anchor), t)
         # Expected result comes from the saved fixture, exactly as the test sees it.
-        r = sr.read_frame(kept, t)
-        Image.fromarray(kept).save(out_dir / f"{name}.png", optimize=True)
+        r = sr.read_frame(kept, t, anchor)
         expected[name] = describe(r)
+        # The same frame read with another anchor reuses the saved image.
+        same = next((n for n, k in saved.items() if np.array_equal(k, kept)), None)
+        if same:
+            expected[name]["image"] = same
+        else:
+            Image.fromarray(kept).save(out_dir / f"{name}.png", optimize=True)
+            saved[name] = kept
+        if anchor is not None:
+            expected[name]["rankedAnchor"] = anchor
         print(f"{name}: {r.verdict}")
     (out_dir / "expected.json").write_text(json.dumps(expected, indent=2) + "\n")
     return 0

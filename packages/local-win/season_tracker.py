@@ -78,6 +78,10 @@ CONFIRM_READS = 2    # MODES: identical reads in a row that count as "confirmed"
 POST_CONFIRM_READS = 3  # post-match: more, so a count-up value never confirms
 POST_REST_SECS = 10     # post-match: ignore the panel after confirming (it lasts ~2s)
 HTTP_TIMEOUT = 10
+# Ranked reads are placed next to the last saved ranked score (the "anchor",
+# see screen_reader.ranked_total). When one can't be placed, re-fetch it at
+# most this often so an entry made in the app is picked up.
+ANCHOR_REFRESH_SECS = 60
 
 
 # ── Tee stdout/stderr to a log file ───────────────────────────────────────────
@@ -338,6 +342,8 @@ def reading_details(r) -> list[str]:
         lines.append(f"{where} '{name}' match: {score:.2f}")
     if r.value is not None:
         lines.append(f"value: {r.value}" + (f" / {r.max_value}" if r.max_value is not None else ""))
+    if r.tier is not None:
+        lines.append(f"ranked tier: {r.tier}")
     if r.total is not None and r.total != r.value:
         lines.append(f"season total: {r.total}")
     return lines
@@ -552,6 +558,42 @@ def push_record(cfg: Config, mode: str, win_points: int) -> bool:
     return ok
 
 
+def current_season_start() -> Optional[str]:
+    """Start date (YYYY-MM-DD) of the season running today: the latest start
+    not after today, from the server's public season list. None if unknown."""
+    try:
+        r = requests.get(f"{SERVER_URL}/seasons", timeout=HTTP_TIMEOUT)
+        r.raise_for_status()
+        today = dt.date.today().isoformat()
+        starts = [s["start"][:10] for s in r.json().get("seasons", []) if s.get("start")]
+        return max((d for d in starts if d <= today), default=None)
+    except (requests.RequestException, ValueError, KeyError, TypeError, AttributeError) as e:
+        print(f"[anchor] fetching season dates failed: {e}")
+        return None
+
+
+def fetch_ranked_anchor(cfg: Config) -> Optional[int]:
+    """Latest saved ranked score from this season (records come newest first;
+    last season's score is no guide after a reset). Falls back to the last
+    value this tracker pushed if the server can't be reached."""
+    try:
+        r = requests.get(f"{SERVER_URL}/me/records", params={"mode": "ranked"},
+                         headers={"Authorization": cfg.auth_token}, timeout=HTTP_TIMEOUT)
+        if r.status_code == 200:
+            records = r.json()
+            if not records:
+                return None
+            start = current_season_start()
+            if start and records[0]["date"][:10] < start:
+                return None
+            return int(records[0]["winPoints"])
+        print(f"[anchor] fetching saved ranked score: HTTP {r.status_code}")
+    except (requests.RequestException, ValueError, KeyError, TypeError) as e:
+        print(f"[anchor] fetching saved ranked score failed: {e}")
+    last = read_state("ranked")
+    return last if last >= 0 else None
+
+
 # ── Main loop ─────────────────────────────────────────────────────────────────
 
 
@@ -575,7 +617,7 @@ class _Track:
     rest_until: float = 0.0  # time.monotonic() deadline; 0 = active
 
 
-def _read_screen(sct, cfg: Config, sr, templates):
+def _read_screen(sct, cfg: Config, sr, templates, ranked_anchor: Optional[int] = None):
     """One poll: cheap zone grabs first, the full monitor only when needed.
     Returns (reading, frame or None)."""
     mon = sct.monitors[cfg.monitor_index]
@@ -586,7 +628,7 @@ def _read_screen(sct, cfg: Config, sr, templates):
     on_modes, gate = sr.check_gate(frame, templates, H)
     if on_modes:
         frame = _grab(sct, cfg.monitor_index)
-        return sr.read_frame(frame, templates), frame
+        return sr.read_frame(frame, templates, ranked_anchor), frame
 
     # Post-match panel: small centre zone (~4%), which holds the value too.
     if templates.post_headers:
@@ -594,7 +636,7 @@ def _read_screen(sct, cfg: Config, sr, templates):
         mon_zone = {"left": mon["left"] + x0, "top": mon["top"] + y0, "width": zw, "height": zh}
         shot = sct.grab(mon_zone)
         frame = np.frombuffer(shot.rgb, dtype=np.uint8).reshape(shot.height, shot.width, 3)
-        r = sr.read_post(frame, templates, H)
+        r = sr.read_post(frame, templates, H, ranked_anchor)
         if r.screen == "post":
             r.gate_score = gate
             return r, frame
@@ -617,13 +659,17 @@ def main_loop(cfg: Config) -> None:
 
     tracks: dict[tuple[str, str], _Track] = {}
     last_status = None  # (screen, header) of the last idle line logged
+    ranked_anchor = fetch_ranked_anchor(cfg)
+    anchor_at = time.monotonic()
+    print(f"[anchor] ranked reads placed from {ranked_anchor} RS" if ranked_anchor is not None
+          else "[anchor] no ranked score saved this season — enter yours once in the app to track ranked")
 
     with mss.MSS() as sct:
         while not _stop:
             now = time.monotonic()
             t0 = now
             try:
-                r, frame = _read_screen(sct, cfg, sr, templates)
+                r, frame = _read_screen(sct, cfg, sr, templates, ranked_anchor)
                 # The season total (World Tour: converted from fans in the badge).
                 mode, value, verdict = r.mode, r.total, r.verdict
                 status = (r.screen, r.header)
@@ -635,6 +681,14 @@ def main_loop(cfg: Config) -> None:
                 status = ("error", str(e))
 
             dt_ms = (time.monotonic() - t0) * 1000
+            # A ranked read that couldn't be placed: maybe the saved score changed.
+            if (r is not None and r.mode == "ranked" and r.total is None and r.value is not None
+                    and time.monotonic() - anchor_at > ANCHOR_REFRESH_SECS):
+                anchor_at = time.monotonic()
+                fresh = fetch_ranked_anchor(cfg)
+                if fresh != ranked_anchor:
+                    print(f"[anchor] saved ranked score {ranked_anchor} → {fresh}")
+                    ranked_anchor = fresh
             on_post = r is not None and r.screen == "post"
             interval = FAST_POLL_SECS if on_post else POLL_INTERVAL_SECS
 
@@ -680,6 +734,8 @@ def main_loop(cfg: Config) -> None:
                     print(f"[change] {label} {prior} → {value}, pushing ...")
                     if push_record(cfg, mode, value):
                         write_state(mode, value)
+                        if mode == "ranked":
+                            ranked_anchor = value
                 else:
                     print(f"[steady] {label}={value} unchanged from last push")
                 rest = POST_REST_SECS if post else COOLDOWN_SECS

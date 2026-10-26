@@ -4,8 +4,11 @@
 // with the same masks, thresholds and geometry. The comments there explain the
 // why. tests/screenReader.spec.js checks this file against the Python reader.
 //
-// Two screens are read: the lobby MODES tab (World Tour panel at the bottom
-// centre) and the post-match "WORLD TOUR SCORE" panel. Templates are binary
+// Two screens are read: the lobby MODES tab (World Tour / Ranked panel at the
+// bottom centre) and the post-match "WORLD TOUR SCORE" panel. Ranked shows RS
+// within the current tier ("189 / 2,499"), so the reader also reads the tier
+// number on the badges and places the total next to the last saved ranked
+// score (opts.rankedAnchor; see rankedTotal). Templates are binary
 // masks cut from 2560x1440 screenshots (packages/tracker-templates), scaled
 // by screen height since the game UI scales with vertical resolution.
 //
@@ -50,6 +53,49 @@ const POST_MIN_WHITE = 0.5
 const POST_WHITE_MIN = 150
 const POST_INK_LO = 100
 const POST_INK_SPAN = 110
+
+// Ranked badge tier number (see TIER_* in screen_reader.py).
+const TIER_DX = 267
+const TIER_DY = 130
+const TIER_ZONE = 30
+const TIER_LUMA_MIN = 90
+const TIER_INK_LO = 50
+const TIER_INK_SPAN = 100
+const TIER_MIN = 0.75
+const TIER_MARGIN = 0.1
+
+// Ranked (Season 12+): leagues of 10,000 RS in four tiers of 2,500, Tier 4
+// lowest. See ranked_total in screen_reader.py for why the steps are capped.
+export const RANKED_TIER = 2500
+const RANKED_LEAGUE = 4 * RANKED_TIER
+const RANKED_LEAGUES = 5
+const RANKED_MAX_STEP = 2000
+const RANKED_MAX_STEP_NO_TIER = 1000
+
+/**
+ * Season rank score from the ranked "X / 2,499" readout. tier: the badge tier
+ * (1-4) or null; anchor: the last saved ranked score, needed to pick the
+ * league. Returns [total or null, reason].
+ */
+export function rankedTotal(value, maxValue, tier, anchor) {
+  if (maxValue !== RANKED_TIER - 1) {
+    const shown = maxValue !== null ? `${value} / ${maxValue}` : `${value} (no max)`
+    return [null, `${shown} isn't a ranked tier (expected / ${RANKED_TIER - 1})`]
+  }
+  if (anchor === null || anchor === undefined || anchor < 0) {
+    return [null, 'no saved ranked score to place it from (enter it once in the app)']
+  }
+  const [base, step, n, limit] = tier !== null
+    ? [(4 - tier) * RANKED_TIER + value, RANKED_LEAGUE, RANKED_LEAGUES, RANKED_MAX_STEP]
+    : [value, RANKED_TIER, 4 * RANKED_LEAGUES, RANKED_MAX_STEP_NO_TIER]
+  const k = Math.min(n - 1, Math.max(0, Math.floor((anchor - base + Math.floor(step / 2)) / step)))
+  const total = base + k * step
+  const off = Math.abs(total - anchor)
+  if (off > limit) {
+    return [null, `nearest fit ${total} is ${off} from the saved ${anchor} (limit ${limit}) — update it in the app`]
+  }
+  return [total, `${total} RS`]
+}
 
 const int = Math.trunc // Python int() on a float
 
@@ -119,9 +165,15 @@ export function buildTemplates(files) {
   } else {
     postHeaders = {}
   }
+  // Ranked badge tier numbers; fewer than two switch tier reading off.
+  const tiers = {}
+  for (const n of ['1', '2', '3', '4']) {
+    const p = get(`badge_tier_${n}.pgm`)
+    if (p) tiers[n] = toFloat(p)
+  }
   const modes = toMask(modesPgm)
   for (const m of [modes, ...Object.values(headers), ...Object.values(postHeaders)]) m.sum = maskSum(m)
-  return { modes, headers, digits, postHeaders, postGlyphs }
+  return { modes, headers, digits, postHeaders, postGlyphs, tiers }
 }
 
 // ── Images ───────────────────────────────────────────────────────────────────
@@ -506,7 +558,7 @@ function ncc(a, b) {
   return den > 1e-9 ? ab / den : 0
 }
 
-function classifyDigit(gImg, glyphs) {
+function classifyDigit(gImg, glyphs, minScore = DIGIT_MIN, margin = DIGIT_MARGIN) {
   const g = normalizeGlyph(gImg)
   const perChar = {}
   for (const [key, t] of Object.entries(glyphs)) {
@@ -516,7 +568,7 @@ function classifyDigit(gImg, glyphs) {
   const scores = Object.entries(perChar).sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? 1 : -1))
   const [d, best] = scores[0]
   const second = scores[1][1]
-  if (best < DIGIT_MIN || best - second < DIGIT_MARGIN) return [null, best, second]
+  if (best < minScore || best - second < margin) return [null, best, second]
   return [d, best, second]
 }
 
@@ -581,6 +633,7 @@ function newReading() {
     value: null, // as shown: World Tour = fans in this badge
     maxValue: null,
     total: null, // what to record: the season total
+    tier: null, // ranked: badge tier (1-4) if both badges agree
     mode: null,
     verdict: '',
   }
@@ -588,7 +641,17 @@ function newReading() {
 
 const round3 = (v) => Math.round(v * 1000) / 1000
 
-function finish(r) {
+function finish(r, rankedAnchor) {
+  if (r.mode === 'ranked') {
+    const [total, why] = rankedTotal(r.value, r.maxValue, r.tier, rankedAnchor)
+    if (total === null) {
+      r.verdict = `${r.verdict} — ${why}, not saving`
+      return r
+    }
+    r.total = total
+    r.verdict = `${r.verdict} = ${why}`
+    return r
+  }
   if (r.mode !== 'world-tour') {
     r.total = r.value
     return r
@@ -603,6 +666,58 @@ function finish(r) {
   r.total = total
   r.verdict = `${r.verdict} = ${total} fans this season`
   return r
+}
+
+/** Tier number (1-4) on the badge whose tier circle is near (cx, cy) in img. */
+function readBadgeTier(img, cx, cy, s, tiers) {
+  const zr = int(TIER_ZONE * s)
+  const x0 = Math.max(0, int(cx) - zr)
+  const y0 = Math.max(0, int(cy) - zr)
+  const x1 = Math.min(img.w, int(cx) + zr)
+  const y1 = Math.min(img.h, int(cy) + zr)
+  if (x1 - x0 < 4 || y1 - y0 < 4) return [null, 0, 0]
+  const zone = crop(img, x0, y0, x1, y1)
+  const n = zone.w * zone.h
+  const lum = new Float64Array(n)
+  const bright = new Uint8Array(n)
+  for (let i = 0; i < n; i++) {
+    lum[i] = luma(zone.data, i * 4)
+    bright[i] = lum[i] > TIER_LUMA_MIN ? 1 : 0
+  }
+  const comps = components({ w: zone.w, h: zone.h, data: bright }).filter(
+    (c) => 11 * s <= c.h && c.h <= 24 * s && c.w <= c.h &&
+      c.x0 > 0 && c.y0 > 0 && c.x1 < zone.w && c.y1 < zone.h
+  )
+  if (!comps.length) return [null, 0, 0]
+  const lx = cx - x0
+  const ly = cy - y0
+  let c = null
+  let bestD = Infinity
+  for (const k of comps) {
+    const dist = Math.abs((k.x0 + k.x1) / 2 - lx) + Math.abs((k.y0 + k.y1) / 2 - ly)
+    if (dist < bestD) {
+      bestD = dist
+      c = k
+    }
+  }
+  const ink = { w: zone.w, h: zone.h, data: Float32Array.from(lum, (v) => clip01((v - TIER_INK_LO) / TIER_INK_SPAN)) }
+  const [d, best, second] = classifyDigit(glyphImage(ink, c), tiers, TIER_MIN, TIER_MARGIN)
+  return [d !== null ? Number(d) : null, best, second]
+}
+
+/**
+ * Current tier from the badges either side of the ranked header (at hx, hy,
+ * width tw, in img). Both must be read and agree. Returns [tier|null, text].
+ */
+function badgeTier(img, hx, hy, tw, s, tiers) {
+  if (Object.keys(tiers).length < 2) return [null, 'tier templates not installed']
+  const cx = hx + tw / 2
+  const cy = hy + TIER_DY * s
+  const [a] = readBadgeTier(img, cx - TIER_DX * s, cy, s, tiers)
+  const [b] = readBadgeTier(img, cx + TIER_DX * s, cy, s, tiers)
+  const shown = `badges ${a ?? '?'} → ${b ?? '?'}`
+  if (a === null || b === null || !(b === a - 1 || (a === 1 && b === 4))) return [null, `tier unknown (${shown})`]
+  return [a, `tier ${a} (${shown})`]
 }
 
 export function gateZone(screenW, screenH) {
@@ -645,7 +760,8 @@ function bestHeader(wmask, headers, s, d, scores) {
 /**
  * Gate -> header -> value on one frame. `opts.chromaSafe` reads the yellow
  * value by brightness (for video frames with half-resolution colour); without
- * it the reader matches the desktop trackers exactly.
+ * it the reader matches the desktop trackers exactly. `opts.rankedAnchor` is
+ * the last saved ranked score; without it a ranked read isn't saved.
  */
 export function readFrame(source, t, opts = {}) {
   const r = newReading()
@@ -657,7 +773,7 @@ export function readFrame(source, t, opts = {}) {
   ;[r.onModes, r.gateScore] = checkGate(source, t)
   if (!r.onModes) {
     const [x0, y0, zw, zh] = postZone(W, H)
-    const p = readPost(source.region(x0, y0, zw, zh), t, s)
+    const p = readPost(source.region(x0, y0, zw, zh), t, s, opts.rankedAnchor)
     if (p.screen === 'post') {
       p.gateScore = r.gateScore
       return p
@@ -735,11 +851,16 @@ export function readFrame(source, t, opts = {}) {
   r.value = value
   r.maxValue = maxValue
   r.verdict = `${name}: ${value}` + (maxValue !== null ? ` / ${maxValue}` : '')
-  return finish(r)
+  if (r.mode === 'ranked') {
+    const [tier, tierInfo] = badgeTier(region, hx, hy, tw, s, t.tiers)
+    r.tier = tier
+    r.verdict = `${r.verdict}, ${tierInfo}`
+  }
+  return finish(r, opts.rankedAnchor)
 }
 
 /** Read the post-match panel from its postZone() crop. */
-export function readPost(zone, t, s) {
+export function readPost(zone, t, s, rankedAnchor = null) {
   const r = newReading()
   if (!Object.keys(t.postHeaders).length) {
     r.verdict = 'post-match templates not installed'
@@ -805,5 +926,5 @@ export function readPost(zone, t, s) {
   r.value = value
   r.maxValue = maxValue
   r.verdict = `post-match ${name}: ${value} / ${maxValue}`
-  return finish(r)
+  return finish(r, rankedAnchor)
 }

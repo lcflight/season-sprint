@@ -72,6 +72,29 @@
 #define MAX_DIGIT_TMPL   32   /* 0-9 plus variants (digit_<d>_<name>.pgm) */
 #define POST_MIN_WHITE   0.5  /* post-match pre-check: share of header white */
 
+/* Ranked badge tier number (mirrors TIER_* in screen_reader.py): a small
+ * badge-coloured digit at the bottom of the badges either side of the
+ * "RANK SCORE" header, TIER_DX left/right of its centre and TIER_DY below its
+ * top (1440p px), found by brightness within TIER_ZONE of that point. */
+#define TIER_DX          267
+#define TIER_DY          130
+#define TIER_ZONE        30
+#define TIER_LUMA_MIN    90
+#define TIER_INK_LO      50
+#define TIER_INK_SPAN    100
+#define TIER_MIN         0.75
+#define TIER_MARGIN      0.10
+
+/* Ranked (Season 12+): leagues of RANKED_LEAGUE RS in four tiers of
+ * RANKED_TIER, Tier 4 lowest; MODES shows RS within the tier ("X / 2,499").
+ * See ranked_total for the step limits. */
+#define RANKED_TIER      2500
+#define RANKED_LEAGUE    (4 * RANKED_TIER)
+#define RANKED_LEAGUES   5
+#define RANKED_MAX_STEP  2000
+#define RANKED_MAX_STEP_NO_TIER 1000
+#define ANCHOR_REFRESH_SECS 60  /* re-fetch the saved ranked score at most this often */
+
 /* ── Globals ───────────────────────────────────────────────────────────────── */
 
 static volatile sig_atomic_t g_exiting = 0;
@@ -314,7 +337,12 @@ static inline const unsigned char *frame_px(const Frame *f, int x, int y) {
 /* INK_WHITE_POST: the post-match value is small, thin upright text on a
  * saturated background, so it's masked at a lower brightness (150 vs 200) —
  * at 200 its strokes break apart at 1080p. Mirrors POST_WHITE_MIN etc. */
-enum { INK_YELLOW, INK_WHITE, INK_WHITE_POST };
+enum { INK_YELLOW, INK_WHITE, INK_WHITE_POST, INK_LUMA };
+
+/* Rec. 601 brightness (mirrors luma in screen_reader.py). */
+static inline double px_luma(int r, int g, int b) {
+    return 0.299 * r + 0.587 * g + 0.114 * b;
+}
 
 /* Binary colour mask of a frame rect (mirrors yellow_mask / white_mask). */
 static void make_mask(const Frame *f, int x0, int y0, int w, int h,
@@ -328,6 +356,8 @@ static void make_mask(const Frame *f, int x0, int y0, int w, int h,
             int on;
             if (which == INK_YELLOW) {
                 on = r > 190 && g > 130 && b < 110 && r - b > 110;
+            } else if (which == INK_LUMA) {
+                on = px_luma(r, g, b) > TIER_LUMA_MIN;
             } else {
                 int mn = r < g ? r : g;
                 if (b < mn) mn = b;
@@ -352,6 +382,8 @@ static void make_ink(const Frame *f, int x0, int y0, int w, int h,
             float v;
             if (which == INK_YELLOW) {
                 v = (float)(r - b - 60) / 120.0f;
+            } else if (which == INK_LUMA) {
+                v = (float)((px_luma(r, g, b) - TIER_INK_LO) / TIER_INK_SPAN);
             } else {
                 int mn = r < g ? r : g;
                 if (b < mn) mn = b;
@@ -419,6 +451,11 @@ typedef struct {
     int        post_ok;
     HeaderTmpl post_headers[N_POST_HEADERS];
     float      post_glyphs[N_POST_GLYPHS][DIGIT_H * DIGIT_W];
+    /* Ranked badge tier numbers (badge_tier_<n>.pgm); fewer than two switch
+     * tier reading off. */
+    float tiers[4][DIGIT_H * DIGIT_W];
+    char  tier_chars[4];
+    int   n_tiers;
 } Templates;
 
 static const char POST_CHARS[N_POST_GLYPHS + 1] = "0123456789/";
@@ -531,6 +568,11 @@ static int templates_load(Templates *t, const char *dir) {
         closedir(dh);
     }
     load_post_templates(t, dir);
+    for (int n = 1; n <= 4; n++) {
+        snprintf(p, sizeof(p), "%s/badge_tier_%d.pgm", dir, n);
+        if (load_glyph(p, t->tiers[t->n_tiers]) == 0)
+            t->tier_chars[t->n_tiers++] = (char)('0' + n);
+    }
     return 0;
 }
 
@@ -762,7 +804,8 @@ static double ncc_f(const float *a, const float *b, int n) {
  * scores its best variant; the margin is against other characters. Returns
  * the character, or -1 if not confident (mirrors classify_digit). */
 static int classify_glyph(const float (*set)[DIGIT_H * DIGIT_W], const char *chars,
-                          int nset, const FImg *ink, const int *labels,
+                          int nset, double min_score, double margin,
+                          const FImg *ink, const int *labels,
                           const Comp *c, double *best_out, double *second_out) {
     int gw = c->x1 - c->x0, gh = c->y1 - c->y0;
     float *g = malloc(sizeof(float) * (size_t)gw * gh);
@@ -786,7 +829,7 @@ static int classify_glyph(const float (*set)[DIGIT_H * DIGIT_W], const char *cha
         else if (per[ch] > second) second = per[ch];
     }
     *best_out = best; *second_out = second;
-    if (best < DIGIT_MIN || best - second < DIGIT_MARGIN) return -1;
+    if (best < min_score || best - second < margin) return -1;
     return bc;
 }
 
@@ -813,7 +856,8 @@ static int read_glyphs(const float (*set)[DIGIT_H * DIGIT_W], const char *chars,
         if (prev_x1 >= 0 && c->x0 - prev_x1 > h * RUN_GAP) break;
         if (abs(h - first_h) > first_h * 0.15) break;  /* e.g. heart icon */
         double best, second;
-        int d = classify_glyph(set, chars, nset, ink, labels, c, &best, &second);
+        int d = classify_glyph(set, chars, nset, DIGIT_MIN, DIGIT_MARGIN,
+                               ink, labels, c, &best, &second);
         if (d < 0) {
             snprintf(info, info_sz, "unrecognised glyph #%d (best %.2f, next %.2f)",
                      len + 1, best, second);
@@ -901,7 +945,8 @@ typedef struct {
     double header_scores[N_HEADERS];    /* -2 = template not loaded */
     long   value, max_value;            /* -1 = none; World Tour = fans in this badge */
     long   total;                       /* what to push: the season total, -1 = none */
-    char   verdict[320];
+    int    tier;                        /* ranked: badge tier 1-4 if both badges agree, -1 */
+    char   verdict[400];
 } Reading;
 
 static int imin(int a, int b) { return a < b ? a : b; }
@@ -971,6 +1016,7 @@ static void reading_init(Reading *r) {
     memset(r, 0, sizeof(*r));
     r->header = -1;
     r->value = r->max_value = r->total = -1;
+    r->tier = -1;
     for (int i = 0; i < N_HEADERS; i++) r->header_scores[i] = -2;
 }
 
@@ -985,6 +1031,111 @@ static long fans_total(long in_rank, long required) {
     long n = required / FANS_STEP;
     if (n > FANS_BADGES || in_rank > required) return -1;
     return FANS_STEP / 2 * n * (n - 1) + in_rank;
+}
+
+/* Season rank score from the ranked "X / 2,499" readout (mirrors ranked_total
+ * in screen_reader.py). tier: badge tier 1-4 or -1; anchor: last saved ranked
+ * score or -1. Returns the total, or -1 with the reason in why. */
+static long ranked_total(long value, long max_value, int tier, long anchor,
+                         char *why, size_t why_sz) {
+    if (max_value != RANKED_TIER - 1) {
+        if (max_value >= 0)
+            snprintf(why, why_sz, "%ld / %ld isn't a ranked tier (expected / %d)",
+                     value, max_value, RANKED_TIER - 1);
+        else
+            snprintf(why, why_sz, "%ld (no max) isn't a ranked tier (expected / %d)",
+                     value, RANKED_TIER - 1);
+        return -1;
+    }
+    if (anchor < 0) {
+        snprintf(why, why_sz, "no saved ranked score to place it from (enter it once in the app)");
+        return -1;
+    }
+    long base, step, n, limit;
+    if (tier > 0) {
+        base = (4 - tier) * RANKED_TIER + value; step = RANKED_LEAGUE;
+        n = RANKED_LEAGUES; limit = RANKED_MAX_STEP;
+    } else {
+        base = value; step = RANKED_TIER; n = 4 * RANKED_LEAGUES;
+        limit = RANKED_MAX_STEP_NO_TIER;
+    }
+    long num = anchor - base + step / 2;
+    long k = num >= 0 ? num / step : -((-num + step - 1) / step);  /* floor */
+    if (k < 0) k = 0;
+    if (k > n - 1) k = n - 1;
+    long total = base + k * step, off = labs(total - anchor);
+    if (off > limit) {
+        snprintf(why, why_sz, "nearest fit %ld is %ld from the saved %ld (limit %ld) — update it in the app",
+                 total, off, anchor, limit);
+        return -1;
+    }
+    snprintf(why, why_sz, "%ld RS", total);
+    return total;
+}
+
+/* Tier number (1-4) on the badge whose tier circle is near (cx, cy), in a
+ * frame rect at (ox, oy) of size rw x rh. Returns the tier or -1 (mirrors
+ * read_badge_tier). */
+static int read_badge_tier(const Frame *f, int ox, int oy, int rw, int rh,
+                           double cx, double cy, double s, const Templates *t) {
+    int zr = (int)(TIER_ZONE * s);
+    int x0 = imax(0, (int)cx - zr), y0 = imax(0, (int)cy - zr);
+    int x1 = imin(rw, (int)cx + zr), y1 = imin(rh, (int)cy + zr);
+    int zw = x1 - x0, zh = y1 - y0;
+    if (zw < 4 || zh < 4) return -1;
+    BitMask m;
+    FImg ink;
+    make_mask(f, ox + x0, oy + y0, zw, zh, INK_LUMA, &m);
+    make_ink(f, ox + x0, oy + y0, zw, zh, INK_LUMA, &ink);
+    int *lab = malloc(sizeof(int) * (size_t)zw * zh);
+    Comp *all = malloc(sizeof(Comp) * MAX_COMPS);
+    int n = components(&m, lab, all, MAX_COMPS);
+    double lx = cx - x0, ly = cy - y0, best_d = 1e18;
+    int pick = -1;
+    for (int i = 0; i < n; i++) {
+        const Comp *c = &all[i];
+        int w = c->x1 - c->x0, h = c->y1 - c->y0;
+        /* Tier-number sized, clear of the zone's edge (the rim and emblem
+         * are bigger and run off it). */
+        if (h < 11 * s || h > 24 * s || w > h) continue;
+        if (c->x0 <= 0 || c->y0 <= 0 || c->x1 >= zw || c->y1 >= zh) continue;
+        double dist = fabs((c->x0 + c->x1) / 2.0 - lx) + fabs((c->y0 + c->y1) / 2.0 - ly);
+        if (dist < best_d) { best_d = dist; pick = i; }
+    }
+    int tier = -1;
+    if (pick >= 0) {
+        double best, second;
+        int ch = classify_glyph((const float (*)[DIGIT_H * DIGIT_W])t->tiers, t->tier_chars,
+                                t->n_tiers, TIER_MIN, TIER_MARGIN, &ink, lab, &all[pick],
+                                &best, &second);
+        if (ch >= '1' && ch <= '4') tier = ch - '0';
+    }
+    free(m.px); free(ink.px); free(lab); free(all);
+    return tier;
+}
+
+/* Current tier from the badges either side of the ranked header (found at
+ * hx, hy, width tw, in the frame rect at ox, oy). Both must be read and
+ * agree: the next badge is one tier up, Tier 1 is followed by Tier 4.
+ * Returns the tier or -1; desc describes it (mirrors badge_tier). */
+static int badge_tier(const Frame *f, int ox, int oy, int rw, int rh, int hx, int hy,
+                      int tw, double s, const Templates *t, char *desc, size_t desc_sz) {
+    if (t->n_tiers < 2) {
+        snprintf(desc, desc_sz, "tier templates not installed");
+        return -1;
+    }
+    double cx = hx + tw / 2.0, cy = hy + TIER_DY * s;
+    int a = read_badge_tier(f, ox, oy, rw, rh, cx - TIER_DX * s, cy, s, t);
+    int b = read_badge_tier(f, ox, oy, rw, rh, cx + TIER_DX * s, cy, s, t);
+    char as[4] = "?", bs[4] = "?";
+    if (a > 0) snprintf(as, sizeof(as), "%d", a);
+    if (b > 0) snprintf(bs, sizeof(bs), "%d", b);
+    if (a < 0 || b < 0 || !(b == a - 1 || (a == 1 && b == 4))) {
+        snprintf(desc, desc_sz, "tier unknown (badges %s → %s)", as, bs);
+        return -1;
+    }
+    snprintf(desc, desc_sz, "tier %d (badges %s → %s)", a, as, bs);
+    return a;
 }
 
 /* Read the post-match panel from its post_zone() crop (mirrors read_post).
@@ -1123,10 +1274,23 @@ static const char *reading_mode(const Templates *t, const Reading *r) {
 
 /* Set r->total from a successful read (mirrors _finish in screen_reader.py).
  * World Tour shows fans in the current badge, so convert "X / Y" to the
- * season total; without a valid Y, reject the read. */
-static void reading_finish(const Templates *t, Reading *r) {
+ * season total; without a valid Y, reject the read. Ranked shows RS in the
+ * current tier: placed with ranked_total near ranked_anchor (-1 = none). */
+static void reading_finish(const Templates *t, Reading *r, long ranked_anchor) {
     const char *mode = reading_mode(t, r);
     if (!mode || r->value < 0) return;
+    if (strcmp(mode, "ranked") == 0) {
+        char why[200];
+        long total = ranked_total(r->value, r->max_value, r->tier, ranked_anchor, why, sizeof(why));
+        size_t len = strlen(r->verdict);
+        if (total < 0) {
+            snprintf(r->verdict + len, sizeof(r->verdict) - len, " — %s, not saving", why);
+            return;
+        }
+        r->total = total;
+        snprintf(r->verdict + len, sizeof(r->verdict) - len, " = %s", why);
+        return;
+    }
     if (strcmp(mode, "world-tour") != 0) { r->total = r->value; return; }
     long total = r->max_value >= 0 ? fans_total(r->value, r->max_value) : -1;
     size_t len = strlen(r->verdict);
@@ -1298,6 +1462,12 @@ static void read_frame(const Frame *f, const Templates *t, Reading *r) {
         snprintf(r->verdict, sizeof(r->verdict), "%s: %ld / %ld", name, value, max_value);
     else
         snprintf(r->verdict, sizeof(r->verdict), "%s: %ld", name, value);
+    if (strcmp(t->headers[best].mode, "ranked") == 0) {
+        char desc[96];
+        r->tier = badge_tier(f, rx0, ry0, rw, rh, hx, hy, tw, s, t, desc, sizeof(desc));
+        size_t len = strlen(r->verdict);
+        snprintf(r->verdict + len, sizeof(r->verdict) - len, ", %s", desc);
+    }
 
 done:
     free(ym.px); free(wm.px); free(yink.px); free(wink.px);
@@ -1365,6 +1535,95 @@ static int push_record(const Config *cfg, const char *mode, long win_points) {
     return -1;
 }
 
+/* Response body collector for fetch_ranked_anchor (capped). */
+typedef struct { char buf[8192]; size_t len; } Body;
+
+static size_t curl_collect(void *ptr, size_t size, size_t nmemb, void *ud) {
+    Body *b = ud;
+    size_t n = size * nmemb, room = sizeof(b->buf) - 1 - b->len;
+    memcpy(b->buf + b->len, ptr, n < room ? n : room);
+    b->len += n < room ? n : room;
+    b->buf[b->len] = '\0';
+    return n;
+}
+
+static long read_state(const char *path);
+
+/* GET url into body (truncated to its buffer, which is plenty for what's
+ * read from it). auth may be NULL. Returns the HTTP status, or -1. */
+static long http_get(const char *url, const char *auth, Body *body) {
+    body->len = 0;
+    body->buf[0] = '\0';
+    CURL *curl = curl_easy_init();
+    if (!curl) return -1;
+    char auth_hdr[300];
+    struct curl_slist *headers = NULL;
+    if (auth) {
+        snprintf(auth_hdr, sizeof(auth_hdr), "Authorization: %s", auth);
+        headers = curl_slist_append(headers, auth_hdr);
+        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    }
+    curl_easy_setopt(curl, CURLOPT_URL, url);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_collect);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, body);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
+    CURLcode res = curl_easy_perform(curl);
+    long http_code = -1;
+    if (res == CURLE_OK) curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+    else logmsg("GET %s failed: %s", url, curl_easy_strerror(res));
+    curl_slist_free_all(headers);
+    curl_easy_cleanup(curl);
+    return http_code;
+}
+
+/* Start date (YYYY-MM-DD) of the season running today into out[11]: the
+ * latest "start" not after today in the server's public season list.
+ * Returns 0, or -1 if unknown. */
+static int current_season_start(const Config *cfg, char *out) {
+    static Body body;
+    char url[600], today[16];
+    snprintf(url, sizeof(url), "%s/seasons", cfg->server_url);
+    if (http_get(url, NULL, &body) != 200) return -1;
+    time_t now = time(NULL);
+    struct tm tm;
+    localtime_r(&now, &tm);
+    strftime(today, sizeof(today), "%Y-%m-%d", &tm);
+    out[0] = '\0';
+    const char *key = "\"start\":\"";
+    for (const char *k = strstr(body.buf, key); k; k = strstr(k + 1, key)) {
+        const char *d = k + strlen(key);
+        if (strlen(d) < 10) break;
+        char date[11];
+        memcpy(date, d, 10);
+        date[10] = '\0';
+        if (strcmp(date, today) <= 0 && strcmp(date, out) > 0) memcpy(out, date, 11);
+    }
+    return out[0] ? 0 : -1;
+}
+
+/* Latest saved ranked score from this season: records come newest first, so
+ * it's the first record, unless that's from before this season (last
+ * season's score is no guide after a reset). Falls back to the last value
+ * this tracker pushed if the server can't be reached; -1 if unknown. */
+static long fetch_ranked_anchor(const Config *cfg) {
+    static Body body;
+    char url[600];
+    snprintf(url, sizeof(url), "%s/me/records?mode=ranked", cfg->server_url);
+    long code = http_get(url, cfg->auth_token, &body);
+    if (code != 200) {
+        if (code > 0) logmsg("Fetching saved ranked score failed (HTTP %ld)", code);
+        return read_state(cfg->state_file_rank);
+    }
+    const char *pts = strstr(body.buf, "\"winPoints\":");
+    const char *date = strstr(body.buf, "\"date\":\"");
+    if (!pts) return -1;  /* no ranked records yet */
+    char start[11];
+    if (date && current_season_start(cfg, start) == 0 &&
+        strncmp(date + strlen("\"date\":\""), start, 10) < 0)
+        return -1;  /* newest record is from last season */
+    return strtol(pts + strlen("\"winPoints\":"), NULL, 10);
+}
+
 /* ── State file ────────────────────────────────────────────────────────────── */
 
 static long read_state(const char *path) {
@@ -1399,6 +1658,9 @@ typedef struct {
     int         rest;        /* seconds to rest after confirming */
 } ModeState;
 
+/* Last saved ranked score: ranked reads are placed next to it. */
+static long g_ranked_anchor = -1;
+
 static void handle_read(const Config *cfg, ModeState *m, long value, time_t now,
                         double ms) {
     if (now < m->rest_until) return;
@@ -1416,8 +1678,10 @@ static void handle_read(const Config *cfg, ModeState *m, long value, time_t now,
     long last = read_state(m->state_file);
     if (value != last) {
         logmsg("%s changed: %ld -> %ld", m->name, last, value);
-        if (push_record(cfg, m->mode, value) == 0)
+        if (push_record(cfg, m->mode, value) == 0) {
             write_state(m->state_file, value);
+            if (strcmp(m->mode, "ranked") == 0) g_ranked_anchor = value;
+        }
     }
     m->rest_until = now + m->rest;
     m->reads = 0;
@@ -1427,7 +1691,7 @@ static void handle_read(const Config *cfg, ModeState *m, long value, time_t now,
 
 /* ── --read: one screenshot ────────────────────────────────────────────────── */
 
-static int read_file(const char *path) {
+static int read_file(const char *path, long anchor) {
     char dir[PATH_MAX];
     Templates t;
     if (find_templates_dir(g_cfg.script_dir, dir) != 0 || templates_load(&t, dir) != 0) {
@@ -1444,7 +1708,7 @@ static int read_file(const char *path) {
     Reading r;
     double t0 = now_ms();
     read_frame(&f, &t, &r);
-    reading_finish(&t, &r);
+    reading_finish(&t, &r, anchor);
     double ms = now_ms() - t0;
 
     printf("gate %.3f  headers {", r.gate_score);
@@ -1456,8 +1720,8 @@ static int read_file(const char *path) {
         first = 0;
     }
     const char *mode = reading_mode(&t, &r);
-    printf("}\n=> %s  (mode=%s, value=%ld, max=%ld, total=%ld) [%.1fms]\n", r.verdict,
-           mode ? mode : "None", r.value, r.max_value, r.total, ms);
+    printf("}\n=> %s  (mode=%s, value=%ld, max=%ld, tier=%d, total=%ld) [%.1fms]\n", r.verdict,
+           mode ? mode : "None", r.value, r.max_value, r.tier, r.total, ms);
     free(px);
     templates_free(&t);
     return r.total >= 0 ? 0 : 2;
@@ -1478,9 +1742,10 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    if (argc == 3 && strcmp(argv[1], "--read") == 0) {
+    /* --read shot.ppm [saved ranked score] */
+    if ((argc == 3 || argc == 4) && strcmp(argv[1], "--read") == 0) {
         g_cfg.log_file[0] = '\0';  /* don't touch tracker.log */
-        return read_file(argv[2]);
+        return read_file(argv[2], argc == 4 ? strtol(argv[3], NULL, 10) : -1);
     }
 
     if (load_env(&g_cfg) != 0) {
@@ -1540,6 +1805,13 @@ int main(int argc, char **argv) {
            g_cfg.mon_w, g_cfg.mon_h, g_cfg.mon_x, g_cfg.mon_y, tmpl_dir, headers,
            tmpl.post_ok ? "on" : "off");
     logmsg("Server: %s", g_cfg.server_url);
+
+    g_ranked_anchor = fetch_ranked_anchor(&g_cfg);
+    time_t anchor_at = time(NULL);
+    if (g_ranked_anchor >= 0)
+        logmsg("Ranked reads placed from %ld RS (last saved)", g_ranked_anchor);
+    else
+        logmsg("No ranked score saved this season: enter yours once in the app to track ranked");
 
     ModeState tracks[4] = {
         { "World Tour",              "world-tour", g_cfg.state_file_wt,   0, 0, -1,
@@ -1605,9 +1877,21 @@ int main(int argc, char **argv) {
             };
             read_frame(&f, &tmpl, &r);
         }
-        reading_finish(&tmpl, &r);
+        reading_finish(&tmpl, &r, g_ranked_anchor);
         double ms = now_ms() - t0;
         time_t now = time(NULL);
+
+        /* A ranked read that couldn't be placed: maybe the saved score changed. */
+        const char *rmode = reading_mode(&tmpl, &r);
+        if (rmode && strcmp(rmode, "ranked") == 0 && r.total < 0 && r.value >= 0 &&
+            now - anchor_at > ANCHOR_REFRESH_SECS) {
+            anchor_at = now;
+            long fresh = fetch_ranked_anchor(&g_cfg);
+            if (fresh != g_ranked_anchor) {
+                logmsg("Saved ranked score %ld -> %ld", g_ranked_anchor, fresh);
+                g_ranked_anchor = fresh;
+            }
+        }
 
         const char *mode = reading_mode(&tmpl, &r);
         ModeState *m = NULL;
