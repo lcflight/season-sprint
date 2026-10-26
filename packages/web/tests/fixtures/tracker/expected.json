@@ -11,8 +11,8 @@
     "mode": "world-tour",
     "value": 2726,
     "maxValue": 8000,
-    "total": 14726,
-    "verdict": "world_tour: 2726 / 8000 = 14726 fans this season"
+    "total": 12726,
+    "verdict": "world_tour: 2726 / 8000 = 12726 fans this season"
   },
   "modes_4051": {
     "screen": "modes",
@@ -26,8 +26,8 @@
     "mode": "world-tour",
     "value": 4051,
     "maxValue": 8000,
-    "total": 16051,
-    "verdict": "world_tour: 4051 / 8000 = 16051 fans this season"
+    "total": 14051,
+    "verdict": "world_tour: 4051 / 8000 = 14051 fans this season"
   },
   "modes_5736": {
     "screen": "modes",
@@ -41,8 +41,8 @@
     "mode": "world-tour",
     "value": 5736,
     "maxValue": 8000,
-    "total": 17736,
-    "verdict": "world_tour: 5736 / 8000 = 17736 fans this season"
+    "total": 15736,
+    "verdict": "world_tour: 5736 / 8000 = 15736 fans this season"
   },
   "modes_6998": {
     "screen": "modes",
@@ -56,8 +56,8 @@
     "mode": "world-tour",
     "value": 6998,
     "maxValue": 8000,
-    "total": 18998,
-    "verdict": "world_tour: 6998 / 8000 = 18998 fans this season"
+    "total": 16998,
+    "verdict": "world_tour: 6998 / 8000 = 16998 fans this season"
   },
   "placement": {
     "screen": "modes",
@@ -85,8 +85,8 @@
     "mode": "world-tour",
     "value": 5736,
     "maxValue": 8000,
-    "total": 17736,
-    "verdict": "post-match world_tour: 5736 / 8000 = 17736 fans this season"
+    "total": 15736,
+    "verdict": "post-match world_tour: 5736 / 8000 = 15736 fans this season"
   },
   "post_countup_5556": {
     "screen": "post",
@@ -99,8 +99,8 @@
     "mode": "world-tour",
     "value": 5556,
     "maxValue": 8000,
-    "total": 17556,
-    "verdict": "post-match world_tour: 5556 / 8000 = 17556 fans this season"
+    "total": 15556,
+    "verdict": "post-match world_tour: 5556 / 8000 = 15556 fans this season"
   },
   "modes_2726_1080": {
     "screen": "modes",
@@ -114,8 +114,8 @@
     "mode": "world-tour",
     "value": 2726,
     "maxValue": 8000,
-    "total": 14726,
-    "verdict": "world_tour: 2726 / 8000 = 14726 fans this season"
+    "total": 12726,
+    "verdict": "world_tour: 2726 / 8000 = 12726 fans this season"
   },
   "post_5736_1080": {
     "screen": "post",
@@ -128,7 +128,7 @@
     "mode": "world-tour",
     "value": 5736,
     "maxValue": 8000,
-    "total": 17736,
-    "verdict": "post-match world_tour: 5736 / 8000 = 17736 fans this season"
+    "total": 15736,
+    "verdict": "post-match world_tour: 5736 / 8000 = 15736 fans this season"
   }
 }

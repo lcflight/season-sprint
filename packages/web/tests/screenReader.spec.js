@@ -131,12 +131,12 @@ describe('screenReader matches the Python reader', () => {
 // as "8"; chromaSafe must read the right total from both versions.
 describe('screenReader chromaSafe (browser captures)', () => {
   const cases = {
-    modes_2726: 14726,
-    modes_4051: 16051,
-    modes_5736: 17736,
-    modes_6998: 18998,
-    post_5736: 17736,
-    post_countup_5556: 17556,
+    modes_2726: 12726,
+    modes_4051: 14051,
+    modes_5736: 15736,
+    modes_6998: 16998,
+    post_5736: 15736,
+    post_countup_5556: 15556,
   }
   for (const [name, total] of Object.entries(cases)) {
     for (const variant of ['', '_yuv420']) {
@@ -194,7 +194,7 @@ function tallerSource(img, extra, centred) {
 }
 
 describe('screenReader on a 16:10 screen (2560x1600)', () => {
-  const cases = { modes_4051: 16051, modes_6998: 18998, post_5736: 17736 }
+  const cases = { modes_4051: 14051, modes_6998: 16998, post_5736: 15736 }
   for (const [name, total] of Object.entries(cases)) {
     it(`${name} reads ${total}`, () => {
       const img = decodePng(fs.readFileSync(path.join(FIXTURES, `${name}_yuv420.png`)))

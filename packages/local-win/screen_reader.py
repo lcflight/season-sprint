@@ -28,8 +28,8 @@ the game's UI scales with vertical resolution.
 
 World Tour counts fans since Season 12, and "X / Y" is fans earned in the
 current badge / fans that badge needs, not a season total. Badge n needs
-2,000·n, so Y identifies the badge and the season total is 1,000·n·(n-1) + X
-(see fans_total). That total is what gets pushed (Reading.total); a World Tour
+2,000·(n+1), so Y identifies the badge and the season total is
+1,000·(n-1)·(n+2) + X (see fans_total). That total is what gets pushed (Reading.total); a World Tour
 read without a valid "/ Y" is rejected.
 
 The post-match panel uses an upright font with the whole "5,736/8,000" in
@@ -61,20 +61,21 @@ POST_HEADER_MODES = {
     "ranked": "ranked",
 }
 # World Tour fans (Season 12+): badge n (Bronze 4 = 1 … Emerald 1 = 24) needs
-# FANS_STEP·n fans. Mirrors packages/web/src/utils/fans.js.
+# FANS_STEP·(n+1) fans (Bronze 2 = 8,000, Silver 1 = 18,000 in game). Mirrors
+# packages/web/src/utils/fans.js.
 FANS_STEP = 2000
 FANS_BADGES = 24
 
 
 def fans_total(in_rank: int, required: int) -> Optional[int]:
     """Season-total fans from the in-game "X / Y", or None if Y isn't a badge's
-    requirement (2,000, 4,000 … 48,000) or X > Y."""
+    requirement (4,000, 6,000 … 50,000) or X > Y."""
     if in_rank < 0 or required <= 0 or required % FANS_STEP:
         return None
-    n = required // FANS_STEP
-    if n > FANS_BADGES or in_rank > required:
+    n = required // FANS_STEP - 1
+    if n < 1 or n > FANS_BADGES or in_rank > required:
         return None
-    return FANS_STEP // 2 * n * (n - 1) + in_rank
+    return FANS_STEP // 2 * (n - 1) * (n + 2) + in_rank
 
 
 # Glyphs of the post-match value: digits plus the "/" between current and max.

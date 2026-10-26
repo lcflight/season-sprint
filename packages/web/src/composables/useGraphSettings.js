@@ -16,9 +16,9 @@ export function useGraphSettings(storageKey) {
   const goalWinPoints = ref(10)
   const selectedGoalIndex = ref(-1)
   // Scale the saved goal is on: '' = old World Tour win points (or never
-  // checked), 'fans' = Season 12+ fans. Lets LineGraph migrate an old goal
-  // once, without guessing from the number (2,000 is Emerald 3 in points
-  // but Bronze 3 in fans).
+  // checked), 'fans' = the first Season 12 fans table (every badge one
+  // requirement too low), 'fans2' = the corrected fans table. Lets LineGraph
+  // migrate an old goal once, without guessing from the number.
   const goalScale = ref('')
 
   const autoSetSeasonFromImport = ref(true)
@@ -68,7 +68,7 @@ export function useGraphSettings(storageKey) {
       seasonEnd.value = parsed.seasonEnd
     if (typeof parsed.goalWinPoints === 'number' && isFinite(parsed.goalWinPoints))
       goalWinPoints.value = parsed.goalWinPoints
-    if (parsed.goalScale === 'fans') goalScale.value = 'fans'
+    if (parsed.goalScale === 'fans' || parsed.goalScale === 'fans2') goalScale.value = parsed.goalScale
     if (typeof parsed.autoSetSeasonFromImport === 'boolean')
       autoSetSeasonFromImport.value = parsed.autoSetSeasonFromImport
     if (typeof parsed.simplifyImport === 'boolean')
