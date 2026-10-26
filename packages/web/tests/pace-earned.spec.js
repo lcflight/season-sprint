@@ -41,6 +41,29 @@ describe('pace "points earned" style setting', () => {
   })
 })
 
+describe('goal scale setting', () => {
+  beforeEach(() => localStorage.clear())
+
+  // The scale marker stops a fans goal being migrated again on every load.
+  for (const scale of ['fans', 'fans2']) {
+    it(`reloads a saved "${scale}" scale`, () => {
+      const a = useGraphSettings('scale-test')
+      a.goalScale.value = scale
+      a.saveSettings()
+      const b = useGraphSettings('scale-test')
+      b.loadSettings()
+      expect(b.goalScale.value).toBe(scale)
+    })
+  }
+
+  it('ignores an unknown scale', () => {
+    localStorage.setItem('season-sprint:scale-bad:v1', JSON.stringify({ goalScale: 'nope' }))
+    const s = useGraphSettings('scale-bad')
+    s.loadSettings()
+    expect(s.goalScale.value).toBe('')
+  })
+})
+
 describe('pace "points earned" bar geometry', () => {
   function geometryFor(points, { start = '2025-01-01', end = '2025-01-31' } = {}) {
     const sorted = [...points].sort((a, b) => a.date.localeCompare(b.date))

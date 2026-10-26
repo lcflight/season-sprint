@@ -68,7 +68,7 @@ export function useGraphSettings(storageKey) {
       seasonEnd.value = parsed.seasonEnd
     if (typeof parsed.goalWinPoints === 'number' && isFinite(parsed.goalWinPoints))
       goalWinPoints.value = parsed.goalWinPoints
-    if (parsed.goalScale === 'fans') goalScale.value = 'fans'
+    if (parsed.goalScale === 'fans' || parsed.goalScale === 'fans2') goalScale.value = parsed.goalScale
     if (typeof parsed.autoSetSeasonFromImport === 'boolean')
       autoSetSeasonFromImport.value = parsed.autoSetSeasonFromImport
     if (typeof parsed.simplifyImport === 'boolean')
