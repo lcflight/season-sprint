@@ -1536,23 +1536,41 @@ static int push_record(const Config *cfg, const char *mode, long win_points) {
     return -1;
 }
 
-/* Response body collector for fetch_ranked_anchor (capped). */
-typedef struct { char buf[8192]; size_t len; } Body;
+/* Response body for http_get: grows to fit the whole response, so callers
+ * never parse a cut-off list (a /seasons list missing its newest season
+ * would let last season's ranked score through). The buffer is reused
+ * between calls. */
+#define BODY_MAX (1 << 20)
+typedef struct { char *buf; size_t len, cap; } Body;
 
 static size_t curl_collect(void *ptr, size_t size, size_t nmemb, void *ud) {
     Body *b = ud;
-    size_t n = size * nmemb, room = sizeof(b->buf) - 1 - b->len;
-    memcpy(b->buf + b->len, ptr, n < room ? n : room);
-    b->len += n < room ? n : room;
+    size_t n = size * nmemb;
+    if (b->len + n + 1 > BODY_MAX) return 0;  /* too big: abort, don't truncate */
+    if (b->len + n + 1 > b->cap) {
+        size_t cap = b->cap ? b->cap : 8192;
+        while (cap < b->len + n + 1) cap *= 2;
+        char *grown = realloc(b->buf, cap);
+        if (!grown) return 0;
+        b->buf = grown;
+        b->cap = cap;
+    }
+    memcpy(b->buf + b->len, ptr, n);
+    b->len += n;
     b->buf[b->len] = '\0';
     return n;
 }
 
 static long read_state(const char *path);
 
-/* GET url into body (truncated to its buffer, which is plenty for what's
- * read from it). auth may be NULL. Returns the HTTP status, or -1. */
+/* GET url into body (the whole response, or a failure). auth may be NULL.
+ * Returns the HTTP status, or -1. */
 static long http_get(const char *url, const char *auth, Body *body) {
+    if (!body->buf) {
+        body->buf = malloc(8192);
+        if (!body->buf) return -1;
+        body->cap = 8192;
+    }
     body->len = 0;
     body->buf[0] = '\0';
     CURL *curl = curl_easy_init();

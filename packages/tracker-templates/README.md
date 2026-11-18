@@ -67,15 +67,19 @@ total, the readers:
 So ranked tracking needs one ranked score entered in the app each season.
 
 Tier numbers use their own font. Cut missing ones from a ranked MODES
-screenshot by passing the current (left) tier, which writes both badges:
+screenshot by passing the tier on its current (left) badge, which writes both
+badges. Each screenshot shows one current tier, so use a different one per
+tier:
 
 ```bash
-python make_templates.py tier shot.png 4     # writes badge_tier_4 and badge_tier_3
-python make_templates.py tier shot.png 1     # writes badge_tier_1 and badge_tier_4
-python make_templates.py check shot.png --anchor 25000
+python make_templates.py tier tier4.png 4    # current Tier 4: writes badge_tier_4 and badge_tier_3
+python make_templates.py tier tier1.png 1    # current Tier 1: writes badge_tier_1 and badge_tier_4
+python make_templates.py check tier4.png --anchor 25000
 ```
 
 Until `3` and `4` exist, only Tier 2 screens (badges 2 → 1) have a known
-tier. The other tiers still read, but under the smaller 1,000 RS limit. The post-match templates were cut from a screen recording
+tier. The other tiers still read, but under the smaller 1,000 RS limit.
+
+The post-match templates were cut from a screen recording
 with a one-off script, not `make_templates.py`; the post-match screen is
 optional and switches off if its files are missing.
