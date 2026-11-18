@@ -21,6 +21,7 @@
           <div class="season-card-header">Seasons</div>
           <div id="season-controls-ranked"></div>
         </div>
+        <ScreenTrackerCard v-if="flags.screenTracker" mode="ranked" />
         <SetPointsCard
           v-if="!readOnly"
           @add-at-date="addCustom"
@@ -40,6 +41,8 @@ import { ref, computed } from 'vue'
 import LineGraph from '@/components/LineGraph.vue'
 import SetPointsCard from '@/components/SetPointsCard.vue'
 import ModeLayout from '@/components/ModeLayout.vue'
+import ScreenTrackerCard from '@/components/ScreenTrackerCard.vue'
+import { useFlags } from '@/composables/useFlags'
 import { useRankInfo } from '@/composables/useRankInfo'
 
 // Ranked RS thresholds from THE FINALS wiki (Rank Score to reach tier)
@@ -70,12 +73,14 @@ const RANKED_THRESHOLDS = [
 
 export default {
   name: 'RankedView',
-  components: { LineGraph, SetPointsCard, ModeLayout },
+  components: { LineGraph, SetPointsCard, ScreenTrackerCard, ModeLayout },
   setup() {
     const rankScore = ref(0)
     const thresholds = computed(() => RANKED_THRESHOLDS)
     const { rankInfo, toNext, progressPct } = useRankInfo(rankScore, thresholds)
-    return { rankScore, rankedThresholds: RANKED_THRESHOLDS, rankInfo, toNext, progressPct }
+    // Screen tracker test build: shown only to users with the flag on.
+    const { flags } = useFlags()
+    return { rankScore, rankedThresholds: RANKED_THRESHOLDS, rankInfo, toNext, progressPct, flags }
   },
   data() {
     return { readOnly: false }

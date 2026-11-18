@@ -21,7 +21,7 @@
           <div class="season-card-header">Seasons</div>
           <div id="season-controls-world-tour"></div>
         </div>
-        <ScreenTrackerCard v-if="flags.screenTracker" />
+        <ScreenTrackerCard v-if="flags.screenTracker" mode="world-tour" />
         <template v-if="!readOnly">
           <SetPointsCard
             :fans="fans"
