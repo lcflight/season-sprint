@@ -19,8 +19,15 @@ masks are rescaled to the 1440p reference the trackers expect.
   python make_templates.py digits shot.png 6998 --only 9
   python make_templates.py digits shot.png 6998 --only 8 --variant yellow
 
+  # Ranked badge tier numbers, from a ranked MODES screen: pass the current
+  # tier (the left badge). Writes that number and the next badge's (right).
+  # --only / --blend work as for digits:
+  python make_templates.py tier shot.png 2
+
   # Check what the tracker reads from a screenshot:
   python make_templates.py check shot.png
+  # Ranked needs the last saved ranked score to place the read:
+  python make_templates.py check shot.png --anchor 25000
 
 Needs numpy + Pillow. Reuses the tracker's reader from ../local-win.
 """
@@ -29,6 +36,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
 from PIL import Image
@@ -154,17 +162,61 @@ def cmd_digits(shot: str, value: str, only: str = "", blend: bool = False,
         print(f"{'blended' if blend else 'wrote'} {path.name} ({len(gs)} sample{'s' * (len(gs) > 1)})")
 
 
-def cmd_check(shot: str) -> None:
+def cmd_tier(shot: str, tier: str, only: str = "", blend: bool = False) -> None:
+    """Write badge_tier_<n>.pgm for both badges of a ranked MODES screen.
+    `tier` is the current (left) badge's tier; the right one is the next."""
+    if tier not in "1234" or len(tier) != 1:
+        sys.exit("tier must be 1, 2, 3 or 4")
+    a = int(tier)
+    b = 4 if a == 1 else a - 1
+    rgb, s = load(shot)
+    H, W = rgb.shape[:2]
+    rx0, ry0 = int(W / 2 - 640 * s), int(H - 380 * s)
+    region = rgb[ry0:H, rx0:int(W / 2 + 640 * s)]
+    t = sr.Templates.load(HERE)
+    if "ranked" not in t.headers:
+        sys.exit("header_ranked.pgm missing — cut it first")
+    tm = sr.scale_mask(t.headers["ranked"], s)
+    hx, hy, score = sr.match_template(sr.white_mask(region), tm, max(1, int(4 * s)))
+    if score < sr.HEADER_MIN:
+        sys.exit(f"no ranked header found (match {score:.2f})")
+    cx, cy = hx + tm.shape[1] / 2, hy + sr.TIER_DY * s
+    for n, x in ((a, cx - sr.TIER_DX * s), (b, cx + sr.TIER_DX * s)):
+        if only and str(n) not in only:
+            continue
+        zr = int(sr.TIER_ZONE * s)
+        x0, y0 = max(0, int(x) - zr), max(0, int(cy) - zr)
+        lum = sr.luma(region[y0:int(cy) + zr, x0:int(x) + zr])
+        zh, zw = lum.shape
+        comps = [
+            c for c in sr.components((lum > sr.TIER_LUMA_MIN).astype(np.uint8))
+            if 11 * s <= c.h <= 24 * s and c.w <= c.h
+            and c.x0 > 0 and c.y0 > 0 and c.x1 < zw and c.y1 < zh
+        ]
+        if not comps:
+            sys.exit(f"no tier number found on the badge for {n}")
+        c = min(comps, key=lambda c: abs((c.x0 + c.x1) / 2 - (x - x0)) + abs((c.y0 + c.y1) / 2 - (cy - y0)))
+        ink = np.clip((lum - sr.TIER_INK_LO) / sr.TIER_INK_SPAN, 0, 1)
+        g = sr.normalize_glyph(sr.glyph_image(ink, c))
+        path = HERE / f"badge_tier_{n}.pgm"
+        if blend and path.is_file():
+            g = (g + sr.read_pgm(path).astype(np.float32) / 255.0) / 2
+        sr.write_pgm(path, np.round(g * 255).astype(np.uint8))
+        print(f"{'blended' if blend else 'wrote'} {path.name} ({c.w}x{c.h}px glyph)")
+
+
+def cmd_check(shot: str, anchor: Optional[int] = None) -> None:
     rgb, _ = load(shot)
     t = sr.Templates.load(HERE)
-    r = sr.read_frame(rgb, t)
+    r = sr.read_frame(rgb, t, anchor)
     print(f"gate {r.gate_score:.3f}  headers {r.header_scores}")
-    print(f"=> {r.verdict}  (mode={r.mode}, value={r.value}, max={r.max_value}, total={r.total})")
+    print(f"=> {r.verdict}  (mode={r.mode}, value={r.value}, max={r.max_value}, "
+          f"tier={r.tier}, total={r.total})")
 
 
 def main(argv: list[str]) -> None:
     # Flags (digits only): --only 39, --blend
-    only, blend, variant, args = "", False, "", []
+    only, blend, variant, anchor, args = "", False, "", None, []
     it = iter(argv)
     for a in it:
         if a == "--only":
@@ -173,10 +225,16 @@ def main(argv: list[str]) -> None:
             blend = True
         elif a == "--variant":
             variant = next(it, "")
+        elif a == "--anchor":
+            anchor = int(next(it, "0"))
         else:
             args.append(a)
     if args and args[0] == "digits" and len(args) == 3:
         return cmd_digits(args[1], args[2], only, blend, variant)
+    if args and args[0] == "tier" and len(args) == 3:
+        return cmd_tier(args[1], args[2], only, blend)
+    if args and args[0] == "check" and len(args) == 2:
+        return cmd_check(args[1], anchor)
     argv = args
     cmds = {
         "modes": (cmd_modes, 1),

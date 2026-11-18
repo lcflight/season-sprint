@@ -97,6 +97,10 @@
         <dd>
           {{ state.maxHiddenGapMs ? `${(state.maxHiddenGapMs / 1000).toFixed(1)} s` : "—" }}
         </dd>
+        <dt>Ranked from</dt>
+        <dd>
+          {{ state.rankedAnchor !== null ? `${state.rankedAnchor.toLocaleString()} RS (last saved)` : "none saved" }}
+        </dd>
         <dt>Last read</dt>
         <dd>{{ state.verdict || "—" }}</dd>
       </dl>

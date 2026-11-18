@@ -6,7 +6,7 @@ import { describe, it, expect, beforeAll } from 'vitest'
 import fs from 'fs'
 import path from 'path'
 import zlib from 'zlib'
-import { buildTemplates, readFrame } from '@/tracker/screenReader'
+import { buildTemplates, readFrame, rankedTotal } from '@/tracker/screenReader'
 
 const TEMPLATES = path.resolve(__dirname, '../../tracker-templates')
 const FIXTURES = path.resolve(__dirname, 'fixtures/tracker')
@@ -91,8 +91,8 @@ beforeAll(() => {
 describe('screenReader matches the Python reader', () => {
   for (const [name, want] of Object.entries(expected)) {
     it(`${name}: ${want.verdict}`, () => {
-      const img = decodePng(fs.readFileSync(path.join(FIXTURES, `${name}.png`)))
-      const r = readFrame(sourceOf(img), templates)
+      const img = decodePng(fs.readFileSync(path.join(FIXTURES, `${want.image ?? name}.png`)))
+      const r = readFrame(sourceOf(img), templates, { rankedAnchor: want.rankedAnchor ?? null })
       expect({
         screen: r.screen,
         onModes: r.onModes,
@@ -101,6 +101,7 @@ describe('screenReader matches the Python reader', () => {
         value: r.value,
         maxValue: r.maxValue,
         total: r.total,
+        tier: r.tier,
         verdict: r.verdict,
       }).toEqual({
         screen: want.screen,
@@ -110,6 +111,7 @@ describe('screenReader matches the Python reader', () => {
         value: want.value,
         maxValue: want.maxValue,
         total: want.total,
+        tier: want.tier,
         verdict: want.verdict,
       })
       expect(r.gateScore).toBeCloseTo(want.gateScore, 3)
@@ -147,6 +149,16 @@ describe('screenReader chromaSafe (browser captures)', () => {
         expect(r.total).toBe(total)
       })
     }
+  }
+
+  for (const variant of ['', '_yuv420']) {
+    it(`ranked_189${variant} reads tier 2 and 25189 RS`, () => {
+      const img = decodePng(fs.readFileSync(path.join(FIXTURES, `ranked_189${variant}.png`)))
+      const r = readFrame(sourceOf(img), templates, { chromaSafe: true, rankedAnchor: 24800 })
+      expect(r.mode).toBe('ranked')
+      expect(r.tier).toBe(2)
+      expect(r.total).toBe(25189)
+    })
   }
 
   it('still skips placement rounds', () => {
@@ -204,3 +216,34 @@ describe('screenReader on a 16:10 screen (2560x1600)', () => {
   }
 })
 
+
+// Ranked "X / 2,499" is RS within the current tier; the league comes from the
+// last saved score. Leagues are 10,000 RS, tiers 2,500 (Tier 4 lowest).
+describe('rankedTotal', () => {
+  it('places a read in the tier the badges show, in the league nearest the saved score', () => {
+    expect(rankedTotal(189, 2499, 2, 24800)).toEqual([25189, '25189 RS']) // Gold 2
+    expect(rankedTotal(0, 2499, 4, 29900)[0]).toBe(30000) // promoted to Platinum 4
+    expect(rankedTotal(2400, 2499, 1, 30100)[0]).toBe(29900) // dropped to Gold 1
+    expect(rankedTotal(100, 2499, 4, 0)[0]).toBe(100) // Bronze 4
+    expect(rankedTotal(2000, 2499, 1, 49000)[0]).toBe(49500) // Diamond 1
+  })
+
+  it('without the tier, only accepts small moves', () => {
+    expect(rankedTotal(189, 2499, null, 24800)[0]).toBe(25189)
+    expect(rankedTotal(2400, 2499, null, 25300)[0]).toBe(24900)
+    // 1,200 up could just as well be 1,300 down: refuse.
+    expect(rankedTotal(1300, 2499, null, 25100)[0]).toBe(null)
+  })
+
+  it('refuses a read too far from the saved score', () => {
+    const [total, why] = rankedTotal(189, 2499, 2, 31000)
+    expect(total).toBe(null)
+    expect(why).toMatch(/update it in the app/)
+  })
+
+  it('needs a saved score and a "/ 2,499" readout', () => {
+    expect(rankedTotal(189, 2499, 2, null)[0]).toBe(null)
+    expect(rankedTotal(189, null, 2, 25000)[0]).toBe(null)
+    expect(rankedTotal(189, 8000, 2, 25000)[0]).toBe(null)
+  })
+})

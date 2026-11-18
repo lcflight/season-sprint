@@ -17,6 +17,8 @@ const POLL_MS = 1000
 const FAST_POLL_MS = 200
 
 let templates = null
+// Last saved ranked score, sent by the page: ranked reads are placed near it.
+let rankedAnchor = null
 let nextDue = 0
 let reader = null
 // Diagnostics the page asked for, served from the next frame that arrives.
@@ -47,7 +49,7 @@ function process(image, width, height) {
   let reading
   try {
     // Captured video stores colour at half resolution, so read by brightness.
-    reading = readFrame(sourceFor(image, width, height), templates, { chromaSafe: true })
+    reading = readFrame(sourceFor(image, width, height), templates, { chromaSafe: true, rankedAnchor })
   } catch (e) {
     self.postMessage({ type: 'error', message: String(e?.message || e) })
     nextDue = performance.now() + POLL_MS
@@ -142,6 +144,8 @@ self.onmessage = (e) => {
       })
       .catch((err) => self.postMessage({ type: 'error', message: String(err?.message || err) }))
       .finally(() => bmp.close())
+  } else if (msg.type === 'anchor') {
+    rankedAnchor = msg.ranked ?? null
   } else if (msg.type === 'preview') {
     wantPreview = true
   } else if (msg.type === 'snapshot') {

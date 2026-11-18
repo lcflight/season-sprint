@@ -6,6 +6,10 @@ wrong screen) apart from recognition problems.
 Take a full-screen screenshot of THE FINALS' MODES tab, then:
 
     .venv\\Scripts\\python.exe test_reader.py path\\to\\screenshot.png
+
+Ranked reads need your last saved ranked score to be placed; pass it second:
+
+    .venv\\Scripts\\python.exe test_reader.py path\\to\\screenshot.png 25000
 """
 
 from __future__ import annotations
@@ -22,8 +26,8 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 
 
 def main() -> int:
-    if len(sys.argv) != 2:
-        print("usage: test_reader.py <screenshot>")
+    if len(sys.argv) not in (2, 3):
+        print("usage: test_reader.py <screenshot> [saved ranked score]")
         return 2
 
     path = Path(sys.argv[1])
@@ -35,7 +39,8 @@ def main() -> int:
     print(f"Image: {path} ({img.shape[1]}x{img.shape[0]})")
 
     templates = sr.Templates.load(sr.find_templates_dir(SCRIPT_DIR))
-    r = sr.read_frame(img, templates)
+    anchor = int(sys.argv[2]) if len(sys.argv) == 3 else None
+    r = sr.read_frame(img, templates, anchor)
 
     print(f"\nMODES tab match: {r.gate_score:.2f} (need {sr.GATE_MIN:.2f})")
     for name, score in r.header_scores.items():
@@ -48,7 +53,7 @@ def main() -> int:
             "taken on the MODES tab with the score panel visible at the bottom."
         )
         return 1
-    print(f"mode={r.mode} value={r.value} max={r.max_value} total={r.total}")
+    print(f"mode={r.mode} value={r.value} max={r.max_value} tier={r.tier} total={r.total}")
     return 0
 
 
