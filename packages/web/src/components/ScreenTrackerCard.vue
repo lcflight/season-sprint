@@ -18,8 +18,19 @@
       </p>
       <p v-if="state.lastSaved" class="tc-text">
         Last saved: {{ state.lastSaved.value.toLocaleString() }}
-        {{ state.lastSaved.mode === "world-tour" ? "fans" : "" }} at
-        {{ timeOf(state.lastSaved.at) }}
+        {{ UNITS[state.lastSaved.mode] }}
+        <template v-if="state.lastSaved.mode !== mode">
+          ({{ MODE_NAMES[state.lastSaved.mode] }})
+        </template>
+        at {{ timeOf(state.lastSaved.at) }}
+      </p>
+      <p v-if="mode === 'ranked' && state.rankedAnchor === null" class="tc-warn">
+        No ranked score saved this season yet. Enter your current one below so
+        ranked reads can be placed.
+      </p>
+      <p v-else-if="mode === 'ranked'" class="tc-text">
+        Placing ranked reads from your saved
+        {{ state.rankedAnchor.toLocaleString() }} RS.
       </p>
       <p v-if="state.path === 'fallback'" class="tc-warn">
         This browser may pause reading while this tab is in the background.
@@ -34,9 +45,17 @@
     </template>
 
     <template v-else>
-      <p class="tc-text">
+      <p v-if="mode === 'ranked'" class="tc-text">
+        Reads your rank score from the lobby <strong>MODES</strong> tab while
+        you play, so you don't have to enter it. No app to install.
+      </p>
+      <p v-else class="tc-text">
         Reads your World Tour score from the lobby and post-match screens while
         you play, so you don't have to enter it. No app to install.
+      </p>
+      <p v-if="mode === 'ranked'" class="tc-text">
+        Enter your rank score below once each season first. The game only shows
+        your score within your tier, so the tracker works out the total from it.
       </p>
       <p v-if="state.status === 'error'" class="tc-warn">{{ state.error }}</p>
       <div class="tc-row">
@@ -130,7 +149,7 @@
           <ul>
             <li>
               Your browser will ask which screen to share. Season Sprint only
-              uses it to read your World Tour score from the lobby
+              uses it to read your World Tour and ranked scores from the lobby
               <strong>MODES</strong> tab and the post-match score screen.
             </li>
             <li>
@@ -166,8 +185,9 @@
               exclusive fullscreen some computers share a black screen.
             </li>
             <li>
-              Needs a game resolution of 1600×900 or higher, and only World
-              Tour is read for now.
+              Needs a game resolution of 1600×900 or higher. Ranked is read
+              from the <strong>MODES</strong> tab only, not the post-match
+              screen.
             </li>
             <li>
               Keep this tab open while you play. It can stay in the background.
@@ -196,6 +216,20 @@
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useScreenTracker } from "@/composables/useScreenTracker";
+
+// Which tab the card is on. The tracker itself reads both modes either way;
+// this only picks the wording.
+// eslint-disable-next-line no-undef
+const props = defineProps({
+  mode: {
+    type: String,
+    default: "world-tour",
+    validator: (m) => ["world-tour", "ranked"].includes(m),
+  },
+});
+const mode = computed(() => props.mode);
+const UNITS = { "world-tour": "fans", ranked: "RS" };
+const MODE_NAMES = { "world-tour": "World Tour", ranked: "Ranked" };
 
 const { state, start, stop, isSupported, onPreview, requestPreview, snapshot } =
   useScreenTracker();
@@ -264,6 +298,9 @@ const statusText = computed(() => {
     return "Watching for the MODES tab or a post-match score";
   if (v.includes("too low")) return "Game resolution too low to read";
   if (v.includes("fans this season")) return "Reading your World Tour score";
+  if (v.startsWith("ranked:") && v.includes("not saving"))
+    return "Read your ranked score, but couldn't place it";
+  if (v.startsWith("ranked:")) return "Reading your ranked score";
   return "Watching";
 });
 
