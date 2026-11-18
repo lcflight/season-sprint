@@ -28,6 +28,8 @@ pnpm -F landing build    # regenerate releases.json from the latest GitHub relea
   crop to) capture of the landing hero. Regenerate after a hero redesign with:
   `chromium --headless --hide-scrollbars --force-device-scale-factor=2 \
   --window-size=1200,630 --screenshot=assets/og-landing.png https://www.seasonsprint.com/`
+- `assets/fonts/` — self-hosted Inter, Space Grotesk and JetBrains Mono (latin
+  subset, variable woff2) with their SIL OFL licences
 - `favicon.ico`
 - `robots.txt` — allows all crawlers, points to the sitemap
 - `sitemap.xml` — lists `/` and `/downloads` for search engines

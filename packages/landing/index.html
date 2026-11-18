@@ -73,6 +73,8 @@
     </script>
 
     <link rel="preconnect" href="https://app.seasonsprint.com" />
+    <link rel="preload" href="/assets/fonts/space-grotesk-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/assets/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
@@ -80,23 +82,41 @@
 
     <header class="site-header">
       <a class="brand" href="/" aria-label="Season Sprint home">
-        <img class="brand-mark" src="/assets/logo.svg" alt="" width="40" height="40" />
+        <img class="brand-mark" src="/assets/logo.svg" alt="" width="36" height="36" />
         <span class="brand-name">Season&nbsp;Sprint</span>
       </a>
       <nav class="nav" aria-label="Primary">
         <a href="#features">Features</a>
         <a href="#platforms">Platforms</a>
         <a href="/downloads">Downloads</a>
-        <a class="button button-primary" href="https://app.seasonsprint.com">Open the app</a>
+        <a class="button button-light" href="https://app.seasonsprint.com">Open the app</a>
       </nav>
     </header>
 
     <main id="main">
-      <!-- Hero -->
+      <!-- Hero: the rank ladder is the background -->
       <section class="hero">
+        <div class="ladder" aria-hidden="true">
+          <div class="band band-emerald">Emerald</div>
+          <div class="band band-diamond">Diamond</div>
+          <div class="band band-platinum">Platinum</div>
+          <div class="band band-gold">Gold</div>
+          <div class="band band-silver">Silver</div>
+          <div class="band band-bronze">Bronze</div>
+        </div>
+        <svg class="climb" viewBox="0 0 1000 600" preserveAspectRatio="none" aria-hidden="true">
+          <line class="climb-pace" x1="400" y1="600" x2="1000" y2="20" vector-effect="non-scaling-stroke" />
+          <polyline
+            class="climb-run"
+            vector-effect="non-scaling-stroke"
+            points="400,600 424,585 448,560 466,548 490,520 508,505 526,470 550,452 574,430 592,400 616,388 640,350 658,342 682,320 700,300 724,285 742,250 766,238 790,226 814,190 832,170 856,160 874,130 898,118 916,95 934,80"
+          />
+        </svg>
+        <div class="climb-head" aria-hidden="true"></div>
+
         <div class="hero-copy">
-          <p class="eyebrow">THE FINALS · World Tour &amp; Ranked tracker</p>
-          <h1>Track your<br /><span class="hl">rank</span> climb.</h1>
+          <p class="eyebrow">For THE FINALS · World Tour &amp; Ranked</p>
+          <h1>Know where you stand. Every match.</h1>
           <p class="lede">
             Season Sprint logs your win points, charts your run toward the next
             rank, and keeps it in sync across every device — live.
@@ -105,133 +125,143 @@
             <a class="button button-primary button-lg" href="https://app.seasonsprint.com">
               Open the web app
             </a>
-            <a class="button button-ghost button-lg" href="/downloads">
-              Get the desktop &amp; mobile apps
-            </a>
+            <a class="button button-lg" href="/downloads">Get desktop &amp; mobile</a>
           </div>
-          <p class="cta-note">Free to use. Sign in to sync — or just start logging.</p>
-        </div>
-
-        <div class="hero-art">
-          <figure class="hero-shot">
-            <img
-              src="/assets/shot-chart.png"
-              alt="Season Sprint chart of total win points climbing through the rank bands toward Emerald"
-              width="612"
-              height="482"
-            />
-          </figure>
+          <ul class="legend" aria-hidden="true">
+            <li><span class="legend-run"></span>Your climb</li>
+            <li><span class="legend-pace"></span>Pace to the top rank</li>
+          </ul>
         </div>
       </section>
 
-      <!-- Features -->
-      <section id="features" class="section">
-        <h2 class="section-title">Everything you need to chase the climb</h2>
-        <div class="grid">
-          <article class="feature">
-            <h3>Chart your season</h3>
+      <!-- How it works -->
+      <section class="section" aria-labelledby="how-title">
+        <h2 id="how-title" class="visually-hidden">How it works</h2>
+        <ol class="steps">
+          <li class="step">
+            <span class="step-num">01 — Log</span>
+            <h3>Add a result in one tap</h3>
             <p>
-              Watch your win points trend over time against every rank
-              threshold — World Tour or Ranked — so you always know if
-              you're on pace.
+              A points cheatsheet quick-adds round wins and Finals results — or
+              let the desktop tracker read them off your screen.
             </p>
-          </article>
-          <article class="feature">
-            <h3>Know your rank</h3>
+          </li>
+          <li class="step">
+            <span class="step-num">02 — Chart</span>
+            <h3>See your pace, not just your total</h3>
             <p>
-              See your current rank and exactly how many points stand between
-              you and the next one — no spreadsheet math.
+              Your run plotted against every rank threshold, with the daily
+              pace you need to get there before the season ends.
             </p>
-          </article>
-          <article class="feature">
-            <h3>One-tap logging</h3>
+          </li>
+          <li class="step">
+            <span class="step-num">03 — Sync</span>
+            <h3>Pick it up anywhere</h3>
             <p>
-              A points cheatsheet quick-adds round wins and Finals results, or
-              set a custom total for any date.
+              Sign in and every device updates instantly over a real-time
+              connection. Your history stays with your account.
             </p>
-          </article>
-          <article class="feature">
-            <h3>Live sync</h3>
-            <p>
-              Sign in and your progress syncs instantly across web, desktop, and
-              phone over a real-time connection.
-            </p>
-          </article>
-          <article class="feature">
-            <h3>Desktop auto-capture</h3>
-            <p>
-              The Windows companion reads your points straight off the screen
-              and logs them for you while you play.
-            </p>
-          </article>
-          <article class="feature">
-            <h3>Yours to keep</h3>
-            <p>
-              Your run history stays with your account — pick up exactly where
-              you left off on any device.
-            </p>
-          </article>
-        </div>
+          </li>
+        </ol>
       </section>
 
       <!-- Showcase -->
-      <section class="section section-showcase">
-        <h2 class="section-title">One climb, every screen</h2>
-        <p class="showcase-lede">
-          Log it on the web while you play, glance at your pace on your phone —
-          your run stays in sync, live, wherever you open it.
-        </p>
+      <section class="section">
         <div class="showcase">
-          <figure class="browser">
-            <div class="browser-bar" aria-hidden="true">
-              <span class="browser-dots"><i></i><i></i><i></i></span>
-              <span class="browser-url">app.seasonsprint.com</span>
-            </div>
+          <div class="showcase-copy">
+            <h2>One climb, every screen.</h2>
+            <p>
+              Log it on the web while you play, glance at your pace on your
+              phone — your run stays in sync, live, wherever you open it.
+            </p>
+          </div>
+          <div class="showcase-shots">
             <img
+              class="shot-web"
               src="/assets/shot-web.png"
               alt="The Season Sprint web app showing the full season dashboard"
               width="1400"
               height="758"
               loading="lazy"
             />
-          </figure>
-          <figure class="phone">
             <img
+              class="shot-phone"
               src="/assets/shot-phone.png"
               alt="The Season Sprint mobile app showing the season chart and daily pace"
               width="560"
               height="1212"
               loading="lazy"
             />
-          </figure>
+          </div>
         </div>
+      </section>
+
+      <!-- Features -->
+      <section id="features" class="section features">
+        <h2 class="section-title">Everything you need to chase the climb</h2>
+        <dl class="feature-list">
+          <div>
+            <dt>Chart your season</dt>
+            <dd>Win points against every rank threshold, World Tour or Ranked.</dd>
+          </div>
+          <div>
+            <dt>Know your rank</dt>
+            <dd>Exactly how many points stand between you and the next one.</dd>
+          </div>
+          <div>
+            <dt>One-tap logging</dt>
+            <dd>Quick-add wins and Finals results, or set a total for any date.</dd>
+          </div>
+          <div>
+            <dt>Live sync</dt>
+            <dd>Web, desktop and phone update together, instantly.</dd>
+          </div>
+          <div>
+            <dt>Desktop auto-capture</dt>
+            <dd>Reads your points off the screen and logs them while you play.</dd>
+          </div>
+          <div>
+            <dt>Yours to keep</dt>
+            <dd>Your run history follows your account to every device.</dd>
+          </div>
+        </dl>
       </section>
 
       <!-- Platforms -->
       <section id="platforms" class="section section-platforms">
         <h2 class="section-title">Play anywhere, track everywhere</h2>
-        <div class="platforms">
-          <a class="platform platform-primary" href="https://app.seasonsprint.com">
-            <span class="platform-name">Web app</span>
-            <span class="platform-note">app.seasonsprint.com</span>
-          </a>
-          <a class="platform" href="/downloads">
-            <span class="platform-name">Android</span>
-            <span class="platform-note">APK download</span>
-          </a>
-          <a class="platform" href="/downloads">
-            <span class="platform-name">Windows</span>
-            <span class="platform-note">Auto-capture tracker</span>
-          </a>
-          <a class="platform" href="/downloads">
-            <span class="platform-name">Linux</span>
-            <span class="platform-note">One-line install</span>
-          </a>
-          <div class="platform platform-soon" aria-disabled="true">
-            <span class="platform-name">iOS</span>
-            <span class="platform-note">Coming soon</span>
-          </div>
-        </div>
+        <ul class="platforms">
+          <li>
+            <a class="platform platform-primary" href="https://app.seasonsprint.com">
+              <span class="platform-name">Web app</span>
+              <span class="platform-note">app.seasonsprint.com →</span>
+            </a>
+          </li>
+          <li>
+            <a class="platform" href="/downloads">
+              <span class="platform-name">Windows</span>
+              <span class="platform-note">Auto-capture tracker →</span>
+            </a>
+          </li>
+          <li>
+            <a class="platform" href="/downloads">
+              <span class="platform-name">Linux</span>
+              <span class="platform-note">One-line install →</span>
+            </a>
+          </li>
+          <li>
+            <a class="platform" href="/downloads">
+              <span class="platform-name">Android</span>
+              <span class="platform-note">APK download →</span>
+            </a>
+          </li>
+          <li>
+            <div class="platform platform-soon">
+              <span class="platform-name">iOS</span>
+              <span class="platform-note">Coming soon</span>
+            </div>
+          </li>
+        </ul>
       </section>
 
       <!-- Final CTA -->
@@ -240,6 +270,7 @@
         <a class="button button-primary button-lg" href="https://app.seasonsprint.com">
           Open the web app
         </a>
+        <p class="cta-note">Free to use. Sign in to sync — or just start logging.</p>
       </section>
     </main>
 
