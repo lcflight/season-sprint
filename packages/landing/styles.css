@@ -1,4 +1,27 @@
 /* Season Sprint — landing page. "Rank ladder" theme: the rank bands are the brand graphic. */
+/* Self-hosted fonts (latin subset, variable weight). OFL licences in assets/fonts/. */
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: swap;
+  src: url("/assets/fonts/inter-latin.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Space Grotesk";
+  font-style: normal;
+  font-weight: 500 700;
+  font-display: swap;
+  src: url("/assets/fonts/space-grotesk-latin.woff2") format("woff2");
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("/assets/fonts/jetbrains-mono-latin.woff2") format("woff2");
+}
+
 :root {
   --bg: #0b0f17;
   --surface: #121826;
