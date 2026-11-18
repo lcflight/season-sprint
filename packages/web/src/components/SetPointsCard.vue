@@ -24,7 +24,7 @@
       <span class="cp-slash">/</span>
       <input
         type="number"
-        min="2000"
+        min="4000"
         step="2000"
         inputmode="numeric"
         v-model.number="fansRequiredInput"
@@ -42,7 +42,7 @@
     </div>
     <p v-if="fans" class="cp-hint" :class="{ 'cp-error': fansInvalid }">
       <template v-if="fansInvalid">
-        The second number must be the badge's requirement (2,000, 4,000 … 48,000)
+        The second number must be the badge's requirement (4,000, 6,000 … 50,000)
         and the first can't be bigger.
       </template>
       <template v-else-if="fansTotal !== null">

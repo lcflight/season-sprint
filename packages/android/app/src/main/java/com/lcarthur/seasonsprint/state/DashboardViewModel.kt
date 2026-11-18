@@ -22,6 +22,7 @@ import com.lcarthur.seasonsprint.domain.SeasonOption
 import com.lcarthur.seasonsprint.domain.Threshold
 import com.lcarthur.seasonsprint.domain.computePace
 import com.lcarthur.seasonsprint.domain.computeRank
+import com.lcarthur.seasonsprint.domain.fansGoalFromFirstFansTable
 import com.lcarthur.seasonsprint.domain.fansGoalFromLegacy
 import com.lcarthur.seasonsprint.domain.mapOverlayByDayOfSeason
 import com.lcarthur.seasonsprint.domain.paceBaselineFor
@@ -162,20 +163,24 @@ class DashboardViewModel(private val mode: GameMode, app: Application) : Android
     )
     private val goalKey = if (mode == GameMode.WorldTour) "goal.worldTour" else "goal.${mode.prefsSuffix}"
 
-    /** "fans" once the saved World Tour goal is on the fans scale (Season 12+). */
+    /**
+     * Scale of the saved World Tour goal: unset = old win points, "fans" = the first fans
+     * table, "fans2" = the corrected fans table (Season 12+).
+     */
     private val goalScaleKey = "$goalKey.scale"
 
     /**
-     * Saved goal. A World Tour goal on the old win-points scale moves to the same badge in fans,
-     * once (keyed on [goalScaleKey], since a number alone is ambiguous).
+     * Saved goal. A World Tour goal on an older scale moves to the same badge on the fans
+     * table, once (keyed on [goalScaleKey], since a number alone is ambiguous).
      */
     private fun loadGoal(): Int? {
         val saved = if (prefs.contains(goalKey)) prefs.getInt(goalKey, 0) else null
-        if (mode != GameMode.WorldTour || prefs.getString(goalScaleKey, null) == "fans") return saved
-        val moved = saved?.let(::fansGoalFromLegacy)
+        val scale = prefs.getString(goalScaleKey, null)
+        if (mode != GameMode.WorldTour || scale == "fans2") return saved
+        val moved = saved?.let { if (scale == "fans") fansGoalFromFirstFansTable(it) else fansGoalFromLegacy(it) }
         prefs.edit().apply {
             if (moved != null) putInt(goalKey, moved)
-            putString(goalScaleKey, "fans")
+            putString(goalScaleKey, "fans2")
         }.apply()
         return moved ?: saved
     }

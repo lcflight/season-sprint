@@ -18,8 +18,9 @@ fun thresholdsFor(mode: GameMode, seasonKey: String? = null): List<Threshold> = 
 // Fans (World Tour, Season 12+). Ported from packages/web/src/utils/fans.js + iOS Rank.swift.
 //
 // The game shows "X / Y": fans since entering the current badge / fans that badge needs.
-// Badge n (Bronze 4 = 1 … Emerald 1 = 24) needs 2,000·n, so Y identifies the badge and the
-// season total is 1,000·n·(n-1) + X. Records store that season total.
+// Badge n (Bronze 4 = 1 … Emerald 1 = 24) needs 2,000·(n+1) (Bronze 2 = 8,000, Silver 1 =
+// 18,000 in game), so Y identifies the badge and the season total is 1,000·(n-1)·(n+2) + X.
+// Records store that season total.
 
 const val FIRST_FANS_SEASON = 12
 const val FANS_STEP = 2000
@@ -33,12 +34,18 @@ fun seasonNumber(name: String?): Int? =
 fun usesFans(seasonKey: String?): Boolean = seasonNumber(seasonKey)?.let { it >= FIRST_FANS_SEASON } ?: true
 
 /** Season-total fans at the moment you enter badge [n] (1-based). */
-fun fansToEnter(n: Int): Int = FANS_STEP / 2 * n * (n - 1)
+fun fansToEnter(n: Int): Int = FANS_STEP / 2 * (n - 1) * (n + 2)
+
+/**
+ * Where the first fans table (before Oct 2026's fix) put badge [n]: every badge one
+ * requirement too low. Only used to move goals saved on it.
+ */
+fun legacyFansToEnter(n: Int): Int = FANS_STEP / 2 * n * (n - 1)
 
 /** Season-total fans from the in-game "X / Y" readout, or null if it isn't a real badge. */
 fun fansTotal(inRank: Int, required: Int): Int? {
     if (inRank < 0 || required <= 0 || required % FANS_STEP != 0) return null
-    val n = required / FANS_STEP
+    val n = required / FANS_STEP - 1
     if (n < 1 || n > FANS_BADGES || inRank > required) return null
     return fansToEnter(n) + inRank
 }
@@ -92,6 +99,15 @@ fun fansGoalFromLegacy(goal: Int): Int? {
 }
 
 /**
+ * A World Tour goal saved on the first fans table, moved to the same badge on the corrected
+ * one; null if [goal] isn't one of its badge thresholds (a custom goal).
+ */
+fun fansGoalFromFirstFansTable(goal: Int): Int? {
+    val n = (1..FANS_BADGES).firstOrNull { legacyFansToEnter(it) == goal } ?: return null
+    return worldTourFansThresholds[n - 1].points
+}
+
+/**
  * World Tour rank thresholds for Season 11 and earlier (win points), verbatim from
  * packages/web/src/data/worldTourRanks.json.
  */
@@ -128,29 +144,29 @@ val worldTourThresholds: List<Threshold> = listOf(
  */
 val worldTourFansThresholds: List<Threshold> = listOf(
     Threshold("Bronze 4", 0),
-    Threshold("Bronze 3", 2000),
-    Threshold("Bronze 2", 6000),
-    Threshold("Bronze 1", 12000),
-    Threshold("Silver 4", 20000),
-    Threshold("Silver 3", 30000),
-    Threshold("Silver 2", 42000),
-    Threshold("Silver 1", 56000),
-    Threshold("Gold 4", 72000),
-    Threshold("Gold 3", 90000),
-    Threshold("Gold 2", 110000),
-    Threshold("Gold 1", 132000),
-    Threshold("Platinum 4", 156000),
-    Threshold("Platinum 3", 182000),
-    Threshold("Platinum 2", 210000),
-    Threshold("Platinum 1", 240000),
-    Threshold("Diamond 4", 272000),
-    Threshold("Diamond 3", 306000),
-    Threshold("Diamond 2", 342000),
-    Threshold("Diamond 1", 380000),
-    Threshold("Emerald 4", 420000),
-    Threshold("Emerald 3", 462000),
-    Threshold("Emerald 2", 506000),
-    Threshold("Emerald 1", 552000),
+    Threshold("Bronze 3", 4000),
+    Threshold("Bronze 2", 10000),
+    Threshold("Bronze 1", 18000),
+    Threshold("Silver 4", 28000),
+    Threshold("Silver 3", 40000),
+    Threshold("Silver 2", 54000),
+    Threshold("Silver 1", 70000),
+    Threshold("Gold 4", 88000),
+    Threshold("Gold 3", 108000),
+    Threshold("Gold 2", 130000),
+    Threshold("Gold 1", 154000),
+    Threshold("Platinum 4", 180000),
+    Threshold("Platinum 3", 208000),
+    Threshold("Platinum 2", 238000),
+    Threshold("Platinum 1", 270000),
+    Threshold("Diamond 4", 304000),
+    Threshold("Diamond 3", 340000),
+    Threshold("Diamond 2", 378000),
+    Threshold("Diamond 1", 418000),
+    Threshold("Emerald 4", 460000),
+    Threshold("Emerald 3", 504000),
+    Threshold("Emerald 2", 550000),
+    Threshold("Emerald 1", 598000),
 )
 
 /**

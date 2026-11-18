@@ -90,7 +90,7 @@ fun OnboardingScreen(viewModel: OnboardingViewModel, modifier: Modifier = Modifi
                 )
                 if (worldTourInvalid) {
                     Text(
-                        "Enter both numbers. The second must be 2,000, 4,000 … 48,000, and the first can't be bigger.",
+                        "Enter both numbers. The second must be 4,000, 6,000 … 50,000, and the first can't be bigger.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error,
                     )

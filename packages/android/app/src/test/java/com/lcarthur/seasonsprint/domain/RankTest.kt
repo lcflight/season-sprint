@@ -101,11 +101,13 @@ class RankTest {
 
     @Test
     fun fansTotalFromInGameReadout() {
-        assertEquals(0, fansTotal(0, 2000))
-        assertEquals(7_250, fansTotal(1_250, 6_000)) // Bronze 2: 6,000 + 1,250
-        assertEquals(600_000, fansTotal(48_000, 48_000))
+        assertEquals(0, fansTotal(0, 4000))
+        assertEquals(12_726, fansTotal(2_726, 8_000)) // Bronze 2: 10,000 + 2,726
+        assertEquals(73_053, fansTotal(3_053, 18_000)) // Silver 1: 70,000 + 3,053
+        assertEquals(648_000, fansTotal(50_000, 50_000))
+        assertNull(fansTotal(100, 2_000)) // below Bronze 4
         assertNull(fansTotal(100, 3_000)) // not a badge requirement
-        assertNull(fansTotal(100, 50_000)) // past Emerald 1
+        assertNull(fansTotal(100, 52_000)) // past Emerald 1
         assertNull(fansTotal(9_000, 8_000)) // X > Y
     }
 
@@ -118,9 +120,17 @@ class RankTest {
 
     @Test
     fun legacyGoalMovesToSameBadge() {
-        assertEquals(552_000, fansGoalFromLegacy(2400)) // Emerald 1
-        assertEquals(156_000, fansGoalFromLegacy(700)) // Platinum 4
-        assertEquals(462_000, fansGoalFromLegacy(2000)) // Emerald 3 (badge 22), not Bronze 3
+        assertEquals(598_000, fansGoalFromLegacy(2400)) // Emerald 1
+        assertEquals(180_000, fansGoalFromLegacy(700)) // Platinum 4
+        assertEquals(504_000, fansGoalFromLegacy(2000)) // Emerald 3 (badge 22), not Bronze 3
         assertNull(fansGoalFromLegacy(1234)) // custom goal
+    }
+
+    @Test
+    fun firstFansTableGoalMovesToSameBadge() {
+        assertEquals(598_000, fansGoalFromFirstFansTable(552_000)) // Emerald 1
+        assertEquals(4_000, fansGoalFromFirstFansTable(2_000)) // Bronze 3
+        assertEquals(88_000, fansGoalFromFirstFansTable(72_000)) // Gold 4
+        assertNull(fansGoalFromFirstFansTable(1234)) // custom goal
     }
 }
