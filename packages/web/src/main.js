@@ -7,6 +7,7 @@ import "./assets/rank-indicator.css";
 import router from "./router";
 import { clerkPlugin } from "@clerk/vue";
 import { dark } from "@clerk/themes";
+import { registerServiceWorker } from "./registerServiceWorker";
 
 const PUBLISHABLE_KEY = process.env.VUE_APP_CLERK_PUBLISHABLE_KEY;
 const isLocalDevHost =
@@ -33,3 +34,4 @@ if (PUBLISHABLE_KEY && !(isLocalDevHost && isLiveClerkKey)) {
 }
 
 app.mount("#app");
+registerServiceWorker();
