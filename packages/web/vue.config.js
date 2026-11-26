@@ -3,6 +3,28 @@ const webpack = require("webpack");
 const path = require("path");
 const dotenv = require("dotenv");
 
+// Emits /asset-manifest.json: every content-hashed file in the build. The
+// service worker (public/sw.js) caches all of them before it stores a new
+// offline shell, so lazy routes (Ranked, Settings, …) also work offline.
+// Keep the pattern in step with HASHED_RE in public/sw.js.
+const HASHED_ASSET_RE = /^(js|css|img|fonts|media|tracker)\/[^/]+\.[0-9a-f]{8}\.[a-z0-9]+$/i;
+class AssetManifestPlugin {
+  apply(compiler) {
+    compiler.hooks.thisCompilation.tap("AssetManifestPlugin", (compilation) => {
+      compilation.hooks.processAssets.tap(
+        { name: "AssetManifestPlugin", stage: webpack.Compilation.PROCESS_ASSETS_STAGE_REPORT },
+        (assets) => {
+          const files = Object.keys(assets)
+            .filter((f) => HASHED_ASSET_RE.test(f))
+            .map((f) => "/" + f)
+            .sort();
+          compilation.emitAsset("asset-manifest.json", new webpack.sources.RawSource(JSON.stringify({ files }, null, 1)));
+        }
+      );
+    });
+  }
+}
+
 // Force-load workspace root env so web uses the shared .env file.
 dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 
@@ -27,6 +49,7 @@ module.exports = defineConfig({
       new webpack.DefinePlugin({
         __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: "false",
       }),
+      new AssetManifestPlugin(),
     ],
   },
   devServer: {
